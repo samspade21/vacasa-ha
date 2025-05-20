@@ -1,0 +1,59 @@
+# Cline Rules for Vacasa Home Assistant Integration
+
+## Project Patterns
+
+### Authentication Flow
+- The Vacasa authentication flow requires `response_type=token` (not `token,id_token`)
+- Authentication tokens are returned in URL fragments after successful login
+- Tokens expire after approximately 10 minutes
+- Token refresh should be handled proactively before expiration
+
+### API Patterns
+- All API requests require Bearer token authentication
+- The `X-Authorization-Contact` header must include the owner ID
+- Reservation data is categorized by examining the `ownerHold` attribute
+- Guest bookings have firstName/lastName but no ownerHold
+- Owner stays have an ownerHold with holdType containing "owner"
+
+### Home Assistant Integration
+- Follow the calendar platform interface exactly
+- Store credentials using Home Assistant secrets
+- Use async methods throughout for compatibility
+- Implement config flow for better user experience
+
+## Code Organization
+- Keep the API client separate from Home Assistant integration code
+- Use constants for all string literals
+- Follow Home Assistant coding standards
+- Implement proper error handling and logging
+
+## User Preferences
+- Default refresh interval: 4 hours
+- Secure token storage with 0600 permissions
+- One calendar per property for granular control
+- Clear categorization of stay types in calendar events
+
+## Known Challenges
+- Vacasa API is not officially documented and may change
+- Authentication tokens have short expiration times
+- Rate limiting is unknown and should be handled conservatively
+- Error handling must be robust to handle API changes
+
+## Testing Strategy
+- Test authentication flow thoroughly with different credentials
+- Verify token refresh works correctly
+- Test reservation categorization with various stay types
+- Ensure calendar events are created correctly
+
+## Implementation Path
+1. Complete and test the API client
+2. Implement the Home Assistant calendar platform
+3. Create the configuration flow
+4. Add services for manual refresh
+5. Package for distribution
+
+## Security Considerations
+- Never log credentials or tokens
+- Store tokens with appropriate file permissions
+- Validate all API responses before processing
+- Handle authentication failures gracefully

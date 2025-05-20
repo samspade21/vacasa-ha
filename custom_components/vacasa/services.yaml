@@ -1,0 +1,11 @@
+refresh_calendars:
+  name: Refresh Calendars
+  description: Refresh all Vacasa calendars immediately.
+  target:
+    entity:
+      domain: calendar
+      integration: vacasa
+
+clear_cache:
+  name: Clear Cache
+  description: Clear cached data and authentication tokens.

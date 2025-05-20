@@ -1,0 +1,53 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Vacasa",
+        "description": "Set up Vacasa integration to create calendars for your properties.",
+        "data": {
+          "username": "Email",
+          "password": "Password",
+          "refresh_interval": "Calendar data refresh interval (hours)",
+          "owner_id": "Owner ID (required if cannot be determined automatically)",
+          "checkin_time": "Default check-in time (format: HH:MM:SS, e.g. 16:00:00 for 4 PM)",
+          "checkout_time": "Default check-out time (format: HH:MM:SS, e.g. 10:00:00 for 10 AM)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Vacasa API. Please check your internet connection and credentials.",
+      "invalid_auth": "Invalid authentication credentials. Please check your email and password.",
+      "owner_id_error": "Could not retrieve owner ID automatically. Please provide it manually in the Owner ID field. You can find your Owner ID in one of these ways:\n1. In browser session storage under 'owners-portal:owner' (contactIds array)\n2. In the URL when logged into the Vacasa owner portal (e.g., https://owners.vacasa.com/owner/123456)\n3. In the network requests to verify-token endpoint (contactIds array)",
+      "unknown": "Unexpected error occurred. Please check the logs for more information."
+    },
+    "abort": {
+      "already_configured": "This Vacasa account is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Vacasa Options",
+        "description": "Update your Vacasa integration settings.",
+        "data": {
+          "refresh_interval": "Calendar data refresh interval (hours)",
+          "checkin_time": "Default check-in time (format: HH:MM:SS, e.g. 16:00:00 for 4 PM)",
+          "checkout_time": "Default check-out time (format: HH:MM:SS, e.g. 10:00:00 for 10 AM)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "occupancy": {
+        "name": "Occupancy",
+        "state_attributes": {
+          "next_checkin": "Next check-in",
+          "next_checkout": "Next check-out",
+          "current_guest": "Current guest",
+          "reservation_type": "Reservation type"
+        }
+      }
+    }
+  }
+}
