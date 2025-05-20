@@ -57,9 +57,7 @@ The integration can be configured through the Home Assistant UI:
 2. Search for "Vacasa" and select it.
 3. Enter your Vacasa username (email) and password.
 4. Set the refresh interval (default: 8 hours).
-5. (Optional) Configure default check-in time (default: 16:00:00 / 4 PM).
-6. (Optional) Configure default check-out time (default: 10:00:00 / 10 AM).
-7. Click "Submit" to complete the setup.
+5. Click "Submit" to complete the setup.
 
 The integration will automatically discover all your Vacasa properties and create entities for each one.
 
@@ -120,24 +118,11 @@ The integration categorizes reservations into the following types:
 
 These categories can be used in automations to trigger different actions based on the type of reservation.
 
-## Check-in/Check-out Times
-
-The integration supports configurable check-in and check-out times:
-
-- Default check-in time: 4:00 PM (16:00:00)
-- Default check-out time: 10:00 AM (10:00:00)
-
-These times are used when:
-1. The API doesn't provide specific times for a reservation
-2. The API provides placeholder times (like midnight or noon)
-
-You can customize these defaults during setup or in the integration options.
-
 ## Services
 
 The integration provides the following services:
 
-- `vacasa.refresh_calendars`: Force refresh of calendar data
+- `vacasa.refresh_data`: Refresh all Vacasa data including calendars, sensors, and property information
 - `vacasa.clear_cache`: Clear cached data and tokens
 
 ## Automation Examples
