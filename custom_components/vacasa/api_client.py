@@ -1,18 +1,13 @@
 """API client for the Vacasa integration."""
-import asyncio
 import json
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import aiohttp
 
 from .const import (
-    API_BASE_URL,
-    DEFAULT_TIMEOUT,
-    MAX_RETRIES,
-    RETRY_DELAY,
     STAY_TYPE_BLOCK,
     STAY_TYPE_GUEST,
     STAY_TYPE_MAINTENANCE,
@@ -51,7 +46,6 @@ class VacasaApiClient:
         username: str,
         password: str,
         session: Optional[aiohttp.ClientSession] = None,
-        owner_id: Optional[str] = None,
         token_cache_path: Optional[str] = None,
         hass_config_dir: Optional[str] = None,
     ):
@@ -61,19 +55,16 @@ class VacasaApiClient:
             username: Vacasa account username/email
             password: Vacasa account password
             session: Optional aiohttp ClientSession
-            owner_id: Optional owner ID (will be extracted from API if not provided)
             token_cache_path: Optional path to token cache file
             hass_config_dir: Optional Home Assistant config directory
         """
         self._username = username
         self._password = password
         self._session = session
-        self._owner_id = owner_id
+        self._owner_id = None
         self._token = None
         self._token_expiry = None
-        self._client_id = (
-            "KOIkAJP9XW7ZpTXwRa0B7O4qMuXSQ3p4BKFfTPhr"  # From the auth URL
-        )
+        self._client_id = "KOIkAJP9XW7ZpTXwRa0B7O4qMuXSQ3p4BKFfTPhr"  # From the auth URL
         self._close_session = False
 
         # Set up token cache file path
@@ -85,9 +76,8 @@ class VacasaApiClient:
             self._token_cache_file = TOKEN_CACHE_FILE
 
         _LOGGER.debug(
-            "Initialized Vacasa API client for user %s (owner_id: %s)",
+            "Initialized Vacasa API client for user %s",
             username,
-            owner_id if owner_id else "to be determined",
         )
 
     async def __aenter__(self):
@@ -115,10 +105,7 @@ class VacasaApiClient:
         if not self._token or not self._token_expiry:
             return False
         # Consider token invalid if it expires within TOKEN_REFRESH_MARGIN
-        return (
-            datetime.now() + timedelta(seconds=TOKEN_REFRESH_MARGIN)
-            < self._token_expiry
-        )
+        return datetime.now() + timedelta(seconds=TOKEN_REFRESH_MARGIN) < self._token_expiry
 
     async def ensure_session(self) -> aiohttp.ClientSession:
         """Ensure we have an aiohttp session."""
@@ -136,7 +123,6 @@ class VacasaApiClient:
             cache_data = {
                 "token": self._token,
                 "expiry": self._token_expiry.isoformat(),
-                "owner_id": self._owner_id,
             }
 
             with open(self._token_cache_file, "w") as f:
@@ -145,7 +131,7 @@ class VacasaApiClient:
             # Set file permissions to be readable only by the owner
             os.chmod(self._token_cache_file, 0o600)
 
-            _LOGGER.debug("Token saved to cache file: %s", self._token_cache_file)
+            _LOGGER.debug("Token saved to cache file")
         except Exception as e:
             _LOGGER.warning("Failed to save token to cache file: %s", e)
 
@@ -163,22 +149,14 @@ class VacasaApiClient:
             with open(self._token_cache_file, "r") as f:
                 cache_data = json.load(f)
 
-            if (
-                not cache_data
-                or "token" not in cache_data
-                or "expiry" not in cache_data
-            ):
+            if not cache_data or "token" not in cache_data or "expiry" not in cache_data:
                 _LOGGER.warning("Invalid token cache data format")
                 return False
 
             self._token = cache_data["token"]
             self._token_expiry = datetime.fromisoformat(cache_data["expiry"])
 
-            if "owner_id" in cache_data and cache_data["owner_id"]:
-                self._owner_id = cache_data["owner_id"]
-                _LOGGER.debug("Loaded owner ID from cache: %s", self._owner_id)
-
-            _LOGGER.debug("Token loaded from cache file: %s", self._token_cache_file)
+            _LOGGER.debug("Token loaded from cache file")
             _LOGGER.debug("Token expires at: %s", self._token_expiry)
 
             return True
@@ -193,7 +171,7 @@ class VacasaApiClient:
         """Clear the token cache."""
         self._token = None
         self._token_expiry = None
-        
+
         if os.path.exists(self._token_cache_file):
             try:
                 os.remove(self._token_cache_file)
@@ -205,7 +183,7 @@ class VacasaApiClient:
         """Ensure we have a valid token, refreshing if necessary."""
         if not self.is_token_valid:
             _LOGGER.debug("Token is invalid or missing, attempting to refresh")
-            
+
             # Try to load token from cache first
             if self._load_token_from_cache() and self.is_token_valid:
                 _LOGGER.debug("Using valid token from cache")
@@ -234,24 +212,27 @@ class VacasaApiClient:
             "Sec-Fetch-Mode": "cors",
             "Accept-Encoding": "gzip, deflate, br",
             "Origin": "https://owners.vacasa.com",
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1.1 Safari/605.1.15",
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1.1 Safari/605.1.15"
+            ),
             "Referer": "https://owners.vacasa.com/",
             "Sec-Fetch-Dest": "empty",
             "Priority": "u=3, i",
         }
-        
+
         # Add owner ID header if available
         if self._owner_id:
             headers["X-Authorization-Contact"] = self._owner_id
-            
+
         return headers
 
     def _format_params(self, params: dict) -> str:
         """Format parameters for URL.
-        
+
         Args:
             params: Dictionary of parameters
-            
+
         Returns:
             Formatted parameters string
         """
@@ -266,25 +247,22 @@ class VacasaApiClient:
         Returns:
             The decoded string
         """
-        # Replace URL-safe characters
-        input = input.replace("-", "+").replace("_", "/")
-
+        import base64
+        
+        # Use the standard library's base64 module with proper URL-safe decoding
         # Add padding if needed
         padding = len(input) % 4
         if padding:
             input += "=" * (4 - padding)
-
-        # Decode
-        import base64
-
-        return base64.b64decode(input).decode("utf-8")
+            
+        return base64.urlsafe_b64decode(input).decode("utf-8")
 
     def _timestamp_to_datetime(self, timestamp: int) -> datetime:
         """Convert timestamp to datetime.
-        
+
         Args:
             timestamp: Unix timestamp
-            
+
         Returns:
             Datetime object
         """
@@ -326,16 +304,11 @@ class VacasaApiClient:
         return STAY_TYPE_OTHER
 
     # Import methods from other files
-    from .api_auth import (
-        authenticate,
-        _follow_auth_redirects,
-        _try_calendar_page,
-    )
-
+    from .api_auth import _follow_auth_redirects, authenticate
     from .api_data import (
+        get_categorized_reservations,
         get_owner_id,
-        get_units,
         get_reservations,
         get_unit_details,
-        get_categorized_reservations,
+        get_units,
     )

@@ -2,27 +2,20 @@
 from datetime import timedelta
 
 DOMAIN = "vacasa"
-PLATFORMS = ["calendar", "binary_sensor"]
+PLATFORMS = ["calendar", "binary_sensor", "sensor"]
 
 # Configuration
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
 CONF_REFRESH_INTERVAL = "refresh_interval"
-CONF_OWNER_ID = "owner_id"  # Added for manual owner ID entry
-CONF_CHECKIN_TIME = "checkin_time"
-CONF_CHECKOUT_TIME = "checkout_time"
 
 # Defaults
 DEFAULT_REFRESH_INTERVAL = 8  # hours
 DEFAULT_TIMEOUT = 30  # seconds
 TOKEN_REFRESH_MARGIN = 300  # seconds (5 minutes)
-DEFAULT_CHECKIN_TIME = "16:00:00"  # 4 PM
-DEFAULT_CHECKOUT_TIME = "10:00:00"  # 10 AM
 
 # API
 AUTH_URL = "https://accounts.vacasa.io/login"
-AUTH_REDIRECT_URL = "https://accounts.vacasa.io/authorize"
-CALENDAR_URL = "https://owners.vacasa.com/calendar"
 API_BASE_URL = "https://owner.vacasa.io/api/v1"
 TOKEN_CACHE_FILE = ".vacasa_token.json"
 MAX_RETRIES = 3
@@ -44,9 +37,22 @@ CATEGORY_OTHER = "other"
 
 # Sensor types
 SENSOR_OCCUPANCY = "occupancy"
+SENSOR_RATING = "rating"
+SENSOR_MAX_OCCUPANCY = "max_occupancy"
+SENSOR_MAX_ADULTS = "max_adults"
+SENSOR_MAX_CHILDREN = "max_children"
+SENSOR_MAX_PETS = "max_pets"
+SENSOR_BEDROOMS = "bedrooms"
+SENSOR_BATHROOMS = "bathrooms"
+SENSOR_HOT_TUB = "hot_tub"
+SENSOR_PET_FRIENDLY = "pet_friendly"
+SENSOR_TIMEZONE = "timezone"
+SENSOR_LOCATION = "location"
+SENSOR_PARKING = "parking"
+SENSOR_ADDRESS = "address"
 
 # Services
-SERVICE_REFRESH_CALENDARS = "refresh_calendars"
+SERVICE_REFRESH_DATA = "refresh_data"
 SERVICE_CLEAR_CACHE = "clear_cache"
 
 # Scan interval

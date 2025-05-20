@@ -1,20 +1,21 @@
-# Vacasa Home Assistant Integration
+# Vacasa Properties Integration for Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 [![GitHub Release](https://img.shields.io/github/release/samspade21/vacasa-ha.svg?style=flat-square)](https://github.com/samspade21/vacasa-ha/releases)
 [![License](https://img.shields.io/github/license/samspade21/vacasa-ha.svg?style=flat-square)](LICENSE)
 
-A Home Assistant integration that creates calendars and occupancy sensors for Vacasa vacation rental properties, enabling smart home automation based on reservation status.
+A comprehensive Home Assistant integration for Vacasa vacation rental properties that provides calendars, occupancy sensors, and detailed property information, enabling powerful smart home automation based on reservation status and property characteristics.
 
-**Version: 1.0.0**
+**Version: 1.0.1**
 
 ## Features
 
 - Creates one Home Assistant calendar per Vacasa property
 - Provides binary sensors for property occupancy status
+- Creates detailed property information sensors (rating, location, amenities, etc.)
+- Uses property-specific check-in/check-out times and timezone information
 - Categorizes reservations by stay type (guest bookings, owner stays, maintenance)
-- Supports configurable check-in/check-out times
-- Enables standard Home Assistant calendar-based automations
+- Enables powerful Home Assistant automations based on property data
 - Securely stores and manages authentication credentials
 - Automatically refreshes data periodically
 
@@ -85,6 +86,27 @@ For each Vacasa property, the integration creates:
   - `next_checkout`: Date and time of the next check-out
   - `next_guest`: Name of the next guest (if applicable)
   - `next_reservation_type`: Type of the next reservation
+
+### Property Information Sensors
+
+#### Property Details
+- **Rating**: Star rating of the property (e.g., 5★)
+- **Location**: Latitude/longitude coordinates with attributes for mapping
+- **Timezone**: Property's timezone (e.g., "America/Los_Angeles")
+- **Address**: Formatted property address with detailed attributes
+
+#### Capacity Information
+- **Max Occupancy**: Maximum total occupants allowed
+- **Max Adults**: Maximum number of adults allowed
+- **Max Children**: Maximum number of children allowed
+- **Max Pets**: Maximum number of pets allowed
+
+#### Amenities
+- **Bedrooms**: Number of bedrooms with attributes for bed types
+- **Bathrooms**: Number of bathrooms (full + half) with detailed attributes
+- **Hot Tub**: Whether the property has a hot tub ("Yes"/"No")
+- **Pet Friendly**: Whether the property allows pets ("Yes"/"No")
+- **Parking**: Number of parking spaces with detailed attributes
 
 ## Calendar Categories
 
@@ -178,6 +200,55 @@ automation:
       - service: script.prepare_for_guests
 ```
 
+### Adjust Hot Tub Settings Based on Property Amenities
+
+```yaml
+automation:
+  - alias: "Configure Hot Tub if Available"
+    trigger:
+      - platform: homeassistant
+        event: start
+      - platform: state
+        entity_id: sensor.vacasa_vacation_cabin_hot_tub
+    condition:
+      - condition: state
+        entity_id: sensor.vacasa_vacation_cabin_hot_tub
+        state: "Yes"
+    action:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.hot_tub_power
+      - service: climate.set_temperature
+        target:
+          entity_id: climate.hot_tub
+        data:
+          temperature: 102
+      - service: notify.mobile_app
+        data:
+          title: "Hot Tub Ready"
+          message: "The hot tub at {{ states('sensor.vacasa_vacation_cabin_address') }} is now ready for use."
+```
+
+### Display Property Information on Dashboard
+
+```yaml
+# Example Lovelace card configuration
+type: entities
+title: Vacation Property Details
+entities:
+  - entity: sensor.vacasa_vacation_cabin_rating
+  - entity: sensor.vacasa_vacation_cabin_bedrooms
+  - entity: sensor.vacasa_vacation_cabin_bathrooms
+  - entity: sensor.vacasa_vacation_cabin_max_occupancy
+  - entity: sensor.vacasa_vacation_cabin_hot_tub
+  - entity: sensor.vacasa_vacation_cabin_pet_friendly
+  - entity: sensor.vacasa_vacation_cabin_timezone
+footer:
+  type: graph
+  entity: binary_sensor.vacasa_vacation_cabin_occupancy
+  hours_to_show: 168
+```
+
 ## Development
 
 ### Prerequisites
@@ -225,6 +296,48 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+## For Developers
+
+This project uses Cline Memory Bank for comprehensive documentation and context management. The memory bank provides a structured way to maintain project knowledge and ensure consistent development across time.
+
+### Memory Bank Overview
+
+The memory bank is a collection of markdown files that document different aspects of the project. It serves as a knowledge repository that helps developers understand the project's architecture, design decisions, and implementation details.
+
+- **Documentation**: [Cline Memory Bank Documentation](https://docs.cline.bot/prompting/cline-memory-bank)
+- **Purpose**: Maintains project context across development sessions
+- **Benefits**: Easier onboarding, consistent development, and better knowledge retention
+
+### Memory Bank Structure
+
+The project's memory bank contains the following files:
+
+- [Project Brief](memory-bank/projectbrief.md) - Core requirements and goals
+- [Product Context](memory-bank/productContext.md) - Why this project exists and how it should work
+- [Active Context](memory-bank/activeContext.md) - Current work focus and recent changes
+- [System Patterns](memory-bank/systemPatterns.md) - Architecture and design patterns
+- [Tech Context](memory-bank/techContext.md) - Technologies, dependencies, and technical details
+- [Progress](memory-bank/progress.md) - Current status, completed features, and next steps
+
+### Working with Cline
+
+[Cline](https://docs.cline.bot/) is an AI assistant designed to work with codebases and maintain context across development sessions. To use Cline with this project:
+
+1. **Setup Cline**: Follow the [installation instructions](https://docs.cline.bot/getting-started/installation)
+2. **Read the Memory Bank**: Cline will automatically read the memory bank files to understand the project
+3. **Update Documentation**: When making significant changes, update the relevant memory bank files
+
+### Development Workflow
+
+When working on this project with Cline:
+
+1. **Start with Context**: Begin by reviewing the memory bank files to understand the current state
+2. **Implement Changes**: Make your code changes with Cline's assistance
+3. **Update Documentation**: Update the memory bank files to reflect your changes
+4. **Commit Changes**: Include both code and documentation changes in your commits
+
+This approach ensures that project knowledge is maintained and accessible to all contributors.
 
 ## License
 

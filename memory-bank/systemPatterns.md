@@ -157,11 +157,33 @@ def _create_calendar_entities(self, units):
 1. **Unit Testing**
    - Mock API responses for predictable testing
    - Test each component in isolation
+   - Use pytest-homeassistant-custom-component for mocking Home Assistant
 
 2. **Integration Testing**
    - Test the integration with Home Assistant
    - Verify calendar functionality
+   - Test across multiple Python versions (3.9, 3.10, 3.11)
 
 3. **Authentication Testing**
    - Test token refresh and error handling
    - Verify secure credential storage
+
+## CI/CD Patterns
+
+1. **GitHub Actions Workflows**
+   - Validate workflow for code quality and testing
+   - Release workflow for packaging and distribution
+   - Dependency caching for faster builds
+   - Matrix testing across Python versions
+
+2. **HACS Compliance**
+   - Root-level hacs.json file
+   - Proper manifest.json configuration
+   - GitHub topics for discoverability
+   - Logo and documentation standards
+
+3. **Pre-commit Integration**
+   - Automated code formatting with Black
+   - Linting with Flake8
+   - Type checking with MyPy
+   - Consistent code style enforcement

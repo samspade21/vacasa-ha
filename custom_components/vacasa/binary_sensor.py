@@ -1,12 +1,9 @@
 """Binary sensor platform for Vacasa integration."""
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from homeassistant.components.binary_sensor import (
-    BinarySensorDeviceClass,
-    BinarySensorEntity,
-)
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -14,19 +11,15 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    CONF_CHECKIN_TIME,
-    CONF_CHECKOUT_TIME,
     DATA_CLIENT,
     DATA_COORDINATOR,
-    DEFAULT_CHECKIN_TIME,
-    DEFAULT_CHECKOUT_TIME,
     DOMAIN,
     SENSOR_OCCUPANCY,
-    STAY_TYPE_GUEST,
-    STAY_TYPE_OWNER,
-    STAY_TYPE_MAINTENANCE,
     STAY_TYPE_BLOCK,
+    STAY_TYPE_GUEST,
+    STAY_TYPE_MAINTENANCE,
     STAY_TYPE_OTHER,
+    STAY_TYPE_OWNER,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -50,10 +43,6 @@ async def async_setup_entry(
     client = hass.data[DOMAIN][config_entry.entry_id][DATA_CLIENT]
     coordinator = hass.data[DOMAIN][config_entry.entry_id][DATA_COORDINATOR]
 
-    # Get check-in and check-out times from config
-    checkin_time = config_entry.data.get(CONF_CHECKIN_TIME, DEFAULT_CHECKIN_TIME)
-    checkout_time = config_entry.data.get(CONF_CHECKOUT_TIME, DEFAULT_CHECKOUT_TIME)
-
     # Get all units
     try:
         units = await client.get_units()
@@ -66,6 +55,11 @@ async def async_setup_entry(
             attributes = unit.get("attributes", {})
             name = attributes.get("name", f"Vacasa Unit {unit_id}")
             code = attributes.get("code", "")
+            
+            # Get property-specific check-in/check-out times
+            checkin_time = attributes.get("checkInTime")
+            checkout_time = attributes.get("checkOutTime")
+            timezone = attributes.get("timezone")
 
             entity = VacasaOccupancySensor(
                 coordinator=coordinator,
@@ -73,8 +67,7 @@ async def async_setup_entry(
                 unit_id=unit_id,
                 name=name,
                 code=code,
-                checkin_time=checkin_time,
-                checkout_time=checkout_time,
+                unit_attributes=attributes,
             )
             entities.append(entity)
 
@@ -95,8 +88,7 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
         unit_id,
         name,
         code,
-        checkin_time,
-        checkout_time,
+        unit_attributes,
     ) -> None:
         """Initialize the Vacasa occupancy sensor."""
         super().__init__(coordinator)
@@ -104,8 +96,10 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
         self._unit_id = unit_id
         self._name = name
         self._code = code
-        self._checkin_time = checkin_time
-        self._checkout_time = checkout_time
+        self._unit_attributes = unit_attributes
+        self._checkin_time = unit_attributes.get("checkInTime")
+        self._checkout_time = unit_attributes.get("checkOutTime")
+        self._timezone = unit_attributes.get("timezone")
         self._categorized_reservations = {}
         self._current_reservation = None
         self._current_stay_type = None
@@ -140,21 +134,21 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
         if self._next_reservation:
             checkin_dt = self._get_checkin_datetime(self._next_reservation)
             checkout_dt = self._get_checkout_datetime(self._next_reservation)
-            
+
             attrs["next_checkin"] = self._format_datetime(checkin_dt)
             attrs["next_checkout"] = self._format_datetime(checkout_dt)
-            
+
             # Add guest information if available
             guest_name = self._get_guest_name(self._next_reservation)
             if guest_name:
                 attrs["next_guest"] = guest_name
-                
+
             # Add reservation type
             if self._next_stay_type:
                 attrs["next_reservation_type"] = STAY_TYPE_TO_NAME.get(
                     self._next_stay_type, "Unknown"
                 )
-                
+
             # Log the next reservation details for debugging
             _LOGGER.debug(
                 "Next reservation for %s: check-in=%s, check-out=%s, guest=%s, type=%s",
@@ -168,20 +162,20 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
         # Add current reservation information if occupied
         if self._current_reservation:
             checkout_dt = self._get_checkout_datetime(self._current_reservation)
-            
+
             attrs["current_checkout"] = self._format_datetime(checkout_dt)
-            
+
             # Add guest information if available
             guest_name = self._get_guest_name(self._current_reservation)
             if guest_name:
                 attrs["current_guest"] = guest_name
-                
+
             # Add reservation type
             if self._current_stay_type:
                 attrs["current_reservation_type"] = STAY_TYPE_TO_NAME.get(
                     self._current_stay_type, "Unknown"
                 )
-                
+
             # Log the current reservation details for debugging
             _LOGGER.debug(
                 "Current reservation for %s: check-out=%s, guest=%s, type=%s",
@@ -207,43 +201,43 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
             # Get current date in YYYY-MM-DD format
             now = dt_util.now()
             start_date = now.strftime("%Y-%m-%d")
-            
+
             # Get reservations for the next 365 days
             end_date = (now + timedelta(days=365)).strftime("%Y-%m-%d")
-            
+
             # Use the get_categorized_reservations method to get properly categorized reservations
             self._categorized_reservations = await self._client.get_categorized_reservations(
                 self._unit_id, start_date, end_date
             )
-            
+
             _LOGGER.debug(
                 "Retrieved categorized reservations for %s: %s",
                 self._name,
                 {k: len(v) for k, v in self._categorized_reservations.items()},
             )
-            
+
             # Update current and next reservations
             self._update_current_and_next_reservations()
-            
+
         except Exception as err:
             _LOGGER.error("Error updating reservations for %s: %s", self._name, err)
 
     def _update_current_and_next_reservations(self) -> None:
         """Update the current and next reservation information."""
         now = dt_util.now()
-        
+
         # Reset current and next reservation info
         self._current_reservation = None
         self._current_stay_type = None
         self._next_reservation = None
         self._next_stay_type = None
-        
+
         # Find the current reservation (if any)
         for stay_type, reservations in self._categorized_reservations.items():
             for reservation in reservations:
                 checkin = self._get_checkin_datetime(reservation)
                 checkout = self._get_checkout_datetime(reservation)
-                
+
                 if checkin and checkout and checkin <= now < checkout:
                     self._current_reservation = reservation
                     self._current_stay_type = stay_type
@@ -255,26 +249,22 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
                         checkout,
                     )
                     break
-            
+
             # If we found a current reservation, no need to check other stay types
             if self._current_reservation:
                 break
-        
+
         # Find the next reservation
         next_checkin = None
-        
+
         for stay_type, reservations in self._categorized_reservations.items():
             for reservation in reservations:
                 checkin = self._get_checkin_datetime(reservation)
-                
+
                 # Skip if this is the current reservation or if check-in is in the past
-                if (
-                    reservation == self._current_reservation
-                    or not checkin
-                    or checkin <= now
-                ):
+                if reservation == self._current_reservation or not checkin or checkin <= now:
                     continue
-                
+
                 # If this is the first future reservation we've found, or it's earlier than the current next
                 if next_checkin is None or checkin < next_checkin:
                     self._next_reservation = reservation
@@ -286,7 +276,7 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
                         self._name,
                         checkin,
                     )
-        
+
         # Log the results
         if self._current_reservation:
             _LOGGER.debug(
@@ -297,7 +287,7 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
             )
         else:
             _LOGGER.debug("No current reservation for %s", self._name)
-            
+
         if self._next_reservation:
             _LOGGER.debug(
                 "Next reservation for %s: %s (%s) at %s",
@@ -319,75 +309,109 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
         """Get the check-in datetime for a reservation."""
         attributes = reservation.get("attributes", {})
         start_date = attributes.get("startDate")
-        
+
         if not start_date:
             return None
-            
-        # Check if there's a specific check-in time in the reservation
-        checkin_time = attributes.get("checkinTime", self._checkin_time)
-        
-        # If the time looks like a placeholder (midnight or noon), use the default
-        if checkin_time in ["00:00:00", "12:00:00"]:
-            checkin_time = self._checkin_time
-            
+
+        # Create datetime string based on available information
+        if "checkinTime" in attributes and attributes["checkinTime"] not in ["00:00:00", "12:00:00"]:
+            # Use time from reservation
+            checkin_time = attributes["checkinTime"]
+            start_dt_str = f"{start_date}T{checkin_time}"
+        elif self._checkin_time:
+            # Use property-specific time
+            start_dt_str = f"{start_date}T{self._checkin_time}"
+        else:
+            # No time available, use date only
+            start_dt_str = f"{start_date}T00:00:00"
+
         # Parse the datetime
-        checkin_dt = dt_util.parse_datetime(f"{start_date}T{checkin_time}")
+        checkin_dt = dt_util.parse_datetime(start_dt_str)
         
-        # Ensure it has timezone info
-        if checkin_dt:
+        if not checkin_dt:
+            return None
+
+        # Apply property timezone if available
+        if self._timezone and "T00:00:00" not in start_dt_str:
+            import pytz
+            try:
+                tz = pytz.timezone(self._timezone)
+                checkin_dt = checkin_dt.replace(tzinfo=tz)
+                return checkin_dt
+            except Exception as e:
+                _LOGGER.warning("Error applying timezone %s: %s", self._timezone, e)
+                # Fall back to local timezone
+                return dt_util.as_local(checkin_dt)
+        else:
+            # Fall back to local timezone
             return dt_util.as_local(checkin_dt)
-            
-        return None
 
     def _get_checkout_datetime(self, reservation: Dict[str, Any]) -> Optional[datetime]:
         """Get the check-out datetime for a reservation."""
         attributes = reservation.get("attributes", {})
         end_date = attributes.get("endDate")
-        
+
         if not end_date:
             return None
-            
-        # Check if there's a specific check-out time in the reservation
-        checkout_time = attributes.get("checkoutTime", self._checkout_time)
-        
-        # If the time looks like a placeholder (midnight or noon), use the default
-        if checkout_time in ["00:00:00", "12:00:00"]:
-            checkout_time = self._checkout_time
-            
+
+        # Create datetime string based on available information
+        if "checkoutTime" in attributes and attributes["checkoutTime"] not in ["00:00:00", "12:00:00"]:
+            # Use time from reservation
+            checkout_time = attributes["checkoutTime"]
+            end_dt_str = f"{end_date}T{checkout_time}"
+        elif self._checkout_time:
+            # Use property-specific time
+            end_dt_str = f"{end_date}T{self._checkout_time}"
+        else:
+            # No time available, use date only
+            end_dt_str = f"{end_date}T00:00:00"
+
         # Parse the datetime
-        checkout_dt = dt_util.parse_datetime(f"{end_date}T{checkout_time}")
+        checkout_dt = dt_util.parse_datetime(end_dt_str)
         
-        # Ensure it has timezone info
-        if checkout_dt:
+        if not checkout_dt:
+            return None
+
+        # Apply property timezone if available
+        if self._timezone and "T00:00:00" not in end_dt_str:
+            import pytz
+            try:
+                tz = pytz.timezone(self._timezone)
+                checkout_dt = checkout_dt.replace(tzinfo=tz)
+                return checkout_dt
+            except Exception as e:
+                _LOGGER.warning("Error applying timezone %s: %s", self._timezone, e)
+                # Fall back to local timezone
+                return dt_util.as_local(checkout_dt)
+        else:
+            # Fall back to local timezone
             return dt_util.as_local(checkout_dt)
-            
-        return None
 
     def _get_guest_name(self, reservation: Dict[str, Any]) -> Optional[str]:
         """Get the guest name for a reservation."""
         attributes = reservation.get("attributes", {})
         first_name = attributes.get("firstName", "")
         last_name = attributes.get("lastName", "")
-        
+
         if first_name and last_name:
             return f"{first_name} {last_name}"
         elif first_name:
             return first_name
         elif last_name:
             return last_name
-            
+
         # Check for owner hold information
         owner_hold = attributes.get("ownerHold")
         if owner_hold:
             hold_who_booked = owner_hold.get("holdWhoBooked", "")
             if hold_who_booked:
                 return hold_who_booked
-                
+
         return None
 
     def _format_datetime(self, dt: Optional[datetime]) -> Optional[str]:
         """Format a datetime for display."""
         if not dt:
             return None
-            
+
         return dt.strftime("%Y-%m-%d %H:%M:%S")

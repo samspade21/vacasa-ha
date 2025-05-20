@@ -20,25 +20,64 @@ The integration is fully compatible with Home Assistant's async architecture and
 
 ## Recent Changes
 
-1. **Calendar Implementation**
+1. **Property Information Sensors (v1.0.1)**
+   - Added detailed property information sensors for each Vacasa property:
+     - Rating sensor (star rating)
+     - Location sensor (latitude/longitude)
+     - Timezone sensor
+     - Max occupancy, adults, children, and pets sensors
+     - Bedroom and bathroom count sensors
+     - Hot tub and pet-friendly status sensors
+     - Parking information sensor
+     - Address sensor
+   - Enhanced README with examples of using these sensors in automations
+
+2. **Timezone and Check-in/Check-out Improvements (v1.0.1)**
+   - Now using property-specific check-in/check-out times from the API
+   - Improved timezone handling for more accurate calendar events
+   - Removed manual configuration options for check-in/check-out times
+   - Fixed calendar event time display issues
+
+3. **Technical Debt Reduction (v1.0.1)**
+   - Simplified authentication flow for better reliability
+   - Improved token handling
+   - Renamed refresh_calendars service to refresh_data
+   - Removed unused constants and imports
+   - Fixed import errors
+   - Added SSH log access documentation to memory bank
+
+4. **HACS Compliance Improvements**
+   - Moved hacs.json to repository root for proper HACS validation
+   - Added minimum HACS version requirement
+   - Moved logo.png to repository root for better visibility
+   - Added GitHub topics documentation for improved discoverability
+
+5. **GitHub Actions Workflow Improvements**
+   - Simplified and consolidated workflows for better maintainability
+   - Added dependency caching for faster builds
+   - Removed unnecessary hass-validate job that required configuration.yaml
+   - Standardized on .yaml extension for all workflow files
+   - Added multi-Python version testing (3.9, 3.10, 3.11)
+
+6. **Testing Framework Improvements**
+   - Added pytest-homeassistant-custom-component for proper Home Assistant testing
+   - Created conftest.py with fixtures for mocking Home Assistant
+   - Updated pytest.ini configuration for asyncio support
+   - Added test coverage reporting
+
+7. **Calendar Implementation**
    - Created calendar entities for each Vacasa property
    - Implemented event generation with proper formatting
    - Added support for different stay types (guest, owner, maintenance)
    - Enhanced event details with check-in/check-out times
 
-2. **Occupancy Sensors**
+8. **Occupancy Sensors**
    - Added binary sensors to show property occupancy status
    - Included attributes for next check-in/check-out
    - Added guest information and reservation type details
    - Implemented proper state management
 
-3. **Configuration Improvements**
-   - Added support for configurable check-in/check-out times
-   - Implemented per-property configuration
-   - Added fallback to defaults when API data is missing
-   - Enhanced error handling and user feedback
-
-4. **Code Quality**
+9. **Code Quality**
    - Set up pre-commit hooks for code quality
    - Implemented consistent logging
    - Added detailed error handling
@@ -50,6 +89,22 @@ We are currently focused on:
 1. **Testing**: Ensuring the integration works reliably in real-world scenarios
 2. **Documentation**: Improving user documentation and adding example automations
 3. **Preparation for Release**: Getting ready for distribution via HACS
+4. **Technical Debt Reduction**: Simplifying code and removing unused components
+
+## Debugging Techniques
+
+### SSH Access for Log Viewing
+To access Home Assistant logs for debugging:
+```bash
+ssh root@192.168.1.67 "cat /homeassistant/home-assistant.log | grep -i 'vacasa.*debug' | tail -n 100"
+```
+
+This command can be modified with different grep patterns:
+- For errors: `grep -i 'vacasa.*error'`
+- For tracebacks: `grep -i 'vacasa.*error\|traceback'`
+- For all Vacasa logs: `grep -i 'vacasa'`
+
+This technique can be used in Plan mode to diagnose issues before implementing fixes.
 
 ## Active Decisions
 

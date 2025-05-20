@@ -41,6 +41,7 @@
 ### Development Dependencies
 - **pytest**: For unit testing
 - **pytest-asyncio**: For testing async code
+- **pytest-homeassistant-custom-component**: For mocking Home Assistant
 - **pre-commit**: For code quality checks
 - **black**: For code formatting
 - **flake8**: For linting

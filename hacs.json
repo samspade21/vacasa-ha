@@ -1,0 +1,7 @@
+{
+  "name": "Vacasa",
+  "content_in_root": false,
+  "render_readme": true,
+  "homeassistant": "2023.5.0",
+  "hacs": "1.6.0"
+}

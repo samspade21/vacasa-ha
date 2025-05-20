@@ -1,9 +1,8 @@
-refresh_calendars:
-  name: Refresh Calendars
-  description: Refresh all Vacasa calendars immediately.
+refresh_data:
+  name: Refresh Data
+  description: Refresh all Vacasa data including calendars, sensors, and property information immediately.
   target:
     entity:
-      domain: calendar
       integration: vacasa
 
 clear_cache:

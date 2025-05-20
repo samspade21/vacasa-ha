@@ -1,8 +1,0 @@
-{
-  "name": "Vacasa",
-  "render_readme": true,
-  "domain": "vacasa",
-  "documentation": "https://github.com/samspade21/vacasa-ha",
-  "issue_tracker": "https://github.com/samspade21/vacasa-ha/issues",
-  "homeassistant": "2023.5.0"
-}

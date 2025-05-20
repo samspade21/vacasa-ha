@@ -11,14 +11,9 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api_client import ApiError, AuthenticationError, VacasaApiClient
 from .const import (
-    CONF_CHECKIN_TIME,
-    CONF_CHECKOUT_TIME,
-    CONF_OWNER_ID,
     CONF_PASSWORD,
     CONF_REFRESH_INTERVAL,
     CONF_USERNAME,
-    DEFAULT_CHECKIN_TIME,
-    DEFAULT_CHECKOUT_TIME,
     DEFAULT_REFRESH_INTERVAL,
     DOMAIN,
 )
@@ -38,25 +33,19 @@ async def validate_input(hass: HomeAssistant, data: Dict[str, Any]) -> Dict[str,
         password=data[CONF_PASSWORD],
         session=session,
         hass_config_dir=hass.config.path(),
-        owner_id=data.get(CONF_OWNER_ID),  # Pass the optional owner ID
     )
 
     try:
         # Test authentication
         await client.authenticate()
 
-        # If owner ID is provided, use it directly
-        if data.get(CONF_OWNER_ID):
-            owner_id = data[CONF_OWNER_ID]
-            _LOGGER.debug("Using provided owner ID: %s", owner_id)
-        else:
-            # Try to get owner ID from API
-            try:
-                owner_id = await client.get_owner_id()
-                _LOGGER.debug("Retrieved owner ID from API: %s", owner_id)
-            except ApiError as err:
-                _LOGGER.error("Failed to get owner ID from API: %s", err)
-                raise OwnerIdError from err
+        # Get owner ID from API
+        try:
+            owner_id = await client.get_owner_id()
+            _LOGGER.debug("Retrieved owner ID from API: %s", owner_id)
+        except ApiError as err:
+            _LOGGER.error("Failed to get owner ID from API: %s", err)
+            raise OwnerIdError from err
 
         # Test API access by getting units
         try:
@@ -64,15 +53,12 @@ async def validate_input(hass: HomeAssistant, data: Dict[str, Any]) -> Dict[str,
             _LOGGER.debug("Retrieved %s units", len(units))
         except ApiError as err:
             _LOGGER.error("Failed to get units: %s", err)
-            if "owner_id" in str(err).lower():
-                raise OwnerIdError from err
             raise CannotConnect from err
 
         # Return info that you want to store in the config entry.
         return {
             "title": f"Vacasa ({data[CONF_USERNAME]})",
             "units": len(units),
-            "owner_id": owner_id,
         }
     except AuthenticationError as err:
         _LOGGER.error("Authentication error: %s", err)
@@ -102,9 +88,6 @@ class VacasaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(user_input[CONF_USERNAME])
                 self._abort_if_unique_id_configured()
 
-                # Store the owner ID in the data
-                user_input[CONF_OWNER_ID] = info.get("owner_id")
-
                 return self.async_create_entry(title=info["title"], data=user_input)
             except CannotConnect:
                 errors["base"] = "cannot_connect"
@@ -119,9 +102,6 @@ class VacasaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_USERNAME: "",
                 CONF_PASSWORD: "",
                 CONF_REFRESH_INTERVAL: DEFAULT_REFRESH_INTERVAL,
-                CONF_OWNER_ID: "",
-                CONF_CHECKIN_TIME: DEFAULT_CHECKIN_TIME,
-                CONF_CHECKOUT_TIME: DEFAULT_CHECKOUT_TIME,
             }
 
         schema = vol.Schema(
@@ -132,15 +112,6 @@ class VacasaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_REFRESH_INTERVAL,
                     default=user_input[CONF_REFRESH_INTERVAL],
                 ): vol.All(vol.Coerce(int), vol.Range(min=1, max=24)),
-                vol.Optional(CONF_OWNER_ID, default=user_input.get(CONF_OWNER_ID, "")): str,
-                vol.Optional(
-                    CONF_CHECKIN_TIME,
-                    default=user_input.get(CONF_CHECKIN_TIME, DEFAULT_CHECKIN_TIME),
-                ): str,
-                vol.Optional(
-                    CONF_CHECKOUT_TIME,
-                    default=user_input.get(CONF_CHECKOUT_TIME, DEFAULT_CHECKOUT_TIME),
-                ): str,
             }
         )
 
@@ -175,23 +146,11 @@ class VacasaOptionsFlowHandler(config_entries.OptionsFlow):
             self.config_entry.data.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL),
         )
 
-        default_checkin = self.config_entry.options.get(
-            CONF_CHECKIN_TIME,
-            self.config_entry.data.get(CONF_CHECKIN_TIME, DEFAULT_CHECKIN_TIME),
-        )
-
-        default_checkout = self.config_entry.options.get(
-            CONF_CHECKOUT_TIME,
-            self.config_entry.data.get(CONF_CHECKOUT_TIME, DEFAULT_CHECKOUT_TIME),
-        )
-
         schema = vol.Schema(
             {
                 vol.Required(CONF_REFRESH_INTERVAL, default=default_refresh): vol.All(
                     vol.Coerce(int), vol.Range(min=1, max=24)
                 ),
-                vol.Optional(CONF_CHECKIN_TIME, default=default_checkin): str,
-                vol.Optional(CONF_CHECKOUT_TIME, default=default_checkout): str,
             }
         )
 

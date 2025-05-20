@@ -13,7 +13,6 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api_client import ApiError, AuthenticationError, VacasaApiClient
 from .const import (
-    CONF_OWNER_ID,
     CONF_PASSWORD,
     CONF_REFRESH_INTERVAL,
     CONF_USERNAME,
@@ -23,7 +22,7 @@ from .const import (
     DOMAIN,
     PLATFORMS,
     SERVICE_CLEAR_CACHE,
-    SERVICE_REFRESH_CALENDARS,
+    SERVICE_REFRESH_DATA,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -36,7 +35,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Get configuration
     username = entry.data[CONF_USERNAME]
     password = entry.data[CONF_PASSWORD]
-    owner_id = entry.data.get(CONF_OWNER_ID)  # Get owner ID from config entry
     refresh_interval = entry.options.get(
         CONF_REFRESH_INTERVAL,
         entry.data.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL),
@@ -49,7 +47,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         password=password,
         session=session,
         hass_config_dir=hass.config.path(),
-        owner_id=owner_id,  # Pass owner ID to API client
     )
 
     # Verify we can authenticate
@@ -81,8 +78,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     # Register services
-    async def handle_refresh_calendars(call: ServiceCall) -> None:
-        """Handle the refresh_calendars service call."""
+    async def handle_refresh_data(call: ServiceCall) -> None:
+        """Handle the refresh_data service call to refresh all Vacasa data."""
         await coordinator.async_refresh()
 
     async def handle_clear_cache(call: ServiceCall) -> None:
@@ -92,8 +89,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.services.async_register(
         DOMAIN,
-        SERVICE_REFRESH_CALENDARS,
-        handle_refresh_calendars,
+        SERVICE_REFRESH_DATA,
+        handle_refresh_data,
     )
     hass.services.async_register(
         DOMAIN,
@@ -122,7 +119,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Remove services if this is the last entry
     if len(hass.data[DOMAIN]) == 1:
-        for service in [SERVICE_REFRESH_CALENDARS, SERVICE_CLEAR_CACHE]:
+        for service in [SERVICE_REFRESH_DATA, SERVICE_CLEAR_CACHE]:
             if hass.services.has_service(DOMAIN, service):
                 hass.services.async_remove(DOMAIN, service)
 

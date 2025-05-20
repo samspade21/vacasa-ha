@@ -12,6 +12,9 @@
 - ✅ Reservation fetching with date filtering
 - ✅ Reservation categorization by stay type
 - ✅ Error handling and logging
+- ✅ Simplified authentication flow
+- ✅ Improved token handling
+- ✅ Automatic owner ID retrieval
 
 ### Home Assistant Integration
 - ✅ Custom component directory structure
@@ -21,7 +24,9 @@
 - ✅ Event generation
 - ✅ Refresh scheduling
 - ✅ Binary sensor for occupancy status
-- ✅ Configurable check-in/check-out times
+- ✅ Property-specific check-in/check-out times
+- ✅ Property information sensors
+- ✅ Timezone-aware calendar events
 
 ### Project Setup
 - ✅ Memory bank documentation
@@ -30,6 +35,8 @@
 - ✅ Authentication flow analysis
 - ✅ Pre-commit hooks configuration
 - ✅ Deployment script
+- ✅ HACS compliance setup
+- ✅ GitHub Actions workflows
 
 ## In Progress
 
