@@ -26,10 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unused test files and configuration
 - Redundant API data module
 - Unnecessary pytest configuration
+- Icon field from manifest.json (not allowed in current Home Assistant schema)
 
 ### Fixed
 - Alignment between configuration files (pyproject.toml, setup.cfg)
 - GitHub workflow inconsistencies
+- Translations format for state attributes to comply with Home Assistant standards
 
 ## [1.0.1] - 2025-05-20
 
