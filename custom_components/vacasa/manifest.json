@@ -8,6 +8,6 @@
   "codeowners": ["@samspade21"],
   "requirements": ["aiohttp>=3.8.0"],
   "iot_class": "cloud_polling",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "icon": "mdi:home-variant"
 }
