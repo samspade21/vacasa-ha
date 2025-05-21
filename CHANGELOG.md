@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Alignment between configuration files (pyproject.toml, setup.cfg)
 - GitHub workflow inconsistencies
 - Translations format for state attributes to comply with Home Assistant standards
+- Manifest.json key order to follow Home Assistant requirements (domain, name, then alphabetical)
 
 ## [1.0.1] - 2025-05-20
 
