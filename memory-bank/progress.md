@@ -41,19 +41,15 @@
 ## In Progress
 
 ### Testing
-- 🔄 Comprehensive testing
 - 🔄 Edge case handling
-- 🔄 Real-world testing
+- ✅ Real-world testing
+- 🔄 Implementation of simplified test strategy (see testStrategy.md)
 
 ### Documentation
 - 🔄 User documentation improvements
 - 🔄 Example automations
 
 ## Pending Features
-
-### Testing
-- ⏳ Unit tests
-- ⏳ Integration tests
 
 ### Documentation
 - ⏳ Developer documentation
@@ -126,8 +122,6 @@
 ### Milestone 3: Testing and Documentation (IN PROGRESS)
 - 🔄 Real-world testing
 - 🔄 User documentation
-- ⏳ Unit tests
-- ⏳ Integration tests
 - ⏳ Developer documentation
 
 ### Milestone 4: Release and Distribution (PENDING)
@@ -139,7 +133,14 @@
 ## Next Actions
 
 1. **Complete Testing**
-   - Create comprehensive test suite
+   - Implement the simplified test strategy (see testStrategy.md)
+   - Start with Phase 1: Core API Client Tests
+     - Create mock API responses for authentication
+     - Test token extraction and refresh
+     - Test property data retrieval
+     - Test reservation categorization
+   - Move to Phase 2: Entity Tests
+   - Complete with Phase 3: Integration Tests
    - Test with different account types
    - Verify error handling
 

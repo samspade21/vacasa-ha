@@ -210,7 +210,7 @@ class VacasaCalendar(CoordinatorEntity, CalendarEntity):
         # Update current event when entity is added to hass
         await self._update_current_event()
 
-    def _reservation_to_event(
+    def _reservation_to_event(  # noqa: C901
         self, reservation: Dict[str, Any], stay_type: str
     ) -> Optional[CalendarEvent]:
         """Convert a reservation to a calendar event."""

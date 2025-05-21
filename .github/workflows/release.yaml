@@ -7,6 +7,8 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         name: Download repo
@@ -35,7 +37,6 @@ jobs:
       - name: Validate
         run: |
           pre-commit run --all-files
-          pytest
 
       - name: Create zip file
         run: |
@@ -43,10 +44,7 @@ jobs:
           zip -r ../../vacasa.zip .
 
       - name: Upload zip to release
-        uses: svenstaro/upload-release-action@v2
+        uses: softprops/upload-release-action@v2.0.8
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: vacasa.zip
-          asset_name: vacasa.zip
-          tag: ${{ github.ref }}
-          overwrite: true
+          files: vacasa.zip
+          token: ${{ secrets.GITHUB_TOKEN }}

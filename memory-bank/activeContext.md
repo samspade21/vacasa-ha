@@ -87,6 +87,10 @@ The integration is fully compatible with Home Assistant's async architecture and
 
 We are currently focused on:
 1. **Testing**: Ensuring the integration works reliably in real-world scenarios
+   - Implemented a simplified test strategy (see testStrategy.md)
+   - Focusing on critical paths with minimal API dependencies
+   - Using mocks to avoid hitting the real Vacasa API
+   - Starting with core API client tests, then entity tests, then integration tests
 2. **Documentation**: Improving user documentation and adding example automations
 3. **Preparation for Release**: Getting ready for distribution via HACS
 4. **Technical Debt Reduction**: Simplifying code and removing unused components

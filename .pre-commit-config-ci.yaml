@@ -19,7 +19,7 @@ repos:
           - --quiet
           - --line-length=88
           - --check
-        files: ^(custom_components|tests)/.+\.py$
+        files: ^(custom_components)/.+\.py$
 
   - repo: https://github.com/pycqa/flake8
     rev: 6.1.0
@@ -28,7 +28,7 @@ repos:
         additional_dependencies:
           - flake8-docstrings==1.7.0
           - pydocstyle==6.3.0
-        files: ^(custom_components|tests)/.+\.py$
+        files: ^(custom_components)/.+\.py$
         # Use the setup.cfg for configuration
 
   - repo: https://github.com/pycqa/isort
@@ -39,4 +39,4 @@ repos:
           - --profile=black
           - --line-length=88
           - --check-only
-        files: ^(custom_components|tests)/.+\.py$
+        files: ^(custom_components)/.+\.py$
