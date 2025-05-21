@@ -42,10 +42,18 @@
       "occupancy": {
         "name": "Occupancy",
         "state_attributes": {
-          "next_checkin": "Next check-in",
-          "next_checkout": "Next check-out",
-          "current_guest": "Current guest",
-          "reservation_type": "Reservation type"
+          "next_checkin": {
+            "name": "Next check-in"
+          },
+          "next_checkout": {
+            "name": "Next check-out"
+          },
+          "current_guest": {
+            "name": "Current guest"
+          },
+          "reservation_type": {
+            "name": "Reservation type"
+          }
         }
       }
     }
