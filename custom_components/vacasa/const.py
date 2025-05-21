@@ -1,4 +1,5 @@
 """Constants for the Vacasa integration."""
+
 from datetime import timedelta
 
 DOMAIN = "vacasa"

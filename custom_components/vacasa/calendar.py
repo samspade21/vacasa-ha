@@ -1,4 +1,5 @@
 """Calendar platform for Vacasa integration."""
+
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
@@ -7,7 +8,10 @@ from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import (
+    CoordinatorEntity,
+    DataUpdateCoordinator,
+)
 from homeassistant.util import dt as dt_util
 
 from .api_client import VacasaApiClient
@@ -69,11 +73,6 @@ async def async_setup_entry(
             attributes = unit.get("attributes", {})
             name = attributes.get("name", f"Vacasa Unit {unit_id}")
             code = attributes.get("code", "")
-            
-            # Get property-specific check-in/check-out times
-            checkin_time = attributes.get("checkInTime")
-            checkout_time = attributes.get("checkOutTime")
-            timezone = attributes.get("timezone")
 
             entity = VacasaCalendar(
                 coordinator=coordinator,
@@ -261,34 +260,41 @@ class VacasaCalendar(CoordinatorEntity, CalendarEntity):
             # For all-day events (no specific time), don't apply timezone
             is_all_day_start = "T00:00:00" in start_dt_str
             is_all_day_end = "T00:00:00" in end_dt_str
-            
+
             if is_all_day_start and is_all_day_end:
                 # This is an all-day event
-                _LOGGER.debug("Creating all-day event for %s from %s to %s", 
-                             self._name, start_date, end_date)
+                _LOGGER.debug(
+                    "Creating all-day event for %s from %s to %s",
+                    self._name,
+                    start_date,
+                    end_date,
+                )
                 # No timezone needed for all-day events
             else:
                 # This is a timed event, apply timezone
                 if self._timezone:
                     import pytz
+
                     try:
                         tz = pytz.timezone(self._timezone)
                         _LOGGER.debug("Using property timezone: %s", self._timezone)
-                        
+
                         # Create timezone-aware datetime objects
                         if not is_all_day_start:
                             # Use localize instead of replace to handle DST correctly
                             naive_start = start_dt.replace(tzinfo=None)
                             start_dt = tz.localize(naive_start)
                             _LOGGER.debug("Start time with TZ: %s", start_dt)
-                        
+
                         if not is_all_day_end:
                             # Use localize instead of replace to handle DST correctly
                             naive_end = end_dt.replace(tzinfo=None)
                             end_dt = tz.localize(naive_end)
                             _LOGGER.debug("End time with TZ: %s", end_dt)
                     except Exception as e:
-                        _LOGGER.warning("Error applying timezone %s: %s", self._timezone, e)
+                        _LOGGER.warning(
+                            "Error applying timezone %s: %s", self._timezone, e
+                        )
                         # Fall back to local timezone
                         if not is_all_day_start:
                             start_dt = dt_util.as_local(start_dt)
@@ -336,17 +342,21 @@ class VacasaCalendar(CoordinatorEntity, CalendarEntity):
             if checkin_time and checkin_time not in ["00:00:00", "12:00:00"]:
                 description_parts.append(f"Check-in: {start_date} {checkin_time[:5]}")
             elif self._checkin_time:
-                description_parts.append(f"Check-in: {start_date} {self._checkin_time[:5]}")
+                description_parts.append(
+                    f"Check-in: {start_date} {self._checkin_time[:5]}"
+                )
             else:
                 description_parts.append(f"Check-in: {start_date}")
-                
+
             if checkout_time and checkout_time not in ["00:00:00", "12:00:00"]:
                 description_parts.append(f"Check-out: {end_date} {checkout_time[:5]}")
             elif self._checkout_time:
-                description_parts.append(f"Check-out: {end_date} {self._checkout_time[:5]}")
+                description_parts.append(
+                    f"Check-out: {end_date} {self._checkout_time[:5]}"
+                )
             else:
                 description_parts.append(f"Check-out: {end_date}")
-                
+
             description_parts.append("")
 
             if stay_type == STAY_TYPE_GUEST:

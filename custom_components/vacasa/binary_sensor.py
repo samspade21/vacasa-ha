@@ -1,9 +1,13 @@
 """Binary sensor platform for Vacasa integration."""
+
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
-from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
+from homeassistant.components.binary_sensor import (
+    BinarySensorDeviceClass,
+    BinarySensorEntity,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -55,11 +59,6 @@ async def async_setup_entry(
             attributes = unit.get("attributes", {})
             name = attributes.get("name", f"Vacasa Unit {unit_id}")
             code = attributes.get("code", "")
-            
-            # Get property-specific check-in/check-out times
-            checkin_time = attributes.get("checkInTime")
-            checkout_time = attributes.get("checkOutTime")
-            timezone = attributes.get("timezone")
 
             entity = VacasaOccupancySensor(
                 coordinator=coordinator,
@@ -206,8 +205,10 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
             end_date = (now + timedelta(days=365)).strftime("%Y-%m-%d")
 
             # Use the get_categorized_reservations method to get properly categorized reservations
-            self._categorized_reservations = await self._client.get_categorized_reservations(
-                self._unit_id, start_date, end_date
+            self._categorized_reservations = (
+                await self._client.get_categorized_reservations(
+                    self._unit_id, start_date, end_date
+                )
             )
 
             _LOGGER.debug(
@@ -262,7 +263,11 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
                 checkin = self._get_checkin_datetime(reservation)
 
                 # Skip if this is the current reservation or if check-in is in the past
-                if reservation == self._current_reservation or not checkin or checkin <= now:
+                if (
+                    reservation == self._current_reservation
+                    or not checkin
+                    or checkin <= now
+                ):
                     continue
 
                 # If this is the first future reservation we've found, or it's earlier than the current next
@@ -314,7 +319,10 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
             return None
 
         # Create datetime string based on available information
-        if "checkinTime" in attributes and attributes["checkinTime"] not in ["00:00:00", "12:00:00"]:
+        if "checkinTime" in attributes and attributes["checkinTime"] not in [
+            "00:00:00",
+            "12:00:00",
+        ]:
             # Use time from reservation
             checkin_time = attributes["checkinTime"]
             start_dt_str = f"{start_date}T{checkin_time}"
@@ -327,13 +335,14 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
 
         # Parse the datetime
         checkin_dt = dt_util.parse_datetime(start_dt_str)
-        
+
         if not checkin_dt:
             return None
 
         # Apply property timezone if available
         if self._timezone and "T00:00:00" not in start_dt_str:
             import pytz
+
             try:
                 tz = pytz.timezone(self._timezone)
                 checkin_dt = checkin_dt.replace(tzinfo=tz)
@@ -355,7 +364,10 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
             return None
 
         # Create datetime string based on available information
-        if "checkoutTime" in attributes and attributes["checkoutTime"] not in ["00:00:00", "12:00:00"]:
+        if "checkoutTime" in attributes and attributes["checkoutTime"] not in [
+            "00:00:00",
+            "12:00:00",
+        ]:
             # Use time from reservation
             checkout_time = attributes["checkoutTime"]
             end_dt_str = f"{end_date}T{checkout_time}"
@@ -368,13 +380,14 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
 
         # Parse the datetime
         checkout_dt = dt_util.parse_datetime(end_dt_str)
-        
+
         if not checkout_dt:
             return None
 
         # Apply property timezone if available
         if self._timezone and "T00:00:00" not in end_dt_str:
             import pytz
+
             try:
                 tz = pytz.timezone(self._timezone)
                 checkout_dt = checkout_dt.replace(tzinfo=tz)

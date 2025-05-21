@@ -1,5 +1,5 @@
 """Data retrieval methods for the Vacasa API client."""
-import json
+
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -45,8 +45,12 @@ async def get_owner_id(self) -> str:
             timeout=DEFAULT_TIMEOUT,
         ) as response:
             if response.status != 200:
-                _LOGGER.error("Failed to get owner info from verify-token: %s", response.status)
-                raise ApiError(f"Failed to get owner info from verify-token: {response.status}")
+                _LOGGER.error(
+                    "Failed to get owner info from verify-token: %s", response.status
+                )
+                raise ApiError(
+                    f"Failed to get owner info from verify-token: {response.status}"
+                )
 
             data = await response.json()
             _LOGGER.debug("Received response from verify-token endpoint: %s", data)
@@ -60,7 +64,9 @@ async def get_owner_id(self) -> str:
                 contact_ids = data["data"]["contactIds"]
                 if contact_ids and len(contact_ids) > 0:
                     self._owner_id = str(contact_ids[0])
-                    _LOGGER.debug("Retrieved owner ID from verify-token: %s", self._owner_id)
+                    _LOGGER.debug(
+                        "Retrieved owner ID from verify-token: %s", self._owner_id
+                    )
                     return self._owner_id
                 else:
                     _LOGGER.error("No contact IDs found in verify-token response")
@@ -178,7 +184,9 @@ async def get_reservations(
             end_date if end_date else "future",
         )
 
-        reservations_url = f"{API_BASE_URL}/owners/{owner_id}/units/{unit_id}/reservations"
+        reservations_url = (
+            f"{API_BASE_URL}/owners/{owner_id}/units/{unit_id}/reservations"
+        )
         _LOGGER.debug("Reservations URL: %s with params: %s", reservations_url, params)
 
         async with session.get(
@@ -194,7 +202,9 @@ async def get_reservations(
                 raise ApiError(f"Failed to get reservations: {response.status}")
 
             data = await response.json()
-            _LOGGER.debug("Received reservations response with status: %s", response.status)
+            _LOGGER.debug(
+                "Received reservations response with status: %s", response.status
+            )
 
             if "data" not in data:
                 _LOGGER.warning("No data field in reservations response: %s", data)
@@ -255,7 +265,9 @@ async def get_unit_details(self, unit_id: str) -> Dict[str, Any]:
                 raise ApiError(f"Failed to get unit details: {response.status}")
 
             data = await response.json()
-            _LOGGER.debug("Received unit details response with status: %s", response.status)
+            _LOGGER.debug(
+                "Received unit details response with status: %s", response.status
+            )
 
             # Log unit name for debugging
             if "data" in data and "attributes" in data["data"]:

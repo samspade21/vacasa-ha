@@ -1,4 +1,5 @@
 """Authentication methods for the Vacasa API client."""
+
 import asyncio
 import json
 import logging
@@ -35,7 +36,9 @@ async def authenticate(self) -> str:
         try:
             if retry_count > 0:
                 # Wait before retrying
-                wait_time = RETRY_DELAY * (2 ** (retry_count - 1))  # Exponential backoff
+                wait_time = RETRY_DELAY * (
+                    2 ** (retry_count - 1)
+                )  # Exponential backoff
                 _LOGGER.debug(
                     "Retrying authentication (attempt %s/%s) after %ss",
                     retry_count + 1,
@@ -45,7 +48,9 @@ async def authenticate(self) -> str:
                 await asyncio.sleep(wait_time)
 
             # Step 1: Get the login page to obtain CSRF token
-            _LOGGER.debug("Fetching login page (attempt %s/%s)", retry_count + 1, MAX_RETRIES)
+            _LOGGER.debug(
+                "Fetching login page (attempt %s/%s)", retry_count + 1, MAX_RETRIES
+            )
 
             # Try with response_type=token to avoid unsupported_response_type error
             auth_params = {
@@ -78,12 +83,16 @@ async def authenticate(self) -> str:
                         response.status,
                         response_text[:200],
                     )
-                    raise AuthenticationError(f"Failed to load login page: {response.status}")
+                    raise AuthenticationError(
+                        f"Failed to load login page: {response.status}"
+                    )
 
                 login_page = await response.text()
 
                 # Extract CSRF token from the login page
-                csrf_match = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', login_page)
+                csrf_match = re.search(
+                    r'name="csrfmiddlewaretoken" value="([^"]+)"', login_page
+                )
                 if not csrf_match:
                     _LOGGER.error(
                         "Could not find CSRF token on login page. Page snippet: %s...",
@@ -127,7 +136,9 @@ async def authenticate(self) -> str:
                         "Login failed with status %s. Expected redirect (302/303).",
                         response.status,
                     )
-                    raise AuthenticationError(f"Login failed with status {response.status}")
+                    raise AuthenticationError(
+                        f"Login failed with status {response.status}"
+                    )
 
                 # Get redirect location
                 redirect_url = response.headers.get("Location")
@@ -154,7 +165,9 @@ async def authenticate(self) -> str:
                 token_parts = token.split(".")
                 if len(token_parts) >= 2:
                     # Decode the payload (middle part)
-                    padded_payload = token_parts[1] + "=" * (4 - len(token_parts[1]) % 4)
+                    padded_payload = token_parts[1] + "=" * (
+                        4 - len(token_parts[1]) % 4
+                    )
                     payload = json.loads(self._base64_url_decode(padded_payload))
 
                     # Extract expiry timestamp
@@ -179,8 +192,12 @@ async def authenticate(self) -> str:
             retry_count += 1
 
     # If we've exhausted all retries, raise the last error
-    _LOGGER.error("Authentication failed after %s attempts: %s", MAX_RETRIES, last_error)
-    raise AuthenticationError(f"Authentication failed after {MAX_RETRIES} attempts: {last_error}")
+    _LOGGER.error(
+        "Authentication failed after %s attempts: %s", MAX_RETRIES, last_error
+    )
+    raise AuthenticationError(
+        f"Authentication failed after {MAX_RETRIES} attempts: {last_error}"
+    )
 
 
 async def _follow_auth_redirects(self, initial_url: str) -> Optional[str]:
@@ -238,12 +255,14 @@ async def _follow_auth_redirects(self, initial_url: str) -> Optional[str]:
                     # If we've reached owners.vacasa.com without a token, try one more request
                     if "owners.vacasa.com" in str(response.url.host):
                         page_content = await response.text()
-                        token_match = re.search(r'access_token=([^&"\']+)', page_content)
+                        token_match = re.search(
+                            r'access_token=([^&"\']+)', page_content
+                        )
                         if token_match:
                             token = token_match.group(1)
                             _LOGGER.debug("Found token in page content")
                             return token
-                    
+
                     _LOGGER.warning("No token found in redirect chain")
                     return None
         except Exception as e:

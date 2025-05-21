@@ -1,4 +1,5 @@
 """Test the Vacasa config flow."""
+
 from unittest.mock import patch
 
 from homeassistant import config_entries
@@ -7,7 +8,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.vacasa.api_client import ApiError, AuthenticationError
-from custom_components.vacasa.const import CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL, DOMAIN
+from custom_components.vacasa.const import (
+    CONF_REFRESH_INTERVAL,
+    DEFAULT_REFRESH_INTERVAL,
+    DOMAIN,
+)
 
 
 async def test_form(hass: HomeAssistant) -> None:
@@ -18,13 +23,16 @@ async def test_form(hass: HomeAssistant) -> None:
     assert result["type"] == FlowResultType.FORM
     assert result["errors"] is None
 
-    with patch(
-        "custom_components.vacasa.config_flow.validate_input",
-        return_value={"title": "Vacasa (test@example.com)", "units": 1},
-    ), patch(
-        "custom_components.vacasa.async_setup_entry",
-        return_value=True,
-    ) as mock_setup_entry:
+    with (
+        patch(
+            "custom_components.vacasa.config_flow.validate_input",
+            return_value={"title": "Vacasa (test@example.com)", "units": 1},
+        ),
+        patch(
+            "custom_components.vacasa.async_setup_entry",
+            return_value=True,
+        ) as mock_setup_entry,
+    ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {

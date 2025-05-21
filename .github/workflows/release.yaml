@@ -12,12 +12,12 @@ jobs:
         name: Download repo
         with:
           fetch-depth: 0
-          
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.9"
-          
+
       - uses: actions/cache@v4
         name: Cache pip dependencies
         with:
@@ -26,22 +26,22 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
-            
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          
+
       - name: Validate
         run: |
           pre-commit run --all-files
           pytest
-          
+
       - name: Create zip file
         run: |
           cd custom_components/vacasa
           zip -r ../../vacasa.zip .
-          
+
       - name: Upload zip to release
         uses: svenstaro/upload-release-action@v2
         with:

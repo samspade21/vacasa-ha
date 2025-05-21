@@ -1,12 +1,9 @@
 """Sensor platform for Vacasa integration."""
+
 import logging
 from typing import Any, Dict, Optional
 
-from homeassistant.components.sensor import (
-    SensorDeviceClass,
-    SensorEntity,
-    SensorStateClass,
-)
+from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -54,7 +51,6 @@ async def async_setup_entry(
             unit_id = unit.get("id")
             attributes = unit.get("attributes", {})
             name = attributes.get("name", f"Vacasa Unit {unit_id}")
-            code = attributes.get("code", "")
 
             # Property Information Sensors
             entities.append(
@@ -65,7 +61,7 @@ async def async_setup_entry(
                     unit_attributes=attributes,
                 )
             )
-            
+
             entities.append(
                 VacasaLocationSensor(
                     coordinator=coordinator,
@@ -74,7 +70,7 @@ async def async_setup_entry(
                     unit_attributes=attributes,
                 )
             )
-            
+
             entities.append(
                 VacasaTimezoneSensor(
                     coordinator=coordinator,
@@ -83,7 +79,6 @@ async def async_setup_entry(
                     unit_attributes=attributes,
                 )
             )
-            
 
             # Occupancy & Capacity Sensors
             entities.append(
@@ -94,7 +89,7 @@ async def async_setup_entry(
                     unit_attributes=attributes,
                 )
             )
-            
+
             entities.append(
                 VacasaMaxAdultsSensor(
                     coordinator=coordinator,
@@ -103,7 +98,7 @@ async def async_setup_entry(
                     unit_attributes=attributes,
                 )
             )
-            
+
             entities.append(
                 VacasaMaxChildrenSensor(
                     coordinator=coordinator,
@@ -112,7 +107,7 @@ async def async_setup_entry(
                     unit_attributes=attributes,
                 )
             )
-            
+
             entities.append(
                 VacasaMaxPetsSensor(
                     coordinator=coordinator,
@@ -131,7 +126,7 @@ async def async_setup_entry(
                     unit_attributes=attributes,
                 )
             )
-            
+
             entities.append(
                 VacasaBathroomsSensor(
                     coordinator=coordinator,
@@ -140,7 +135,7 @@ async def async_setup_entry(
                     unit_attributes=attributes,
                 )
             )
-            
+
             entities.append(
                 VacasaHotTubSensor(
                     coordinator=coordinator,
@@ -149,7 +144,7 @@ async def async_setup_entry(
                     unit_attributes=attributes,
                 )
             )
-            
+
             entities.append(
                 VacasaPetFriendlySensor(
                     coordinator=coordinator,
@@ -168,7 +163,7 @@ async def async_setup_entry(
                     unit_attributes=attributes,
                 )
             )
-            
+
             entities.append(
                 VacasaAddressSensor(
                     coordinator=coordinator,
@@ -204,10 +199,10 @@ class VacasaBaseSensor(CoordinatorEntity, SensorEntity):
         self._unit_attributes = unit_attributes
         self._sensor_type = sensor_type
         self._attr_icon = icon
-        
+
         if device_class:
             self._attr_device_class = device_class
-            
+
         if state_class:
             self._attr_state_class = state_class
 
@@ -318,7 +313,6 @@ class VacasaTimezoneSensor(VacasaBaseSensor):
     def native_value(self) -> Optional[str]:
         """Return the timezone value."""
         return self._unit_attributes.get("timezone")
-
 
 
 class VacasaMaxOccupancySensor(VacasaBaseSensor):
@@ -467,13 +461,15 @@ class VacasaBedroomsSensor(VacasaBaseSensor):
         """Return additional attributes."""
         amenities = self._unit_attributes.get("amenities", {})
         beds = amenities.get("beds", {})
-        
+
         attributes = {}
         if beds:
             for bed_type, count in beds.items():
-                if count and bed_type != "child":  # Skip child beds as they're not real beds
+                if (
+                    count and bed_type != "child"
+                ):  # Skip child beds as they're not real beds
                     attributes[f"{bed_type}_beds"] = count
-                    
+
         return attributes
 
 
@@ -505,12 +501,12 @@ class VacasaBathroomsSensor(VacasaBaseSensor):
         amenities = self._unit_attributes.get("amenities", {})
         rooms = amenities.get("rooms", {})
         bathrooms = rooms.get("bathrooms", {}) if rooms else {}
-        
+
         if bathrooms:
             full = bathrooms.get("full", 0)
             half = bathrooms.get("half", 0)
             return full + (half * 0.5)
-            
+
         return None
 
     @property
@@ -519,12 +515,12 @@ class VacasaBathroomsSensor(VacasaBaseSensor):
         amenities = self._unit_attributes.get("amenities", {})
         rooms = amenities.get("rooms", {})
         bathrooms = rooms.get("bathrooms", {}) if rooms else {}
-        
+
         attributes = {}
         if bathrooms:
             attributes["full_bathrooms"] = bathrooms.get("full", 0)
             attributes["half_bathrooms"] = bathrooms.get("half", 0)
-                    
+
         return attributes
 
 
@@ -553,10 +549,10 @@ class VacasaHotTubSensor(VacasaBaseSensor):
         """Return the hot tub value."""
         amenities = self._unit_attributes.get("amenities", {})
         hot_tub = amenities.get("hotTub")
-        
+
         if hot_tub is not None:
             return "Yes" if hot_tub else "No"
-            
+
         return None
 
 
@@ -585,10 +581,10 @@ class VacasaPetFriendlySensor(VacasaBaseSensor):
         """Return the pet friendly value."""
         amenities = self._unit_attributes.get("amenities", {})
         pet_friendly = amenities.get("petsFriendly")
-        
+
         if pet_friendly is not None:
             return "Yes" if pet_friendly else "No"
-            
+
         return None
 
 
@@ -624,20 +620,26 @@ class VacasaParkingSensor(VacasaBaseSensor):
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return additional attributes."""
         parking = self._unit_attributes.get("parking", {})
-        
+
         attributes = {}
         if parking:
             if "notes" in parking and parking["notes"]:
                 attributes["notes"] = parking["notes"]
-                
-            for key in ["accessible", "fourWheelDriveRequired", "paid", "street", "valet"]:
+
+            for key in [
+                "accessible",
+                "fourWheelDriveRequired",
+                "paid",
+                "street",
+                "valet",
+            ]:
                 if key in parking:
                     # Convert -1 to None for better display
                     value = parking[key]
                     if value == -1:
                         value = None
                     attributes[key] = value
-                    
+
         return attributes
 
 
@@ -667,49 +669,49 @@ class VacasaAddressSensor(VacasaBaseSensor):
         address = self._unit_attributes.get("address", {})
         if not address:
             return None
-            
+
         parts = []
         if address.get("address_1"):
             parts.append(address["address_1"])
-            
+
         if address.get("address_2"):
             parts.append(address["address_2"])
-            
+
         city_state_zip = []
         if address.get("city"):
             city_state_zip.append(address["city"])
-            
+
         if address.get("state"):
             city_state_zip.append(address["state"])
-            
+
         if address.get("zip"):
             city_state_zip.append(address["zip"])
-            
+
         if city_state_zip:
             parts.append(", ".join(city_state_zip))
-            
+
         country = address.get("country", {})
         if country and country.get("name"):
             parts.append(country["name"])
-            
+
         return ", ".join(parts) if parts else None
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return additional attributes."""
         address = self._unit_attributes.get("address", {})
-        
+
         attributes = {}
         if address:
             for key in ["address_1", "address_2", "city", "state", "zip"]:
                 if key in address and address[key]:
                     attributes[key] = address[key]
-                    
+
             country = address.get("country", {})
             if country:
                 if country.get("name"):
                     attributes["country"] = country["name"]
                 if country.get("code"):
                     attributes["country_code"] = country["code"]
-                    
+
         return attributes

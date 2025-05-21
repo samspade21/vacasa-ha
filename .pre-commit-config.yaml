@@ -11,17 +11,17 @@ repos:
       - id: check-merge-conflict
 
   - repo: https://github.com/psf/black
-    rev: 23.3.0
+    rev: 24.3.0
     hooks:
       - id: black
         args:
           - --safe
           - --quiet
-          - --line-length=100
+          - --line-length=88
         files: ^(custom_components|tests)/.+\.py$
 
   - repo: https://github.com/pycqa/flake8
-    rev: 6.0.0
+    rev: 6.1.0
     hooks:
       - id: flake8
         additional_dependencies:
@@ -36,7 +36,7 @@ repos:
       - id: isort
         args:
           - --profile=black
-          - --line-length=100
+          - --line-length=88
         files: ^(custom_components|tests)/.+\.py$
 
   - repo: https://github.com/pre-commit/mirrors-mypy

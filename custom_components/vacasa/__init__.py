@@ -1,4 +1,5 @@
 """The Vacasa integration."""
+
 import asyncio
 import logging
 from datetime import timedelta

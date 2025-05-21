@@ -1,4 +1,5 @@
 """API client for the Vacasa integration."""
+
 import json
 import logging
 import os
@@ -64,7 +65,9 @@ class VacasaApiClient:
         self._owner_id = None
         self._token = None
         self._token_expiry = None
-        self._client_id = "KOIkAJP9XW7ZpTXwRa0B7O4qMuXSQ3p4BKFfTPhr"  # From the auth URL
+        self._client_id = (
+            "KOIkAJP9XW7ZpTXwRa0B7O4qMuXSQ3p4BKFfTPhr"  # From the auth URL
+        )
         self._close_session = False
 
         # Set up token cache file path
@@ -105,7 +108,10 @@ class VacasaApiClient:
         if not self._token or not self._token_expiry:
             return False
         # Consider token invalid if it expires within TOKEN_REFRESH_MARGIN
-        return datetime.now() + timedelta(seconds=TOKEN_REFRESH_MARGIN) < self._token_expiry
+        return (
+            datetime.now() + timedelta(seconds=TOKEN_REFRESH_MARGIN)
+            < self._token_expiry
+        )
 
     async def ensure_session(self) -> aiohttp.ClientSession:
         """Ensure we have an aiohttp session."""
@@ -149,7 +155,11 @@ class VacasaApiClient:
             with open(self._token_cache_file, "r") as f:
                 cache_data = json.load(f)
 
-            if not cache_data or "token" not in cache_data or "expiry" not in cache_data:
+            if (
+                not cache_data
+                or "token" not in cache_data
+                or "expiry" not in cache_data
+            ):
                 _LOGGER.warning("Invalid token cache data format")
                 return False
 
@@ -248,13 +258,13 @@ class VacasaApiClient:
             The decoded string
         """
         import base64
-        
+
         # Use the standard library's base64 module with proper URL-safe decoding
         # Add padding if needed
         padding = len(input) % 4
         if padding:
             input += "=" * (4 - padding)
-            
+
         return base64.urlsafe_b64decode(input).decode("utf-8")
 
     def _timestamp_to_datetime(self, timestamp: int) -> datetime:
