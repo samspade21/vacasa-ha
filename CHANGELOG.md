@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2025-05-20
+
+### Added
+- New GitHub workflow files:
+  - hassfest.yaml for validating with Home Assistant hassfest
+  - linting.yaml with matrix testing for Python 3.9, 3.10, and 3.11
+  - stale.yaml for managing stale issues and PRs
+- Comprehensive test strategy documentation
+
+### Changed
+- Updated development dependencies with specific versions
+- Replaced test dependencies with linting and code quality tools
+- Simplified GitHub workflow files
+- Standardized line length to 88 characters across all configuration files
+- Updated Python version to 3.9 in GitHub workflows
+- Improved pre-commit configuration
+
+### Removed
+- Unused test files and configuration
+- Redundant API data module
+- Unnecessary pytest configuration
+- Icon field from manifest.json (not allowed in current Home Assistant schema)
+
+### Fixed
+- Alignment between configuration files (pyproject.toml, setup.cfg)
+- GitHub workflow inconsistencies
+- Translations format for state attributes to comply with Home Assistant standards
+- Manifest.json key order to follow Home Assistant requirements (domain, name, then alphabetical)
+
 ## [1.0.1] - 2025-05-20
 
 ### Added

@@ -1,13 +1,12 @@
 {
   "domain": "vacasa",
   "name": "Vacasa",
-  "documentation": "https://github.com/samspade21/vacasa-ha",
-  "issue_tracker": "https://github.com/samspade21/vacasa-ha/issues",
-  "dependencies": [],
-  "config_flow": true,
   "codeowners": ["@samspade21"],
-  "requirements": ["aiohttp>=3.8.0"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/samspade21/vacasa-ha",
   "iot_class": "cloud_polling",
-  "version": "1.0.0",
-  "icon": "mdi:home-variant"
+  "issue_tracker": "https://github.com/samspade21/vacasa-ha/issues",
+  "requirements": ["aiohttp>=3.8.0"],
+  "version": "1.0.2"
 }

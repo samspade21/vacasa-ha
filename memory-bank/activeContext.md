@@ -20,7 +20,22 @@ The integration is fully compatible with Home Assistant's async architecture and
 
 ## Recent Changes
 
-1. **Property Information Sensors (v1.0.1)**
+1. **Development and CI Improvements (v1.0.2)**
+   - Updated development dependencies with specific versions
+   - Replaced test dependencies with linting and code quality tools
+   - Simplified GitHub workflow files
+   - Standardized line length to 88 characters across all configuration files
+   - Updated Python version to 3.9 in GitHub workflows
+   - Improved pre-commit configuration
+   - Added new GitHub workflow files:
+     - hassfest.yaml for validating with Home Assistant hassfest
+     - linting.yaml with matrix testing for Python 3.9, 3.10, and 3.11
+     - stale.yaml for managing stale issues and PRs
+   - Implemented comprehensive test strategy documentation
+   - Removed unused test files and configuration
+   - Removed redundant API data module
+
+2. **Property Information Sensors (v1.0.1)**
    - Added detailed property information sensors for each Vacasa property:
      - Rating sensor (star rating)
      - Location sensor (latitude/longitude)
