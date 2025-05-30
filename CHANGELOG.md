@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2025-05-29
+
+### Fixed
+- **Critical Bug Fix**: Fixed occupancy sensor logic to correctly show "occupied" during the entire reservation period, including at check-out time
+- **Critical Bug Fix**: Removed coordinator dependency from binary sensors to prevent "unavailable" states during data refresh
+- **Property Sensors Fix**: Removed coordinator inheritance from property information sensors to prevent "unavailable" states
+- **Config Flow Deprecation**: Fixed deprecated config_entry assignment warning for future Home Assistant compatibility
+- **Timezone Handling**: Replaced pytz with zoneinfo to fix timezone parsing issues and eliminate blocking calls
+- **Default Times**: Added proper default check-in (4 PM) and check-out (10 AM) times when specific times are not available
+- **State Persistence**: All sensors now maintain their state during temporary API issues instead of becoming unavailable
+
+### Changed
+- Binary sensors now listen to coordinator updates without inheriting from CoordinatorEntity (respects user-configured refresh interval)
+- Improved timezone handling with proper localization using Python's zoneinfo module
+- Enhanced debug logging with better datetime comparison information
+- Occupancy comparison logic now uses `<=` for check-out time to include the exact check-out moment
+- All data refresh now follows the user-configured refresh interval instead of separate timers
+
+### Improved
+- Better error handling for temporary API failures
+- More robust state management during network issues
+- Enhanced debug logging for troubleshooting occupancy issues
+- Reduced blocking operations in timezone handling
+
 ## [1.0.2] - 2025-05-20
 
 ### Added

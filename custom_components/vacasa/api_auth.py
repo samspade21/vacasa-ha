@@ -157,7 +157,7 @@ async def authenticate(self) -> str:
                 raise AuthenticationError("Failed to obtain token after authentication")
 
             self._token = token
-            _LOGGER.debug("Successfully obtained token: %s...", token[:30])
+            _LOGGER.debug("Successfully obtained authentication token")
 
             # Extract token expiry from JWT
             try:

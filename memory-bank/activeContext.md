@@ -20,7 +20,16 @@ The integration is fully compatible with Home Assistant's async architecture and
 
 ## Recent Changes
 
-1. **Development and CI Improvements (v1.0.2)**
+1. **Critical Bug Fixes (v1.0.3) - JUST COMPLETED**
+   - **Fixed occupancy sensor logic**: Corrected the comparison to use `<=` for check-out time, ensuring sensors show "occupied" during the entire reservation period including at check-out time
+   - **Removed coordinator dependency**: Binary sensors now use independent update scheduling (every 15 minutes) to prevent "unavailable" states during data refresh
+   - **Fixed timezone handling**: Replaced pytz with zoneinfo to eliminate blocking calls and fix timezone parsing issues
+   - **Added default times**: Proper default check-in (4 PM) and check-out (10 AM) times when specific times are not available
+   - **Enhanced debug logging**: Improved datetime comparison logging and removed sensitive information (tokens, usernames) from logs
+   - **Updated GitHub issue template**: Added comprehensive debug logging instructions for users reporting bugs
+   - **Security improvements**: Ensured no sensitive data is logged in debug output
+
+2. **Development and CI Improvements (v1.0.2)**
    - Updated development dependencies with specific versions
    - Replaced test dependencies with linting and code quality tools
    - Simplified GitHub workflow files

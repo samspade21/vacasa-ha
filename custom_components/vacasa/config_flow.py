@@ -137,7 +137,8 @@ class VacasaOptionsFlowHandler(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
+        # Store config entry reference (config_entry is automatically available as self.config_entry)
+        pass
 
     async def async_step_init(
         self, user_input: Optional[Dict[str, Any]] = None

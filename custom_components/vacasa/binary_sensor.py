@@ -3,6 +3,7 @@
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
+from zoneinfo import ZoneInfo
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -11,7 +12,8 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+# DataUpdateCoordinator import removed - using coordinator listening pattern instead
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -75,7 +77,7 @@ async def async_setup_entry(
         _LOGGER.error("Error setting up Vacasa binary sensors: %s", err)
 
 
-class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
+class VacasaOccupancySensor(BinarySensorEntity):
     """Representation of a Vacasa occupancy sensor."""
 
     _attr_device_class = BinarySensorDeviceClass.OCCUPANCY
@@ -90,7 +92,7 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
         unit_attributes,
     ) -> None:
         """Initialize the Vacasa occupancy sensor."""
-        super().__init__(coordinator)
+        super().__init__()
         self._client = client
         self._unit_id = unit_id
         self._name = name
@@ -104,11 +106,14 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
         self._current_stay_type = None
         self._next_reservation = None
         self._next_stay_type = None
+        self._coordinator = coordinator
+        self._unsub_coordinator = None
 
         # Entity properties
         self._attr_unique_id = f"vacasa_occupancy_{unit_id}"
         self._attr_name = f"Vacasa {name} Occupancy"
         self._attr_translation_key = SENSOR_OCCUPANCY
+        self._attr_available = True
 
         # Set device info
         self._attr_device_info = {
@@ -191,7 +196,6 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
 
         This is only used by the generic entity update service.
         """
-        await self.coordinator.async_request_refresh()
         await self._update_reservations()
 
     async def _update_reservations(self) -> None:
@@ -239,7 +243,7 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
                 checkin = self._get_checkin_datetime(reservation)
                 checkout = self._get_checkout_datetime(reservation)
 
-                if checkin and checkout and checkin <= now < checkout:
+                if checkin and checkout and checkin <= now <= checkout:
                     self._current_reservation = reservation
                     self._current_stay_type = stay_type
                     _LOGGER.debug(
@@ -310,6 +314,36 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
         # Update reservations when entity is added to hass
         await self._update_reservations()
 
+        # Listen to coordinator updates without inheriting from CoordinatorEntity
+        self._unsub_coordinator = self._coordinator.async_add_listener(
+            self._handle_coordinator_update
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        """When entity will be removed from hass."""
+        if self._unsub_coordinator:
+            self._unsub_coordinator()
+            self._unsub_coordinator = None
+        await super().async_will_remove_from_hass()
+
+    def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update."""
+        # Update reservations when coordinator updates
+        self.hass.async_create_task(self._async_coordinator_update())
+
+    async def _async_coordinator_update(self) -> None:
+        """Handle coordinator update asynchronously."""
+        try:
+            self._attr_available = True
+            await self._update_reservations()
+            self.async_write_ha_state()
+        except Exception as err:
+            _LOGGER.warning(
+                "Error during coordinator update for %s: %s", self._name, err
+            )
+            # Don't mark as unavailable for temporary API issues
+            # Keep last known state
+
     def _get_checkin_datetime(self, reservation: Dict[str, Any]) -> Optional[datetime]:
         """Get the check-in datetime for a reservation."""
         attributes = reservation.get("attributes", {})
@@ -341,17 +375,36 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
 
         # Apply property timezone if available
         if self._timezone and "T00:00:00" not in start_dt_str:
-            import pytz
-
             try:
-                tz = pytz.timezone(self._timezone)
-                checkin_dt = checkin_dt.replace(tzinfo=tz)
-                return checkin_dt
+                # Use zoneinfo instead of pytz to avoid blocking calls
+                tz = ZoneInfo(self._timezone)
+                # Create naive datetime first, then localize it
+                naive_dt = checkin_dt.replace(tzinfo=None)
+                localized_dt = naive_dt.replace(tzinfo=tz)
+                _LOGGER.debug(
+                    "Applied timezone %s to check-in: %s -> %s",
+                    self._timezone,
+                    naive_dt,
+                    localized_dt,
+                )
+                return localized_dt
             except Exception as e:
                 _LOGGER.warning("Error applying timezone %s: %s", self._timezone, e)
                 # Fall back to local timezone
                 return dt_util.as_local(checkin_dt)
         else:
+            # Use default check-in time (4 PM) if no specific time available
+            if "T00:00:00" in start_dt_str:
+                # Replace midnight with 4 PM for check-in
+                start_dt_str = start_dt_str.replace("T00:00:00", "T16:00:00")
+                checkin_dt = dt_util.parse_datetime(start_dt_str)
+                if not checkin_dt:
+                    return None
+                _LOGGER.debug(
+                    "Using default check-in time (4 PM) for %s: %s",
+                    self._name,
+                    checkin_dt,
+                )
             # Fall back to local timezone
             return dt_util.as_local(checkin_dt)
 
@@ -386,17 +439,36 @@ class VacasaOccupancySensor(CoordinatorEntity, BinarySensorEntity):
 
         # Apply property timezone if available
         if self._timezone and "T00:00:00" not in end_dt_str:
-            import pytz
-
             try:
-                tz = pytz.timezone(self._timezone)
-                checkout_dt = checkout_dt.replace(tzinfo=tz)
-                return checkout_dt
+                # Use zoneinfo instead of pytz to avoid blocking calls
+                tz = ZoneInfo(self._timezone)
+                # Create naive datetime first, then localize it
+                naive_dt = checkout_dt.replace(tzinfo=None)
+                localized_dt = naive_dt.replace(tzinfo=tz)
+                _LOGGER.debug(
+                    "Applied timezone %s to check-out: %s -> %s",
+                    self._timezone,
+                    naive_dt,
+                    localized_dt,
+                )
+                return localized_dt
             except Exception as e:
                 _LOGGER.warning("Error applying timezone %s: %s", self._timezone, e)
                 # Fall back to local timezone
                 return dt_util.as_local(checkout_dt)
         else:
+            # Use default check-out time (10 AM) if no specific time available
+            if "T00:00:00" in end_dt_str:
+                # Replace midnight with 10 AM for check-out
+                end_dt_str = end_dt_str.replace("T00:00:00", "T10:00:00")
+                checkout_dt = dt_util.parse_datetime(end_dt_str)
+                if not checkout_dt:
+                    return None
+                _LOGGER.debug(
+                    "Using default check-out time (10 AM) for %s: %s",
+                    self._name,
+                    checkout_dt,
+                )
             # Fall back to local timezone
             return dt_util.as_local(checkout_dt)
 

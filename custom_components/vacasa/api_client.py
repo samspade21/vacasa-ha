@@ -80,10 +80,7 @@ class VacasaApiClient:
         else:
             self._token_cache_file = TOKEN_CACHE_FILE
 
-        _LOGGER.debug(
-            "Initialized Vacasa API client for user %s",
-            username,
-        )
+        _LOGGER.debug("Initialized Vacasa API client")
 
     async def __aenter__(self):
         """Async enter context manager."""
@@ -198,7 +195,7 @@ class VacasaApiClient:
 
             # Try to load token from cache first
             if self._load_token_from_cache() and self.is_token_valid:
-                _LOGGER.debug("Using valid token from cache")
+                _LOGGER.debug("Using valid authentication token from cache")
                 return self._token
 
             # If token is still not valid, authenticate

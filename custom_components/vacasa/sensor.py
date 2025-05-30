@@ -7,7 +7,6 @@ from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     DATA_CLIENT,
@@ -27,6 +26,9 @@ from .const import (
     SENSOR_RATING,
     SENSOR_TIMEZONE,
 )
+
+# Removed CoordinatorEntity import - these sensors contain static property data
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -178,7 +180,7 @@ async def async_setup_entry(
         _LOGGER.error("Error setting up Vacasa sensors: %s", err)
 
 
-class VacasaBaseSensor(CoordinatorEntity, SensorEntity):
+class VacasaBaseSensor(SensorEntity):
     """Base class for Vacasa sensors."""
 
     def __init__(
@@ -193,7 +195,10 @@ class VacasaBaseSensor(CoordinatorEntity, SensorEntity):
         state_class: Optional[str] = None,
     ) -> None:
         """Initialize the Vacasa sensor."""
-        super().__init__(coordinator)
+        super().__init__()
+        # Store coordinator reference but don't inherit from CoordinatorEntity
+        # These sensors contain static property data that rarely changes
+        self._coordinator = coordinator
         self._unit_id = unit_id
         self._name = name
         self._unit_attributes = unit_attributes

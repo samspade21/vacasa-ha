@@ -273,23 +273,23 @@ class VacasaCalendar(CoordinatorEntity, CalendarEntity):
             else:
                 # This is a timed event, apply timezone
                 if self._timezone:
-                    import pytz
+                    from zoneinfo import ZoneInfo
 
                     try:
-                        tz = pytz.timezone(self._timezone)
+                        tz = ZoneInfo(self._timezone)
                         _LOGGER.debug("Using property timezone: %s", self._timezone)
 
                         # Create timezone-aware datetime objects
                         if not is_all_day_start:
-                            # Use localize instead of replace to handle DST correctly
+                            # Use replace with zoneinfo to handle DST correctly
                             naive_start = start_dt.replace(tzinfo=None)
-                            start_dt = tz.localize(naive_start)
+                            start_dt = naive_start.replace(tzinfo=tz)
                             _LOGGER.debug("Start time with TZ: %s", start_dt)
 
                         if not is_all_day_end:
-                            # Use localize instead of replace to handle DST correctly
+                            # Use replace with zoneinfo to handle DST correctly
                             naive_end = end_dt.replace(tzinfo=None)
-                            end_dt = tz.localize(naive_end)
+                            end_dt = naive_end.replace(tzinfo=tz)
                             _LOGGER.debug("End time with TZ: %s", end_dt)
                     except Exception as e:
                         _LOGGER.warning(
