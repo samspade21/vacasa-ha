@@ -6,8 +6,6 @@
 
 A comprehensive Home Assistant integration for Vacasa vacation rental properties that provides calendars, occupancy sensors, and detailed property information, enabling powerful smart home automation based on reservation status and property characteristics.
 
-**Version: 1.0.1**
-
 ## Features
 
 - Creates one Home Assistant calendar per Vacasa property
