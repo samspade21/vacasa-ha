@@ -24,6 +24,8 @@
 - ✅ Event generation
 - ✅ Refresh scheduling
 - ✅ Binary sensor for occupancy status
+- ✅ Calendar-based occupancy detection (eliminates duplicate API calls)
+- ✅ Real-time occupancy updates via calendar events
 - ✅ Property-specific check-in/check-out times
 - ✅ Property information sensors
 - ✅ Timezone-aware calendar events

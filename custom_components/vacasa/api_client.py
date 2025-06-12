@@ -51,6 +51,7 @@ class VacasaApiClient:
         session: Optional[aiohttp.ClientSession] = None,
         token_cache_path: Optional[str] = None,
         hass_config_dir: Optional[str] = None,
+        hass=None,
     ):
         """Initialize the Vacasa API client.
 
@@ -60,10 +61,12 @@ class VacasaApiClient:
             session: Optional aiohttp ClientSession
             token_cache_path: Optional path to token cache file
             hass_config_dir: Optional Home Assistant config directory
+            hass: Optional Home Assistant instance for async file operations
         """
         self._username = username
         self._password = password
         self._session = session
+        self._hass = hass
         self._owner_id = None
         self._token = None
         self._token_expiry = None
@@ -119,29 +122,41 @@ class VacasaApiClient:
             self._close_session = True
         return self._session
 
-    def _save_token_to_cache(self) -> None:
+    def _save_token_to_cache_sync(self) -> None:
+        """Save the token to the cache file (synchronous helper)."""
+        if not self._token or not self._token_expiry:
+            return
+
+        cache_data = {
+            "token": self._token,
+            "expiry": self._token_expiry.isoformat(),
+        }
+
+        with open(self._token_cache_file, "w") as f:
+            json.dump(cache_data, f)
+
+        # Set file permissions to be readable only by the owner
+        os.chmod(self._token_cache_file, 0o600)
+
+        _LOGGER.debug("Token saved to cache file")
+
+    async def _save_token_to_cache(self) -> None:
         """Save the token to the cache file."""
         if not self._token or not self._token_expiry:
             return
 
         try:
-            cache_data = {
-                "token": self._token,
-                "expiry": self._token_expiry.isoformat(),
-            }
-
-            with open(self._token_cache_file, "w") as f:
-                json.dump(cache_data, f)
-
-            # Set file permissions to be readable only by the owner
-            os.chmod(self._token_cache_file, 0o600)
-
-            _LOGGER.debug("Token saved to cache file")
+            if self._hass:
+                # Use Home Assistant's executor for async file operations
+                await self._hass.async_add_executor_job(self._save_token_to_cache_sync)
+            else:
+                # Fallback to synchronous operation if no hass instance
+                self._save_token_to_cache_sync()
         except Exception as e:
             _LOGGER.warning("Failed to save token to cache file: %s", e)
 
-    def _load_token_from_cache(self) -> bool:
-        """Load the token from the cache file.
+    def _load_token_from_cache_sync(self) -> bool:
+        """Load the token from the cache file (synchronous helper).
 
         Returns:
             True if the token was loaded successfully, False otherwise
@@ -150,25 +165,36 @@ class VacasaApiClient:
             _LOGGER.debug("Token cache file does not exist: %s", self._token_cache_file)
             return False
 
+        with open(self._token_cache_file, "r") as f:
+            cache_data = json.load(f)
+
+        if not cache_data or "token" not in cache_data or "expiry" not in cache_data:
+            _LOGGER.warning("Invalid token cache data format")
+            return False
+
+        self._token = cache_data["token"]
+        self._token_expiry = datetime.fromisoformat(cache_data["expiry"])
+
+        _LOGGER.debug("Token loaded from cache file")
+        _LOGGER.debug("Token expires at: %s", self._token_expiry)
+
+        return True
+
+    async def _load_token_from_cache(self) -> bool:
+        """Load the token from the cache file.
+
+        Returns:
+            True if the token was loaded successfully, False otherwise
+        """
         try:
-            with open(self._token_cache_file, "r") as f:
-                cache_data = json.load(f)
-
-            if (
-                not cache_data
-                or "token" not in cache_data
-                or "expiry" not in cache_data
-            ):
-                _LOGGER.warning("Invalid token cache data format")
-                return False
-
-            self._token = cache_data["token"]
-            self._token_expiry = datetime.fromisoformat(cache_data["expiry"])
-
-            _LOGGER.debug("Token loaded from cache file")
-            _LOGGER.debug("Token expires at: %s", self._token_expiry)
-
-            return True
+            if self._hass:
+                # Use Home Assistant's executor for async file operations
+                return await self._hass.async_add_executor_job(
+                    self._load_token_from_cache_sync
+                )
+            else:
+                # Fallback to synchronous operation if no hass instance
+                return self._load_token_from_cache_sync()
         except json.JSONDecodeError:
             _LOGGER.warning("Failed to parse token cache file (invalid JSON)")
             return False
@@ -194,7 +220,7 @@ class VacasaApiClient:
             _LOGGER.debug("Token is invalid or missing, attempting to refresh")
 
             # Try to load token from cache first
-            if self._load_token_from_cache() and self.is_token_valid:
+            if await self._load_token_from_cache() and self.is_token_valid:
                 _LOGGER.debug("Using valid authentication token from cache")
                 return self._token
 
@@ -203,7 +229,7 @@ class VacasaApiClient:
             await self.authenticate()
 
             # Save the new token to cache
-            self._save_token_to_cache()
+            await self._save_token_to_cache()
 
         return self._token
 

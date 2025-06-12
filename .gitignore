@@ -1,4 +1,7 @@
 # Python cache files
+# Environment files
+.env
+
 __pycache__/
 *.py[cod]
 *$py.class

@@ -1,9 +1,10 @@
 """Binary sensor platform for Vacasa integration."""
 
+import asyncio
 import logging
-from datetime import datetime, timedelta
+import re
+from datetime import datetime
 from typing import Any, Dict, Optional
-from zoneinfo import ZoneInfo
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -11,33 +12,13 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-
-# DataUpdateCoordinator import removed - using coordinator listening pattern instead
 from homeassistant.util import dt as dt_util
 
-from .const import (
-    DATA_CLIENT,
-    DATA_COORDINATOR,
-    DOMAIN,
-    SENSOR_OCCUPANCY,
-    STAY_TYPE_BLOCK,
-    STAY_TYPE_GUEST,
-    STAY_TYPE_MAINTENANCE,
-    STAY_TYPE_OTHER,
-    STAY_TYPE_OWNER,
-)
+from .const import DATA_CLIENT, DATA_COORDINATOR, DOMAIN, SENSOR_OCCUPANCY
 
 _LOGGER = logging.getLogger(__name__)
-
-# Mapping of stay types to human-readable names
-STAY_TYPE_TO_NAME = {
-    STAY_TYPE_GUEST: "Guest Booking",
-    STAY_TYPE_OWNER: "Owner Stay",
-    STAY_TYPE_BLOCK: "Block",
-    STAY_TYPE_MAINTENANCE: "Maintenance",
-    STAY_TYPE_OTHER: "Other",
-}
 
 
 async def async_setup_entry(
@@ -98,16 +79,11 @@ class VacasaOccupancySensor(BinarySensorEntity):
         self._name = name
         self._code = code
         self._unit_attributes = unit_attributes
-        self._checkin_time = unit_attributes.get("checkInTime")
-        self._checkout_time = unit_attributes.get("checkOutTime")
-        self._timezone = unit_attributes.get("timezone")
-        self._categorized_reservations = {}
-        self._current_reservation = None
-        self._current_stay_type = None
-        self._next_reservation = None
-        self._next_stay_type = None
         self._coordinator = coordinator
         self._unsub_coordinator = None
+        self._calendar_entity = None
+        self._current_event = None
+        self._next_event = None
 
         # Entity properties
         self._attr_unique_id = f"vacasa_occupancy_{unit_id}"
@@ -127,7 +103,7 @@ class VacasaOccupancySensor(BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         """Return true if the property is currently occupied."""
-        return self._current_reservation is not None
+        return self._current_event is not None
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
@@ -135,23 +111,21 @@ class VacasaOccupancySensor(BinarySensorEntity):
         attrs = {}
 
         # Add next check-in information
-        if self._next_reservation:
-            checkin_dt = self._get_checkin_datetime(self._next_reservation)
-            checkout_dt = self._get_checkout_datetime(self._next_reservation)
+        if self._next_event:
+            attrs["next_checkin"] = self._format_datetime(self._next_event.start)
+            attrs["next_checkout"] = self._format_datetime(self._next_event.end)
 
-            attrs["next_checkin"] = self._format_datetime(checkin_dt)
-            attrs["next_checkout"] = self._format_datetime(checkout_dt)
-
-            # Add guest information if available
-            guest_name = self._get_guest_name(self._next_reservation)
+            # Extract guest name from event
+            guest_name = self._extract_guest_name_from_event(self._next_event)
             if guest_name:
                 attrs["next_guest"] = guest_name
 
-            # Add reservation type
-            if self._next_stay_type:
-                attrs["next_reservation_type"] = STAY_TYPE_TO_NAME.get(
-                    self._next_stay_type, "Unknown"
-                )
+            # Extract reservation type from event
+            reservation_type = self._extract_reservation_type_from_event(
+                self._next_event
+            )
+            if reservation_type:
+                attrs["next_reservation_type"] = reservation_type
 
             # Log the next reservation details for debugging
             _LOGGER.debug(
@@ -164,21 +138,20 @@ class VacasaOccupancySensor(BinarySensorEntity):
             )
 
         # Add current reservation information if occupied
-        if self._current_reservation:
-            checkout_dt = self._get_checkout_datetime(self._current_reservation)
+        if self._current_event:
+            attrs["current_checkout"] = self._format_datetime(self._current_event.end)
 
-            attrs["current_checkout"] = self._format_datetime(checkout_dt)
-
-            # Add guest information if available
-            guest_name = self._get_guest_name(self._current_reservation)
+            # Extract guest name from event
+            guest_name = self._extract_guest_name_from_event(self._current_event)
             if guest_name:
                 attrs["current_guest"] = guest_name
 
-            # Add reservation type
-            if self._current_stay_type:
-                attrs["current_reservation_type"] = STAY_TYPE_TO_NAME.get(
-                    self._current_stay_type, "Unknown"
-                )
+            # Extract reservation type from event
+            reservation_type = self._extract_reservation_type_from_event(
+                self._current_event
+            )
+            if reservation_type:
+                attrs["current_reservation_type"] = reservation_type
 
             # Log the current reservation details for debugging
             _LOGGER.debug(
@@ -196,128 +169,254 @@ class VacasaOccupancySensor(BinarySensorEntity):
 
         This is only used by the generic entity update service.
         """
-        await self._update_reservations()
+        await self._update_from_calendar()
 
-    async def _update_reservations(self) -> None:
-        """Update the reservations data."""
+    async def _update_from_calendar(self) -> None:
+        """Update occupancy based on calendar events."""
         try:
-            # Get current date in YYYY-MM-DD format
-            now = dt_util.now()
-            start_date = now.strftime("%Y-%m-%d")
+            # Find the calendar entity for this unit with retry mechanism
+            if not self._calendar_entity:
+                self._calendar_entity = await self._find_calendar_entity_with_retry()
+                if not self._calendar_entity:
+                    _LOGGER.warning(
+                        "Calendar entity not found for %s after retries, occupancy will be unavailable",
+                        self._name,
+                    )
+                    self._attr_available = False
+                    return
 
-            # Get reservations for the next 365 days
-            end_date = (now + timedelta(days=365)).strftime("%Y-%m-%d")
-
-            # Use the get_categorized_reservations method to get properly categorized reservations
-            self._categorized_reservations = (
-                await self._client.get_categorized_reservations(
-                    self._unit_id, start_date, end_date
-                )
-            )
-
-            _LOGGER.debug(
-                "Retrieved categorized reservations for %s: %s",
-                self._name,
-                {k: len(v) for k, v in self._categorized_reservations.items()},
-            )
-
-            # Update current and next reservations
-            self._update_current_and_next_reservations()
+            # Get current events from the calendar
+            await self._update_current_and_next_events()
 
         except Exception as err:
-            _LOGGER.error("Error updating reservations for %s: %s", self._name, err)
+            _LOGGER.error(
+                "Error updating occupancy from calendar for %s: %s", self._name, err
+            )
+            # Don't mark as unavailable for temporary issues
+            # Keep last known state
 
-    def _update_current_and_next_reservations(self) -> None:
-        """Update the current and next reservation information."""
-        now = dt_util.now()
+    async def _find_calendar_entity_with_retry(
+        self, max_retries: int = 3
+    ) -> Optional[str]:
+        """Find calendar entity with retry mechanism for timing issues."""
+        for attempt in range(max_retries):
+            entity_id = await self._find_calendar_entity()
+            if entity_id:
+                return entity_id
 
-        # Reset current and next reservation info
-        self._current_reservation = None
-        self._current_stay_type = None
-        self._next_reservation = None
-        self._next_stay_type = None
+            if attempt < max_retries - 1:
+                wait_time = 2**attempt  # 2s, 4s, 8s
+                _LOGGER.debug(
+                    "Calendar entity not found for unit %s, retrying in %ss (attempt %d/%d)",
+                    self._unit_id,
+                    wait_time,
+                    attempt + 1,
+                    max_retries,
+                )
+                await asyncio.sleep(wait_time)
 
-        # Find the current reservation (if any)
-        for stay_type, reservations in self._categorized_reservations.items():
-            for reservation in reservations:
-                checkin = self._get_checkin_datetime(reservation)
-                checkout = self._get_checkout_datetime(reservation)
+        _LOGGER.warning(
+            "Calendar entity not found for unit %s after %d attempts",
+            self._unit_id,
+            max_retries,
+        )
+        return None
 
-                if checkin and checkout and checkin <= now <= checkout:
-                    self._current_reservation = reservation
-                    self._current_stay_type = stay_type
-                    _LOGGER.debug(
-                        "Found current %s reservation for %s: %s to %s",
-                        stay_type,
-                        self._name,
-                        checkin,
-                        checkout,
-                    )
-                    break
+    async def _find_calendar_entity(self) -> Optional[str]:
+        """Find the corresponding calendar entity ID for this unit."""
+        # Generate possible entity IDs to try
+        sanitized_name = self._sanitize_entity_name(self._name)
+        possible_entity_ids = [
+            f"calendar.vacasa_{sanitized_name}",
+            f"calendar.vacasa_calendar_{self._unit_id}",
+            f"calendar.vacasa_{self._unit_id}",
+        ]
 
-            # If we found a current reservation, no need to check other stay types
-            if self._current_reservation:
-                break
+        _LOGGER.debug(
+            "Searching for calendar entity for unit %s, trying: %s",
+            self._unit_id,
+            possible_entity_ids,
+        )
 
-        # Find the next reservation
-        next_checkin = None
+        # First try: Check state registry (faster)
+        for entity_id in possible_entity_ids:
+            if self.hass.states.get(entity_id):
+                _LOGGER.debug(
+                    "Found calendar entity %s for unit %s (state check)",
+                    entity_id,
+                    self._unit_id,
+                )
+                return entity_id
 
-        for stay_type, reservations in self._categorized_reservations.items():
-            for reservation in reservations:
-                checkin = self._get_checkin_datetime(reservation)
+        # Second try: Check entity registry (more reliable for newly created entities)
+        try:
+            registry = er.async_get(self.hass)
+            calendar_unique_id = f"vacasa_calendar_{self._unit_id}"
 
-                # Skip if this is the current reservation or if check-in is in the past
+            for entity_id, entity_entry in registry.entities.items():
                 if (
-                    reservation == self._current_reservation
-                    or not checkin
-                    or checkin <= now
+                    entity_entry.unique_id == calendar_unique_id
+                    and entity_entry.domain == "calendar"
                 ):
-                    continue
-
-                # If this is the first future reservation we've found, or it's earlier than the current next
-                if next_checkin is None or checkin < next_checkin:
-                    self._next_reservation = reservation
-                    self._next_stay_type = stay_type
-                    next_checkin = checkin
                     _LOGGER.debug(
-                        "Found next %s reservation for %s: check-in at %s",
-                        stay_type,
-                        self._name,
-                        checkin,
+                        "Found calendar entity %s for unit %s (registry check)",
+                        entity_id,
+                        self._unit_id,
+                    )
+                    return entity_id
+
+        except Exception as e:
+            _LOGGER.debug(
+                "Error checking entity registry for unit %s: %s", self._unit_id, e
+            )
+
+        _LOGGER.debug(
+            "Calendar entity not found for unit %s (tried %s)",
+            self._unit_id,
+            possible_entity_ids,
+        )
+        return None
+
+    def _sanitize_entity_name(self, name: str) -> str:
+        """Sanitize property name for entity ID."""
+        # Convert to lowercase and replace problematic characters
+        sanitized = name.lower()
+        sanitized = sanitized.replace(" ", "_")
+        sanitized = sanitized.replace("-", "_")
+        sanitized = sanitized.replace("'", "")
+        sanitized = sanitized.replace('"', "")
+        sanitized = sanitized.replace("(", "")
+        sanitized = sanitized.replace(")", "")
+        sanitized = sanitized.replace("&", "and")
+        # Remove any other special characters and replace with underscore
+        sanitized = re.sub(r"[^a-z0-9_]", "_", sanitized)
+        # Remove multiple consecutive underscores
+        sanitized = re.sub(r"_+", "_", sanitized)
+        # Remove leading/trailing underscores
+        sanitized = sanitized.strip("_")
+        return sanitized
+
+    async def _update_current_and_next_events(self) -> None:
+        """Update current and next events from the calendar."""
+        if not self._calendar_entity:
+            _LOGGER.debug("No calendar entity set for unit %s", self._unit_id)
+            return
+
+        # Reset current and next events
+        self._current_event = None
+        self._next_event = None
+
+        try:
+            # Get the calendar state
+            calendar_state = self.hass.states.get(self._calendar_entity)
+            if not calendar_state:
+                _LOGGER.debug(
+                    "Calendar entity %s found but state not yet available (unit %s) - this is normal during startup, will resolve automatically on next update",
+                    self._calendar_entity,
+                    self._unit_id,
+                )
+
+                # Add additional debugging info only if needed
+                from homeassistant.helpers import entity_registry as er
+
+                try:
+                    registry = er.async_get(self.hass)
+                    entity_entry = registry.async_get(self._calendar_entity)
+                    if entity_entry:
+                        _LOGGER.debug(
+                            "Calendar entity %s registry details - unique_id: %s, platform: %s",
+                            self._calendar_entity,
+                            entity_entry.unique_id,
+                            entity_entry.platform,
+                        )
+                    else:
+                        _LOGGER.debug(
+                            "Calendar entity %s not found in entity registry",
+                            self._calendar_entity,
+                        )
+                except Exception as e:
+                    _LOGGER.debug(
+                        "Error checking entity registry for %s: %s",
+                        self._calendar_entity,
+                        e,
                     )
 
-        # Log the results
-        if self._current_reservation:
-            _LOGGER.debug(
-                "Current reservation for %s: %s (%s)",
-                self._name,
-                self._get_guest_name(self._current_reservation) or "Unknown",
-                self._current_stay_type,
-            )
-        else:
-            _LOGGER.debug("No current reservation for %s", self._name)
+                return
 
-        if self._next_reservation:
+            # Log calendar state info for debugging
             _LOGGER.debug(
-                "Next reservation for %s: %s (%s) at %s",
-                self._name,
-                self._get_guest_name(self._next_reservation) or "Unknown",
-                self._next_stay_type,
-                next_checkin,
+                "Calendar entity %s state: %s, attributes: %s",
+                self._calendar_entity,
+                calendar_state.state,
+                (
+                    list(calendar_state.attributes.keys())
+                    if calendar_state.attributes
+                    else "None"
+                ),
             )
-        else:
-            _LOGGER.debug("No upcoming reservations for %s", self._name)
+
+            # Check if there's a current event
+            if calendar_state.state == "on":
+                # There's an active event, get it from attributes
+                current_event_summary = calendar_state.attributes.get("message", "")
+                current_event_start = calendar_state.attributes.get("start_time")
+                current_event_end = calendar_state.attributes.get("end_time")
+
+                if current_event_summary and current_event_start and current_event_end:
+                    # Create a simple event object
+                    self._current_event = type(
+                        "Event",
+                        (),
+                        {
+                            "summary": current_event_summary,
+                            "start": dt_util.parse_datetime(current_event_start),
+                            "end": dt_util.parse_datetime(current_event_end),
+                        },
+                    )()
+
+                    _LOGGER.debug(
+                        "Found current event for %s: %s (%s to %s)",
+                        self._name,
+                        self._current_event.summary,
+                        self._current_event.start,
+                        self._current_event.end,
+                    )
+
+            # For finding next event, we'll need to call the calendar platform directly
+            # This is a simplified approach - we'll just use the current event for now
+            # and implement next event detection in a future update if needed
+
+            # Log results
+            if self._current_event:
+                _LOGGER.debug(
+                    "Current event for %s: %s",
+                    self._name,
+                    self._current_event.summary,
+                )
+            else:
+                _LOGGER.debug("No current event for %s", self._name)
+
+        except Exception as err:
+            _LOGGER.error("Error getting calendar events for %s: %s", self._name, err)
 
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
-        # Update reservations when entity is added to hass
-        await self._update_reservations()
 
-        # Listen to coordinator updates without inheriting from CoordinatorEntity
+        # Listen to coordinator updates first
         self._unsub_coordinator = self._coordinator.async_add_listener(
             self._handle_coordinator_update
         )
+
+        # Schedule initial calendar update with slight delay to allow calendar entities to load
+        self.hass.async_create_task(self._delayed_initial_update())
+
+    async def _delayed_initial_update(self) -> None:
+        """Perform initial update with a small delay to allow calendar entities to be ready."""
+        # Wait a bit for calendar entities to be fully loaded
+        await asyncio.sleep(1)
+        await self._update_from_calendar()
+        self.async_write_ha_state()
 
     async def async_will_remove_from_hass(self) -> None:
         """When entity will be removed from hass."""
@@ -328,171 +427,68 @@ class VacasaOccupancySensor(BinarySensorEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
-        # Update reservations when coordinator updates
+        # Update from calendar when coordinator updates
         self.hass.async_create_task(self._async_coordinator_update())
 
     async def _async_coordinator_update(self) -> None:
         """Handle coordinator update asynchronously."""
         try:
             self._attr_available = True
-            await self._update_reservations()
+            await self._update_from_calendar()
             self.async_write_ha_state()
+            _LOGGER.debug("Successfully updated occupancy for unit %s", self._unit_id)
         except Exception as err:
             _LOGGER.warning(
-                "Error during coordinator update for %s: %s", self._name, err
+                "Error during coordinator update for unit %s: %s", self._unit_id, err
             )
             # Don't mark as unavailable for temporary API issues
             # Keep last known state
 
-    def _get_checkin_datetime(self, reservation: Dict[str, Any]) -> Optional[datetime]:
-        """Get the check-in datetime for a reservation."""
-        attributes = reservation.get("attributes", {})
-        start_date = attributes.get("startDate")
-
-        if not start_date:
+    def _extract_guest_name_from_event(self, event) -> Optional[str]:
+        """Extract guest name from calendar event summary."""
+        if not event or not event.summary:
             return None
 
-        # Create datetime string based on available information
-        if "checkinTime" in attributes and attributes["checkinTime"] not in [
-            "00:00:00",
-            "12:00:00",
-        ]:
-            # Use time from reservation
-            checkin_time = attributes["checkinTime"]
-            start_dt_str = f"{start_date}T{checkin_time}"
-        elif self._checkin_time:
-            # Use property-specific time
-            start_dt_str = f"{start_date}T{self._checkin_time}"
-        else:
-            # No time available, use date only
-            start_dt_str = f"{start_date}T00:00:00"
+        # Calendar event summaries are formatted like:
+        # "Guest Booking: John Doe"
+        # "Owner Stay: Jane Smith"
+        # "Block: Maintenance"
+        # etc.
 
-        # Parse the datetime
-        checkin_dt = dt_util.parse_datetime(start_dt_str)
-
-        if not checkin_dt:
-            return None
-
-        # Apply property timezone if available
-        if self._timezone and "T00:00:00" not in start_dt_str:
-            try:
-                # Use zoneinfo instead of pytz to avoid blocking calls
-                tz = ZoneInfo(self._timezone)
-                # Create naive datetime first, then localize it
-                naive_dt = checkin_dt.replace(tzinfo=None)
-                localized_dt = naive_dt.replace(tzinfo=tz)
-                _LOGGER.debug(
-                    "Applied timezone %s to check-in: %s -> %s",
-                    self._timezone,
-                    naive_dt,
-                    localized_dt,
-                )
-                return localized_dt
-            except Exception as e:
-                _LOGGER.warning("Error applying timezone %s: %s", self._timezone, e)
-                # Fall back to local timezone
-                return dt_util.as_local(checkin_dt)
-        else:
-            # Use default check-in time (4 PM) if no specific time available
-            if "T00:00:00" in start_dt_str:
-                # Replace midnight with 4 PM for check-in
-                start_dt_str = start_dt_str.replace("T00:00:00", "T16:00:00")
-                checkin_dt = dt_util.parse_datetime(start_dt_str)
-                if not checkin_dt:
-                    return None
-                _LOGGER.debug(
-                    "Using default check-in time (4 PM) for %s: %s",
-                    self._name,
-                    checkin_dt,
-                )
-            # Fall back to local timezone
-            return dt_util.as_local(checkin_dt)
-
-    def _get_checkout_datetime(self, reservation: Dict[str, Any]) -> Optional[datetime]:
-        """Get the check-out datetime for a reservation."""
-        attributes = reservation.get("attributes", {})
-        end_date = attributes.get("endDate")
-
-        if not end_date:
-            return None
-
-        # Create datetime string based on available information
-        if "checkoutTime" in attributes and attributes["checkoutTime"] not in [
-            "00:00:00",
-            "12:00:00",
-        ]:
-            # Use time from reservation
-            checkout_time = attributes["checkoutTime"]
-            end_dt_str = f"{end_date}T{checkout_time}"
-        elif self._checkout_time:
-            # Use property-specific time
-            end_dt_str = f"{end_date}T{self._checkout_time}"
-        else:
-            # No time available, use date only
-            end_dt_str = f"{end_date}T00:00:00"
-
-        # Parse the datetime
-        checkout_dt = dt_util.parse_datetime(end_dt_str)
-
-        if not checkout_dt:
-            return None
-
-        # Apply property timezone if available
-        if self._timezone and "T00:00:00" not in end_dt_str:
-            try:
-                # Use zoneinfo instead of pytz to avoid blocking calls
-                tz = ZoneInfo(self._timezone)
-                # Create naive datetime first, then localize it
-                naive_dt = checkout_dt.replace(tzinfo=None)
-                localized_dt = naive_dt.replace(tzinfo=tz)
-                _LOGGER.debug(
-                    "Applied timezone %s to check-out: %s -> %s",
-                    self._timezone,
-                    naive_dt,
-                    localized_dt,
-                )
-                return localized_dt
-            except Exception as e:
-                _LOGGER.warning("Error applying timezone %s: %s", self._timezone, e)
-                # Fall back to local timezone
-                return dt_util.as_local(checkout_dt)
-        else:
-            # Use default check-out time (10 AM) if no specific time available
-            if "T00:00:00" in end_dt_str:
-                # Replace midnight with 10 AM for check-out
-                end_dt_str = end_dt_str.replace("T00:00:00", "T10:00:00")
-                checkout_dt = dt_util.parse_datetime(end_dt_str)
-                if not checkout_dt:
-                    return None
-                _LOGGER.debug(
-                    "Using default check-out time (10 AM) for %s: %s",
-                    self._name,
-                    checkout_dt,
-                )
-            # Fall back to local timezone
-            return dt_util.as_local(checkout_dt)
-
-    def _get_guest_name(self, reservation: Dict[str, Any]) -> Optional[str]:
-        """Get the guest name for a reservation."""
-        attributes = reservation.get("attributes", {})
-        first_name = attributes.get("firstName", "")
-        last_name = attributes.get("lastName", "")
-
-        if first_name and last_name:
-            return f"{first_name} {last_name}"
-        elif first_name:
-            return first_name
-        elif last_name:
-            return last_name
-
-        # Check for owner hold information
-        owner_hold = attributes.get("ownerHold")
-        if owner_hold:
-            hold_who_booked = owner_hold.get("holdWhoBooked", "")
-            if hold_who_booked:
-                return hold_who_booked
+        summary = event.summary
+        if ":" in summary:
+            # Split on the first colon and get the part after it
+            parts = summary.split(":", 1)
+            if len(parts) > 1:
+                guest_part = parts[1].strip()
+                # Only return if it looks like a name (not empty, not just a type)
+                if guest_part and guest_part not in ["Maintenance", "Block", "Other"]:
+                    return guest_part
 
         return None
+
+    def _extract_reservation_type_from_event(self, event) -> Optional[str]:
+        """Extract reservation type from calendar event summary."""
+        if not event or not event.summary:
+            return None
+
+        # Calendar event summaries are formatted like:
+        # "Guest Booking: John Doe"
+        # "Owner Stay: Jane Smith"
+        # "Block: Maintenance"
+        # etc.
+
+        summary = event.summary
+        if ":" in summary:
+            # Split on the first colon and get the part before it
+            parts = summary.split(":", 1)
+            if len(parts) > 0:
+                type_part = parts[0].strip()
+                # Return the reservation type
+                return type_part
+
+        # Fallback - return the whole summary if no colon
+        return summary
 
     def _format_datetime(self, dt: Optional[datetime]) -> Optional[str]:
         """Format a datetime for display."""

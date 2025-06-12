@@ -20,7 +20,32 @@ The integration is fully compatible with Home Assistant's async architecture and
 
 ## Recent Changes
 
-1. **Critical Bug Fixes (v1.0.3) - JUST COMPLETED**
+1. **Code Cleanup & Simplification (v1.0.6) - JUST COMPLETED**
+   - **Centralized constants**: Moved all mappings to `const.py`, eliminated duplicates across files
+   - **Simplified binary sensor**: Removed complex entity registry lookups, uses direct state access instead
+   - **Improved calendar lookup**: Predictable entity ID patterns instead of registry searches
+   - **Streamlined logging**: Consistent debug patterns with unit IDs for easier troubleshooting
+   - **Removed unused imports**: Cleaned up CalendarEntity and entity_registry imports where not needed
+   - **Reduced complexity**: Simplified event handling and attribute extraction methods
+
+2. **Async File Operations Fix (v1.0.5) - Previously Completed**
+   - **Eliminated blocking file operations**: Fixed API client file I/O to use Home Assistant's async executor pattern
+   - **No more async warnings**: Converted `_save_token_to_cache()` and `_load_token_from_cache()` to proper async methods
+   - **Home Assistant compliance**: All file operations now use `hass.async_add_executor_job()` for non-blocking execution
+   - **Backward compatibility**: Maintains fallback to synchronous operations when hass instance not available
+   - **Updated all instantiation points**: Modified `__init__.py` and `config_flow.py` to pass hass instance to API client
+   - **Performance improvement**: File operations no longer block the event loop
+
+2. **Calendar-Based Occupancy Detection (v1.0.4) - Previously Completed**
+   - **Eliminated duplicate API calls**: Binary sensors now query calendar entities instead of making separate API calls to Vacasa
+   - **Real-time occupancy updates**: Occupancy status now updates immediately when calendar data changes, rather than waiting for separate 15-minute polling
+   - **Improved performance**: Removed redundant network requests - only calendar entities fetch from Vacasa API
+   - **Enhanced reliability**: Single source of truth for reservation data shared between calendar and binary sensor
+   - **Simplified architecture**: Binary sensors extract guest names and reservation types from calendar event summaries
+   - **Better error handling**: Graceful fallback when calendar entity is not available
+   - **Consistent data**: Both entities now use the exact same reservation information
+
+2. **Critical Bug Fixes (v1.0.3) - Previously Completed**
    - **Fixed occupancy sensor logic**: Corrected the comparison to use `<=` for check-out time, ensuring sensors show "occupied" during the entire reservation period including at check-out time
    - **Removed coordinator dependency**: Binary sensors now use independent update scheduling (every 15 minutes) to prevent "unavailable" states during data refresh
    - **Fixed timezone handling**: Replaced pytz with zoneinfo to eliminate blocking calls and fix timezone parsing issues

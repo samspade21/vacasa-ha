@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-06-12
+
+### Added
+- **Calendar-Based Occupancy Detection**: Binary sensors now derive occupancy status directly from calendar entities instead of API calls for more real-time updates
+- **Enhanced Debugging Tools**: New `logs.sh` script provides comprehensive log viewing with multiple filtering options (recent, live, debug, errors, calendar-specific)
+- **Environment-Based Configuration**: New `.env` file support for secure server configuration in deployment and logging scripts
+- **Automated Deployment**: Enhanced `deploy.sh` script with automatic Home Assistant restart and improved error handling
+- **Comprehensive Documentation**: Added detailed debugging and troubleshooting section with step-by-step debug logging instructions
+
+### Improved
+- **Binary Sensor Reliability**: Enhanced entity discovery with retry mechanism and exponential backoff to handle timing issues during startup
+- **Entity Synchronization**: Better coordination between calendar and binary sensor platforms with improved initialization timing
+- **Developer Experience**: New development tools (`logs.sh`, `deploy.sh`) with SSH-based remote access and real-time monitoring
+- **Error Handling**: More robust error handling with clear diagnostic messages and automatic recovery mechanisms
+- **Logging Quality**: Enhanced debug logging with better context and clearer explanations of normal vs. problematic behavior
+
+### Changed
+- **Occupancy Detection Method**: Switched from API-based to calendar-entity-based occupancy detection for improved responsiveness
+- **Log Message Levels**: Reduced startup timing messages from WARNING to DEBUG level to eliminate noise in default logs
+- **Deployment Process**: Streamlined deployment with automatic restart and environment-based configuration
+- **Documentation Structure**: Reorganized README with dedicated debugging section and enhanced development workflow instructions
+
+### Security
+- **Configuration Management**: Moved hardcoded server details to environment variables and `.env` files
+- **Git Security**: Added `.env` files to `.gitignore` to prevent credential exposure
+- **Best Practices**: Implemented secure configuration patterns for development and deployment scripts
+
+### Developer Experience
+- **Remote Log Access**: SSH-based log viewing with real-time monitoring capabilities
+- **Automated Deployment**: One-command deployment with automatic restart and validation
+- **Environment Templates**: `.env.example` template for easy setup with clear documentation
+- **Enhanced Debugging**: Multiple log filtering options and search capabilities for efficient troubleshooting
+
 ## [1.0.3] - 2025-05-29
 
 ### Fixed

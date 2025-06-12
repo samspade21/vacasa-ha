@@ -16,40 +16,18 @@ from homeassistant.util import dt as dt_util
 
 from .api_client import VacasaApiClient
 from .const import (
-    CATEGORY_BLOCK,
-    CATEGORY_GUEST,
-    CATEGORY_MAINTENANCE,
-    CATEGORY_OTHER,
-    CATEGORY_OWNER,
     DATA_CLIENT,
     DATA_COORDINATOR,
     DOMAIN,
     STAY_TYPE_BLOCK,
     STAY_TYPE_GUEST,
     STAY_TYPE_MAINTENANCE,
-    STAY_TYPE_OTHER,
     STAY_TYPE_OWNER,
+    STAY_TYPE_TO_CATEGORY,
+    STAY_TYPE_TO_NAME,
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-# Mapping of stay types to calendar categories
-STAY_TYPE_TO_CATEGORY = {
-    STAY_TYPE_GUEST: CATEGORY_GUEST,
-    STAY_TYPE_OWNER: CATEGORY_OWNER,
-    STAY_TYPE_BLOCK: CATEGORY_BLOCK,
-    STAY_TYPE_MAINTENANCE: CATEGORY_MAINTENANCE,
-    STAY_TYPE_OTHER: CATEGORY_OTHER,
-}
-
-# Mapping of stay types to human-readable names
-STAY_TYPE_TO_NAME = {
-    STAY_TYPE_GUEST: "Guest Booking",
-    STAY_TYPE_OWNER: "Owner Stay",
-    STAY_TYPE_BLOCK: "Block",
-    STAY_TYPE_MAINTENANCE: "Maintenance",
-    STAY_TYPE_OTHER: "Other",
-}
 
 
 async def async_setup_entry(

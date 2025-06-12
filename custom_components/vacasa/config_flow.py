@@ -34,6 +34,7 @@ async def validate_input(hass: HomeAssistant, data: Dict[str, Any]) -> Dict[str,
         password=data[CONF_PASSWORD],
         session=session,
         hass_config_dir=hass.config.path(),
+        hass=hass,
     )
 
     try:

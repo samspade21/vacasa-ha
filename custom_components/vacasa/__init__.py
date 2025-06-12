@@ -48,6 +48,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         password=password,
         session=session,
         hass_config_dir=hass.config.path(),
+        hass=hass,
     )
 
     # Verify we can authenticate
