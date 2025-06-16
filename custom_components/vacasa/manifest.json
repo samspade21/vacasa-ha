@@ -8,5 +8,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/samspade21/vacasa-ha/issues",
   "requirements": ["aiohttp>=3.8.0"],
-  "version": "1.1.0"
+  "version": "1.1.1"
 }
