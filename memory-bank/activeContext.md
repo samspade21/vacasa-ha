@@ -20,7 +20,14 @@ The integration is fully compatible with Home Assistant's async architecture and
 
 ## Recent Changes
 
-1. **Code Cleanup & Simplification (v1.0.6) - JUST COMPLETED**
+1. **HACS Best Practices & User Experience Improvements (v1.1.2) - JUST COMPLETED**
+   - **Comprehensive HACS Analysis**: Created detailed best practices analysis identifying areas for improvement
+   - **Fixed Critical Credential Update Issue**: Users can now update Vacasa username/password without deleting integration
+   - **Automatic Reload for All Config Changes**: Any change in configuration now triggers automatic integration reload
+   - **Enhanced User Experience**: Improved translations and user guidance for configuration options
+   - **Simplified Options Flow Logic**: Streamlined the options flow to ensure consistent reload behavior
+
+2. **Code Cleanup & Simplification (v1.0.6) - Previously Completed**
    - **Centralized constants**: Moved all mappings to `const.py`, eliminated duplicates across files
    - **Simplified binary sensor**: Removed complex entity registry lookups, uses direct state access instead
    - **Improved calendar lookup**: Predictable entity ID patterns instead of registry searches
@@ -135,14 +142,55 @@ The integration is fully compatible with Home Assistant's async architecture and
 ## Current Focus
 
 We are currently focused on:
-1. **Testing**: Ensuring the integration works reliably in real-world scenarios
+1. **HACS Best Practices Compliance**: Ensuring full compliance with HACS standards
+   - ✅ **COMPLETED**: Comprehensive HACS best practices analysis
+   - ✅ **COMPLETED**: Fixed critical credential update issue in options flow
+   - ✅ **COMPLETED**: Automatic reload for all configuration changes
+   - **Current Grade**: B+ (Good with room for improvement)
+2. **User Experience Improvements**: Addressing usability issues
+   - ✅ **COMPLETED**: Added ability to update Vacasa credentials in options flow
+   - ✅ **COMPLETED**: Enhanced translations for better user guidance
+   - ✅ **COMPLETED**: Automatic integration reload for configuration changes
+3. **Code Quality**: Ensuring adherence to Home Assistant standards
+   - ✅ **COMPLETED**: Async/await patterns verification
+   - ✅ **COMPLETED**: Error handling patterns review
+   - ⏳ **NEXT**: File operations async compliance audit
+4. **Testing**: Ensuring the integration works reliably in real-world scenarios
    - Implemented a simplified test strategy (see testStrategy.md)
    - Focusing on critical paths with minimal API dependencies
    - Using mocks to avoid hitting the real Vacasa API
    - Starting with core API client tests, then entity tests, then integration tests
-2. **Documentation**: Improving user documentation and adding example automations
-3. **Preparation for Release**: Getting ready for distribution via HACS
-4. **Technical Debt Reduction**: Simplifying code and removing unused components
+5. **Documentation**: Improving user documentation and adding example automations
+6. **Preparation for Release**: Getting ready for distribution via HACS
+
+## HACS Compliance Next Steps
+
+### High Priority Remaining Issues
+1. **File Operations Async Compliance**
+   - Audit all file operations for complete async compliance
+   - Ensure proper use of `hass.async_add_executor_job` throughout
+
+### Medium Priority Improvements
+1. **Error Message Translations**
+   - Complete translation coverage for all error messages
+   - Implement user-friendly error recovery guidance
+
+2. **API Robustness**
+   - Add explicit rate limiting and backoff strategies
+   - Improve token validation with integrity checks
+   - Add connection health monitoring
+
+3. **Performance Optimizations**
+   - Optimize entity registry usage in binary sensors
+   - Improve logging efficiency and selectivity
+   - Code cleanup and documentation improvements
+
+### HACS Submission Readiness
+**Current Status**: 8.5/10 compliance score
+- ✅ Repository structure perfect
+- ✅ Required files all present and valid
+- ✅ Critical user experience issues resolved
+- ⚠️ Some minor improvements recommended but not blocking
 
 ## Debugging Techniques
 

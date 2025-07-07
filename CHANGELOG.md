@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2025-01-07
+
+### Added
+- **Enhanced Options Flow**: Users can now update Vacasa credentials (username/password) directly in the integration configuration without deleting and recreating the integration
+- **Automatic Configuration Reload**: All configuration changes now trigger automatic integration reload for immediate effect
+
+### Improved
+- **User Experience**: Enhanced validation and error handling for credential updates with clear user guidance
+- **Configuration Management**: Streamlined options flow logic ensures consistent reload behavior for all setting changes
+- **Translations**: Updated user interface text with helpful descriptions for credential management
+
+### Fixed
+- **Configuration Persistence**: Resolved issue where configuration changes required manual integration reload to take effect
+
 ## [1.1.1] - 2025-06-16
 
 ### Changed
