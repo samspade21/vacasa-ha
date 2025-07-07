@@ -28,11 +28,11 @@
     "step": {
       "init": {
         "title": "Vacasa Options",
-        "description": "Update your Vacasa integration settings.",
+        "description": "Update your Vacasa integration settings. Current username: {current_username}",
         "data": {
-          "refresh_interval": "Calendar data refresh interval (hours)",
-          "checkin_time": "Default check-in time (format: HH:MM:SS, e.g. 16:00:00 for 4 PM)",
-          "checkout_time": "Default check-out time (format: HH:MM:SS, e.g. 10:00:00 for 10 AM)"
+          "username": "Email (leave unchanged to keep current)",
+          "password": "Password (leave empty to keep current)",
+          "refresh_interval": "Calendar data refresh interval (hours)"
         }
       }
     }

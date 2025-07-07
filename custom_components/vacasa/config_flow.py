@@ -145,9 +145,62 @@ class VacasaOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: Optional[Dict[str, Any]] = None
     ) -> FlowResult:
         """Manage the options."""
-        if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+        errors: Dict[str, str] = {}
 
+        if user_input is not None:
+            # Check if credentials were updated
+            current_username = self.config_entry.data.get(CONF_USERNAME)
+            current_password = self.config_entry.data.get(CONF_PASSWORD)
+
+            new_username = user_input.get(CONF_USERNAME)
+            new_password = user_input.get(CONF_PASSWORD)
+
+            credentials_changed = new_username != current_username or (
+                new_password and new_password != current_password
+            )
+
+            if credentials_changed:
+                # Validate new credentials if they changed
+                try:
+                    # Create a validation dict with the new credentials
+                    validation_data = {
+                        CONF_USERNAME: new_username,
+                        CONF_PASSWORD: (
+                            new_password if new_password else current_password
+                        ),
+                        CONF_REFRESH_INTERVAL: user_input[CONF_REFRESH_INTERVAL],
+                    }
+                    await validate_input(self.hass, validation_data)
+
+                    # Update the config entry data with new credentials
+                    new_data = dict(self.config_entry.data)
+                    new_data[CONF_USERNAME] = new_username
+                    if new_password:  # Only update password if provided
+                        new_data[CONF_PASSWORD] = new_password
+
+                    self.hass.config_entries.async_update_entry(
+                        self.config_entry, data=new_data
+                    )
+
+                except CannotConnect:
+                    errors["base"] = "cannot_connect"
+                except InvalidAuth:
+                    errors["base"] = "invalid_auth"
+                except OwnerIdError:
+                    errors["base"] = "owner_id_error"
+                except UnknownError:
+                    errors["base"] = "unknown"
+
+            if not errors:
+                # Success - create options entry with all options
+                # This will trigger async_update_options which does a full reload
+                return self.async_create_entry(
+                    title="",
+                    data={CONF_REFRESH_INTERVAL: user_input[CONF_REFRESH_INTERVAL]},
+                )
+
+        # Get current values for defaults
+        current_username = self.config_entry.data.get(CONF_USERNAME, "")
         default_refresh = self.config_entry.options.get(
             CONF_REFRESH_INTERVAL,
             self.config_entry.data.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL),
@@ -155,13 +208,22 @@ class VacasaOptionsFlowHandler(config_entries.OptionsFlow):
 
         schema = vol.Schema(
             {
+                vol.Required(CONF_USERNAME, default=current_username): str,
+                vol.Optional(CONF_PASSWORD): str,
                 vol.Required(CONF_REFRESH_INTERVAL, default=default_refresh): vol.All(
                     vol.Coerce(int), vol.Range(min=1, max=24)
                 ),
             }
         )
 
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={
+                "current_username": current_username,
+            },
+        )
 
 
 class CannotConnect(HomeAssistantError):
