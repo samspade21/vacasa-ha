@@ -155,13 +155,17 @@ We are currently focused on:
    - ✅ **COMPLETED**: Async/await patterns verification
    - ✅ **COMPLETED**: Error handling patterns review
    - ⏳ **NEXT**: File operations async compliance audit
-4. **Testing**: Ensuring the integration works reliably in real-world scenarios
+4. **Bug Fixes**: Resolving critical functionality issues
+   - ✅ **COMPLETED**: Fixed current event detection bug (v1.1.3)
+   - Calendar now properly detects active reservations happening right now
+   - Binary sensor occupancy status now correctly shows "occupied" during active stays
+5. **Testing**: Ensuring the integration works reliably in real-world scenarios
    - Implemented a simplified test strategy (see testStrategy.md)
    - Focusing on critical paths with minimal API dependencies
    - Using mocks to avoid hitting the real Vacasa API
    - Starting with core API client tests, then entity tests, then integration tests
-5. **Documentation**: Improving user documentation and adding example automations
-6. **Preparation for Release**: Getting ready for distribution via HACS
+6. **Documentation**: Improving user documentation and adding example automations
+7. **Preparation for Release**: Getting ready for distribution via HACS
 
 ## HACS Compliance Next Steps
 
