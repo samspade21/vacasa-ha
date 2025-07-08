@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2025-07-08
+
+### Fixed
+- **Critical Bug Fix**: Fixed calendar entity current event detection to properly show occupancy during active stays
+- **Occupancy Detection**: Calendar now correctly identifies and reports current events (happening right now) instead of only future events
+- **Binary Sensor Accuracy**: Occupancy sensors now properly show "occupied" when there's an active reservation
+
+### Technical Details
+- Enhanced `async_get_next_event()` method in calendar.py to prioritize current events over future events
+- Added proper event time range checking (start <= now < end) for current event detection
+- Improved debug logging for current vs. future event identification
+
 ## [1.1.2] - 2025-01-07
 
 ### Added
