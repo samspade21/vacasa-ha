@@ -381,12 +381,14 @@ class TestAuthenticationTokenHandling:
     @pytest.mark.asyncio
     async def test_ensure_session_creates_new_session(self, api_client):
         """Test ensure_session creates new session when none exists."""
-        with patch("aiohttp.ClientSession") as mock_session_class:
-            mock_session = Mock()
-            mock_session_class.return_value = mock_session
-
+        # Mock the internal session creation method to avoid real connectors
+        mock_session = Mock()
+        with patch.object(
+            api_client, "_create_optimized_session", return_value=mock_session
+        ) as mock_create:
             session = await api_client.ensure_session()
 
+            mock_create.assert_called_once()
             assert session == mock_session
             assert api_client._session == mock_session
             assert api_client._close_session is True
@@ -407,16 +409,19 @@ class TestAuthenticationTokenHandling:
         """Test context manager creates and closes session."""
         client = VacasaApiClient("test@example.com", "password")
 
-        with patch("aiohttp.ClientSession") as mock_session_class:
-            mock_session = Mock()
-            mock_session.close = AsyncMock()
-            mock_session_class.return_value = mock_session
+        # Mock the internal session creation method to avoid real connectors
+        mock_session = Mock()
+        mock_session.close = AsyncMock()
 
+        with patch.object(
+            client, "_create_optimized_session", return_value=mock_session
+        ) as mock_create:
             async with client as ctx_client:
                 assert ctx_client == client
                 assert client._session == mock_session
                 assert client._close_session is True
 
+            mock_create.assert_called_once()
             mock_session.close.assert_called_once()
             assert client._session is None
             assert client._close_session is False
