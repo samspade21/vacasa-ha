@@ -8,8 +8,6 @@ import aiohttp
 
 from custom_components.vacasa.api_client import (
     VacasaApiClient,
-    VacasaApiError,
-    AuthenticationError,
     ApiError,
 )
 from custom_components.vacasa.const import (
@@ -18,7 +16,6 @@ from custom_components.vacasa.const import (
     STAY_TYPE_MAINTENANCE,
     STAY_TYPE_BLOCK,
     STAY_TYPE_OTHER,
-    TOKEN_REFRESH_MARGIN,
 )
 
 

@@ -165,7 +165,7 @@ async def test_performance_characteristics():
         await cache.set(f"perf_key_{i}", {"index": i, "data": f"value_{i}"})
 
     set_time = time.time() - start_time
-    print(f"✓ Set {num_items} items in {set_time:.3f}s ({num_items/set_time:.0f} items/sec)")
+    print(f"✓ Set {num_items} items in {set_time:.3f}s ({num_items / set_time:.0f} items/sec)")
 
     # Test retrieval performance
     start_time = time.time()
@@ -175,7 +175,7 @@ async def test_performance_characteristics():
         assert value is not None, f"Failed to retrieve item {i}"
 
     get_time = time.time() - start_time
-    print(f"✓ Retrieved {num_items} items in {get_time:.3f}s ({num_items/get_time:.0f} items/sec)")
+    print(f"✓ Retrieved {num_items} items in {get_time:.3f}s ({num_items / get_time:.0f} items/sec)")
 
     # Test cleanup performance
     start_time = time.time()

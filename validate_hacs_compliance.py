@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-HACS Compliance Validation Script for Vacasa Integration
-"""
+"""HACS Compliance Validation Script for Vacasa Integration."""
 
 import json
 import os
@@ -136,8 +134,10 @@ def validate_documentation():
             'Contributing'
         ]
 
-        missing_sections = [section for section in required_sections
-                           if section not in readme_content]
+        missing_sections = [
+            section for section in required_sections
+            if section not in readme_content
+        ]
 
         if missing_sections:
             print(f"❌ README.md missing sections: {missing_sections}")
@@ -210,7 +210,7 @@ def calculate_compliance_score():
     total = len(validations)
     score = (passed / total) * 100
 
-    print(f"\nValidation Results:")
+    print("\nValidation Results:")
     for category, result in validations:
         status = "✅ PASS" if result else "❌ FAIL"
         print(f"  {category}: {status}")
@@ -237,21 +237,21 @@ def calculate_compliance_score():
 
 
 def main():
-    """Main validation function."""
+    """Run main validation function."""
     print("🔍 HACS Compliance Validation for Vacasa Integration")
     print("=" * 60)
 
     score, grade = calculate_compliance_score()
 
-    print(f"\n📋 Summary:")
+    print("\n📋 Summary:")
     print(f"  - Compliance Score: {score:.1f}%")
     print(f"  - Grade: {grade}")
 
     if score >= 95:
-        print(f"  - Status: Ready for HACS submission! 🎉")
+        print("  - Status: Ready for HACS submission! 🎉")
         return 0
     else:
-        print(f"  - Status: Address failing items before submission")
+        print("  - Status: Address failing items before submission")
         return 1
 
 
