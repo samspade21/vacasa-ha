@@ -6,7 +6,6 @@ HACS Compliance Validation Script for Vacasa Integration
 import json
 import os
 import sys
-from pathlib import Path
 
 
 def check_file_exists(file_path, description):
@@ -70,7 +69,7 @@ def validate_manifest():
         print(f"❌ Invalid codeowners format: {codeowners}")
         return False
 
-    print(f"✅ manifest.json: All validations passed")
+    print("✅ manifest.json: All validations passed")
     return True
 
 
@@ -93,7 +92,7 @@ def validate_hacs_json():
     if missing_recommended:
         print(f"⚠️  Missing recommended fields: {missing_recommended}")
 
-    print(f"✅ hacs.json: All validations passed")
+    print("✅ hacs.json: All validations passed")
     return True
 
 
@@ -138,7 +137,7 @@ def validate_documentation():
         ]
 
         missing_sections = [section for section in required_sections
-                          if section not in readme_content]
+                           if section not in readme_content]
 
         if missing_sections:
             print(f"❌ README.md missing sections: {missing_sections}")
@@ -169,7 +168,7 @@ def validate_github_templates():
 
     all_valid = True
     for template in templates:
-        if not check_file_exists(template, f"GitHub template"):
+        if not check_file_exists(template, "GitHub template"):
             all_valid = False
 
     return all_valid
@@ -187,7 +186,7 @@ def validate_workflows():
 
     all_valid = True
     for workflow in workflows:
-        if not check_file_exists(workflow, f"GitHub workflow"):
+        if not check_file_exists(workflow, "GitHub workflow"):
             all_valid = False
 
     return all_valid

@@ -5,7 +5,6 @@ import pytest
 from unittest.mock import Mock, AsyncMock, patch, mock_open
 from datetime import datetime, timezone, timedelta
 import aiohttp
-import os
 
 from custom_components.vacasa.api_client import (
     VacasaApiClient,
