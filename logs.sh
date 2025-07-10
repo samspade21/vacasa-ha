@@ -104,8 +104,38 @@ show_debug_logs() {
 show_error_logs() {
     echo -e "${CYAN}❌ Vacasa Error Logs (last 20 lines)${NC}"
     echo "===================================="
-    ssh ${SERVER_USER}@${SERVER_IP} "grep -i 'vacasa.*error\|custom_components.vacasa.*error' ${HA_LOG_FILE} | tail -20" 2>/dev/null || {
+    ssh ${SERVER_USER}@${SERVER_IP} "grep -i 'vacasa.*error\|custom_components.vacasa.*error\|config_flow.*error\|500.*error' ${HA_LOG_FILE} | tail -20" 2>/dev/null || {
         echo -e "${RED}❌ Error retrieving error logs${NC}"
+        return 1
+    }
+}
+
+# Function to show config flow specific errors
+show_config_flow_errors() {
+    echo -e "${CYAN}⚙️ Config Flow Error Logs (last 30 lines)${NC}"
+    echo "=========================================="
+    ssh ${SERVER_USER}@${SERVER_IP} "grep -i 'config_flow\|flow.*error\|500.*error\|internal.*server.*error\|traceback\|exception' ${HA_LOG_FILE} | tail -30" 2>/dev/null || {
+        echo -e "${RED}❌ Error retrieving config flow logs${NC}"
+        return 1
+    }
+}
+
+# Function to show import/module errors
+show_import_errors() {
+    echo -e "${CYAN}📦 Import/Module Error Logs (last 25 lines)${NC}"
+    echo "============================================="
+    ssh ${SERVER_USER}@${SERVER_IP} "grep -i 'import.*error\|module.*error\|cannot.*import\|no.*module\|typealias\|typing_extensions' ${HA_LOG_FILE} | tail -25" 2>/dev/null || {
+        echo -e "${RED}❌ Error retrieving import error logs${NC}"
+        return 1
+    }
+}
+
+# Function to show Python/syntax errors
+show_syntax_errors() {
+    echo -e "${CYAN}🐍 Python Syntax Error Logs (last 25 lines)${NC}"
+    echo "=============================================="
+    ssh ${SERVER_USER}@${SERVER_IP} "grep -i 'syntax.*error\|invalid.*syntax\|python.*error\|traceback.*most.*recent' ${HA_LOG_FILE} | tail -25" 2>/dev/null || {
+        echo -e "${RED}❌ Error retrieving syntax error logs${NC}"
         return 1
     }
 }
@@ -217,6 +247,9 @@ show_menu() {
     echo -e "  ${GREEN}7)${NC} Integration startup logs"
     echo -e "  ${GREEN}8)${NC} Current system status"
     echo -e "  ${GREEN}9)${NC} Custom search"
+    echo -e "  ${RED}10)${NC} Config flow errors (500 errors)"
+    echo -e "  ${RED}11)${NC} Import/module errors"
+    echo -e "  ${RED}12)${NC} Python syntax errors"
     echo -e "  ${GREEN}h)${NC} Help"
     echo -e "  ${GREEN}q)${NC} Quit"
     echo ""
@@ -249,6 +282,18 @@ main() {
             ;;
         "status")
             check_connection && show_status
+            exit $?
+            ;;
+        "config_flow"|"configflow")
+            check_connection && show_config_flow_errors
+            exit $?
+            ;;
+        "import"|"imports")
+            check_connection && show_import_errors
+            exit $?
+            ;;
+        "syntax")
+            check_connection && show_syntax_errors
             exit $?
             ;;
         "help"|"-h"|"--help")
@@ -293,6 +338,15 @@ main() {
                 ;;
             9)
                 custom_search
+                ;;
+            10)
+                show_config_flow_errors
+                ;;
+            11)
+                show_import_errors
+                ;;
+            12)
+                show_syntax_errors
                 ;;
             h|H)
                 show_help

@@ -1,8 +1,22 @@
 # Vacasa Properties Integration for Home Assistant
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
+[![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/integration)
 [![GitHub Release](https://img.shields.io/github/release/samspade21/vacasa-ha.svg?style=flat-square)](https://github.com/samspade21/vacasa-ha/releases)
+[![GitHub Release Date](https://img.shields.io/github/release-date/samspade21/vacasa-ha.svg?style=flat-square)](https://github.com/samspade21/vacasa-ha/releases)
 [![License](https://img.shields.io/github/license/samspade21/vacasa-ha.svg?style=flat-square)](LICENSE)
+
+[![Validate](https://github.com/samspade21/vacasa-ha/actions/workflows/validate.yml/badge.svg)](https://github.com/samspade21/vacasa-ha/actions/workflows/validate.yml)
+[![Dependencies](https://github.com/samspade21/vacasa-ha/actions/workflows/dependencies.yml/badge.svg)](https://github.com/samspade21/vacasa-ha/actions/workflows/dependencies.yml)
+[![codecov](https://codecov.io/gh/samspade21/vacasa-ha/branch/main/graph/badge.svg)](https://codecov.io/gh/samspade21/vacasa-ha)
+
+[![GitHub issues](https://img.shields.io/github/issues/samspade21/vacasa-ha.svg?style=flat-square)](https://github.com/samspade21/vacasa-ha/issues)
+[![GitHub pull requests](https://img.shields.io/github/issues-pr/samspade21/vacasa-ha.svg?style=flat-square)](https://github.com/samspade21/vacasa-ha/pulls)
+[![GitHub stars](https://img.shields.io/github/stars/samspade21/vacasa-ha.svg?style=flat-square)](https://github.com/samspade21/vacasa-ha/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/samspade21/vacasa-ha.svg?style=flat-square)](https://github.com/samspade21/vacasa-ha/network)
+
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2025.1+-blue.svg)](https://www.home-assistant.io/)
+[![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 A comprehensive Home Assistant integration for Vacasa vacation rental properties that provides calendars, occupancy sensors, and detailed property information, enabling powerful smart home automation based on reservation status and property characteristics.
 
@@ -232,6 +246,126 @@ footer:
   hours_to_show: 168
 ```
 
+## Troubleshooting
+
+### Common Issues
+
+#### Authentication Problems
+
+**Issue**: Integration fails to authenticate with Vacasa
+- **Symptoms**: "Invalid credentials" error, entities show as unavailable
+- **Solutions**:
+  1. Verify your Vacasa username (email) and password are correct
+  2. Try logging into the Vacasa owner portal directly to confirm credentials
+  3. Check if your account has two-factor authentication enabled (currently not supported)
+  4. Ensure your account has access to properties (owner or manager permissions)
+
+**Issue**: Authentication tokens expire frequently
+- **Symptoms**: Entities become unavailable after working initially
+- **Solutions**:
+  1. Enable debug logging to see token refresh attempts
+  2. Check network connectivity between Home Assistant and Vacasa servers
+  3. Restart the integration via Configuration > Integrations
+
+#### Entity Issues
+
+**Issue**: Calendar entities show no events
+- **Symptoms**: Calendar appears empty despite having reservations
+- **Solutions**:
+  1. Check the date range - calendars show events from 30 days ago to 365 days ahead
+  2. Verify the property has actual reservations in the Vacasa portal
+  3. Use the `vacasa.refresh_data` service to force a data refresh
+  4. Check logs for API errors or rate limiting
+
+**Issue**: Occupancy sensors show incorrect status
+- **Symptoms**: Binary sensor shows "off" when property should be occupied
+- **Solutions**:
+  1. Check if calendar events exist for the current period
+  2. Verify check-in/check-out times are configured correctly
+  3. Review the occupancy sensor attributes for debugging information
+  4. Ensure your Home Assistant timezone matches the property timezone
+
+**Issue**: Property information sensors missing or incorrect
+- **Symptoms**: Some property sensors don't appear or show wrong values
+- **Solutions**:
+  1. Check if the property information is complete in the Vacasa portal
+  2. Use `vacasa.refresh_data` to reload property information
+  3. Verify the integration has the latest property data from Vacasa
+
+#### Performance Issues
+
+**Issue**: Integration loads slowly or times out
+- **Symptoms**: Long startup times, frequent "unavailable" states
+- **Solutions**:
+  1. Increase the refresh interval to reduce API calls
+  2. Check your internet connection and DNS resolution
+  3. Monitor Home Assistant logs for network errors
+  4. Consider using the performance optimization settings in configuration
+
+#### Configuration Issues
+
+**Issue**: Can't update credentials in options flow
+- **Symptoms**: Changes to username/password don't take effect
+- **Solutions**:
+  1. Ensure you're using the integration's options flow (not reconfiguring)
+  2. Restart Home Assistant after credential changes
+  3. Clear the integration cache using `vacasa.clear_cache` service
+  4. If still failing, remove and re-add the integration
+
+### Debug Logging
+
+To enable detailed debug logging for troubleshooting:
+
+1. Add the following to your `configuration.yaml`:
+```yaml
+logger:
+  default: info
+  logs:
+    custom_components.vacasa: debug
+```
+
+2. Restart Home Assistant
+
+3. Check the logs for detailed information about API calls, authentication, and data processing
+
+### Useful Debug Information
+
+When reporting issues, please include:
+
+- Home Assistant version
+- Integration version
+- Relevant log entries with debug logging enabled
+- Entity states and attributes
+- Configuration details (without passwords)
+- Steps to reproduce the issue
+
+### Performance Optimization
+
+For better performance with multiple properties:
+
+1. **Adjust Refresh Interval**: Increase the refresh interval in integration options
+2. **Monitor API Usage**: Watch for rate limiting in logs
+3. **Use Efficient Automations**: Prefer state-based triggers over frequent polling
+4. **Enable Caching**: Use the built-in property data caching (enabled by default)
+
+### Network Troubleshooting
+
+If you're experiencing network-related issues:
+
+1. **Check Connectivity**: Ensure Home Assistant can reach Vacasa servers
+2. **DNS Resolution**: Verify DNS is working correctly
+3. **Firewall**: Check for firewall rules blocking outbound HTTPS traffic
+4. **Proxy Settings**: If using a proxy, ensure it's configured correctly
+
+### Getting Help
+
+If you're still experiencing issues:
+
+1. **Search Existing Issues**: Check the [GitHub issues](https://github.com/samspade21/vacasa-ha/issues)
+2. **Enable Debug Logging**: Follow the debug logging instructions above
+3. **Create an Issue**: Use the bug report template with detailed information
+4. **Community Support**: Join discussions in the repository
+
 ## Development
 
 ### Prerequisites
@@ -272,13 +406,135 @@ pytest
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+We welcome contributions from the community! Whether you're fixing bugs, adding features, improving documentation, or helping with testing, your contributions help make this integration better for everyone.
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+### Ways to Contribute
+
+- **Bug Reports**: Help us identify and fix issues
+- **Feature Requests**: Suggest new functionality or improvements
+- **Code Contributions**: Submit bug fixes, new features, or optimizations
+- **Documentation**: Improve README, add examples, or clarify instructions
+- **Testing**: Test with different configurations and report findings
+- **Translations**: Help translate the integration to other languages
+
+### Before Contributing
+
+1. **Search Existing Issues**: Check if your bug/feature has already been reported
+2. **Review Documentation**: Make sure you understand the project structure and goals
+3. **Test Your Changes**: Ensure your changes work as expected
+4. **Follow Code Standards**: Maintain consistency with existing code style
+
+### Development Setup
+
+1. **Fork and Clone**:
+   ```bash
+   git clone https://github.com/yourusername/vacasa-ha.git
+   cd vacasa-ha
+   ```
+
+2. **Create Development Environment**:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+3. **Install Pre-commit Hooks**:
+   ```bash
+   pre-commit install
+   ```
+
+4. **Create Feature Branch**:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+### Code Standards
+
+- **Python Style**: Follow PEP 8 and use the existing code style
+- **Type Hints**: Add type hints to new functions and methods
+- **Documentation**: Add docstrings to new functions and classes
+- **Error Handling**: Implement proper exception handling
+- **Async/Await**: Use async patterns for I/O operations
+- **Logging**: Use appropriate logging levels (debug, info, warning, error)
+
+### Testing Guidelines
+
+1. **Unit Tests**: Add tests for new functionality
+2. **Integration Tests**: Test with Home Assistant when possible
+3. **Manual Testing**: Test with real Vacasa accounts when feasible
+4. **Edge Cases**: Consider error conditions and edge cases
+
+### Submitting Changes
+
+1. **Create Quality Commits**:
+   ```bash
+   git add .
+   git commit -m "feat: add new occupancy prediction feature"
+   ```
+
+2. **Push to Your Fork**:
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+
+3. **Create Pull Request**: Use the provided PR template and fill out all sections
+
+### Pull Request Guidelines
+
+- **Clear Description**: Explain what your changes do and why
+- **Reference Issues**: Link to related issues with "Fixes #123" or "Closes #456"
+- **Test Results**: Include information about testing performed
+- **Breaking Changes**: Clearly document any breaking changes
+- **Documentation**: Update README or other docs as needed
+
+### Commit Message Format
+
+We use conventional commits for better release automation:
+
+- `feat:` - New features
+- `fix:` - Bug fixes
+- `docs:` - Documentation changes
+- `style:` - Code style changes (formatting, etc.)
+- `refactor:` - Code refactoring
+- `test:` - Adding or updating tests
+- `chore:` - Maintenance tasks
+
+Examples:
+```
+feat: add property timezone detection
+fix: resolve calendar event timezone issues
+docs: update troubleshooting guide
+```
+
+### Review Process
+
+1. **Automated Checks**: All PRs must pass CI/CD checks
+2. **Code Review**: Maintainers will review your code
+3. **Testing**: Changes may be tested with live Vacasa accounts
+4. **Documentation**: Ensure documentation is updated as needed
+
+### Code of Conduct
+
+- Be respectful and inclusive
+- Focus on constructive feedback
+- Help others learn and grow
+- Maintain a welcoming environment
+
+### Getting Help
+
+- **Questions**: Open a discussion or ask in an issue
+- **Development Help**: Reach out to maintainers
+- **Feature Discussion**: Create a feature request issue first
+
+### Recognition
+
+Contributors are recognized in:
+- Release notes for their contributions
+- README contributors section (if added)
+- Git commit history
+
+Thank you for contributing to the Vacasa Home Assistant integration! 🎉
 
 ## For Developers
 

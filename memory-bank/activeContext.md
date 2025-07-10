@@ -20,7 +20,15 @@ The integration is fully compatible with Home Assistant's async architecture and
 
 ## Recent Changes
 
-1. **HACS Best Practices & User Experience Improvements (v1.1.2) - JUST COMPLETED**
+1. **Performance and Optimization Improvements (v1.2.0) - JUST COMPLETED**
+   - **Intelligent Property Data Caching**: Added TTL-based caching for property information to reduce API calls
+   - **Connection Pooling Optimization**: Implemented optimized aiohttp session with connection limits and keepalive
+   - **Exponential Backoff with Jitter**: Added robust retry mechanism for network resilience and thundering herd prevention
+   - **Memory Management Optimization**: Efficient state tracking to avoid redundant API operations
+   - **Configurable Performance Settings**: Added options for cache TTL, connection limits, and retry behavior
+   - **Backward Compatibility**: All new features maintain full backward compatibility with existing configurations
+
+2. **HACS Best Practices & User Experience Improvements (v1.1.2) - Previously Completed**
    - **Comprehensive HACS Analysis**: Created detailed best practices analysis identifying areas for improvement
    - **Fixed Critical Credential Update Issue**: Users can now update Vacasa username/password without deleting integration
    - **Automatic Reload for All Config Changes**: Any change in configuration now triggers automatic integration reload
@@ -142,30 +150,44 @@ The integration is fully compatible with Home Assistant's async architecture and
 ## Current Focus
 
 We are currently focused on:
-1. **HACS Best Practices Compliance**: Ensuring full compliance with HACS standards
+1. **Performance and Optimization (v1.2.0) - JUST COMPLETED**:
+   - ✅ **COMPLETED**: Intelligent property data caching with TTL support
+   - ✅ **COMPLETED**: Connection pooling optimization for better HTTP performance
+   - ✅ **COMPLETED**: Exponential backoff with jitter for network resilience
+   - ✅ **COMPLETED**: Memory management optimization to reduce redundant operations
+   - ✅ **COMPLETED**: Configurable performance settings (cache TTL, retry behavior)
+   - ✅ **COMPLETED**: Backward compatibility verification
+
+2. **HACS Best Practices Compliance**: Ensuring full compliance with HACS standards
    - ✅ **COMPLETED**: Comprehensive HACS best practices analysis
    - ✅ **COMPLETED**: Fixed critical credential update issue in options flow
    - ✅ **COMPLETED**: Automatic reload for all configuration changes
    - **Current Grade**: B+ (Good with room for improvement)
-2. **User Experience Improvements**: Addressing usability issues
+
+3. **User Experience Improvements**: Addressing usability issues
    - ✅ **COMPLETED**: Added ability to update Vacasa credentials in options flow
    - ✅ **COMPLETED**: Enhanced translations for better user guidance
    - ✅ **COMPLETED**: Automatic integration reload for configuration changes
-3. **Code Quality**: Ensuring adherence to Home Assistant standards
+
+4. **Code Quality**: Ensuring adherence to Home Assistant standards
    - ✅ **COMPLETED**: Async/await patterns verification
    - ✅ **COMPLETED**: Error handling patterns review
-   - ⏳ **NEXT**: File operations async compliance audit
-4. **Bug Fixes**: Resolving critical functionality issues
+   - ✅ **COMPLETED**: File operations async compliance audit
+
+5. **Bug Fixes**: Resolving critical functionality issues
    - ✅ **COMPLETED**: Fixed current event detection bug (v1.1.3)
    - Calendar now properly detects active reservations happening right now
    - Binary sensor occupancy status now correctly shows "occupied" during active stays
-5. **Testing**: Ensuring the integration works reliably in real-world scenarios
+
+6. **Testing**: Ensuring the integration works reliably in real-world scenarios
    - Implemented a simplified test strategy (see testStrategy.md)
    - Focusing on critical paths with minimal API dependencies
    - Using mocks to avoid hitting the real Vacasa API
    - Starting with core API client tests, then entity tests, then integration tests
-6. **Documentation**: Improving user documentation and adding example automations
-7. **Preparation for Release**: Getting ready for distribution via HACS
+
+7. **Documentation**: Improving user documentation and adding example automations
+
+8. **Preparation for Release**: Getting ready for distribution via HACS
 
 ## HACS Compliance Next Steps
 

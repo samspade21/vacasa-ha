@@ -7,18 +7,18 @@
         "data": {
           "username": "Email",
           "password": "Password",
-          "refresh_interval": "Data refresh interval (hours)",
-          "owner_id": "Owner ID (required if cannot be determined automatically)",
-          "checkin_time": "Default check-in time (format: HH:MM:SS, e.g. 16:00:00 for 4 PM)",
-          "checkout_time": "Default check-out time (format: HH:MM:SS, e.g. 10:00:00 for 10 AM)"
+          "refresh_interval": "Data refresh interval (hours)"
         }
       }
     },
     "error": {
       "cannot_connect": "Failed to connect to Vacasa API. Please check your internet connection and credentials.",
       "invalid_auth": "Invalid authentication credentials. Please check your email and password.",
-      "owner_id_error": "Could not retrieve owner ID automatically. Please provide it manually in the Owner ID field. You can find your Owner ID in one of these ways:\n1. In browser session storage under 'owners-portal:owner' (contactIds array)\n2. In the URL when logged into the Vacasa owner portal (e.g., https://owners.vacasa.com/owner/123456)\n3. In the network requests to verify-token endpoint (contactIds array)",
-      "unknown": "Unexpected error occurred. Please check the logs for more information."
+      "owner_id_error": "Could not retrieve owner ID from Vacasa API. Please check your credentials and try again.",
+      "unknown": "Unexpected error occurred. Please check the logs for more information.",
+      "invalid_email": "Please enter a valid email address.",
+      "invalid_password": "Password must be at least 8 characters long and cannot be empty or contain only spaces.",
+      "invalid_input": "Invalid input. Please check your entries and try again."
     },
     "abort": {
       "already_configured": "This Vacasa account is already configured."

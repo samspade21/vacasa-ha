@@ -15,6 +15,11 @@
 - ✅ Simplified authentication flow
 - ✅ Improved token handling
 - ✅ Automatic owner ID retrieval
+- ✅ Intelligent property data caching with TTL
+- ✅ Connection pooling optimization
+- ✅ Exponential backoff with jitter for network resilience
+- ✅ Memory management optimization
+- ✅ Configurable performance settings
 
 ### Home Assistant Integration
 - ✅ Custom component directory structure
@@ -101,7 +106,11 @@
 
 ### Performance
 - ✅ Token caching reduces authentication requests
-- ✅ Efficient API usage
+- ✅ Efficient API usage with intelligent property data caching
+- ✅ Connection pooling optimization for better HTTP performance
+- ✅ Exponential backoff with jitter for network resilience
+- ✅ Memory management optimization to reduce redundant operations
+- ✅ Configurable cache TTL and retry behavior
 - ✅ Minimal resource usage in Home Assistant
 - ✅ Reliable refresh scheduling
 

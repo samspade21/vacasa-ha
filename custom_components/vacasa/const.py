@@ -15,12 +15,22 @@ DEFAULT_REFRESH_INTERVAL = 8  # hours
 DEFAULT_TIMEOUT = 30  # seconds
 TOKEN_REFRESH_MARGIN = 300  # seconds (5 minutes)
 
+# Performance optimization settings
+DEFAULT_CACHE_TTL = 3600  # seconds (1 hour) for property data
+DEFAULT_MAX_CONNECTIONS = 10
+DEFAULT_KEEPALIVE_TIMEOUT = 30  # seconds
+DEFAULT_CONN_TIMEOUT = 30  # seconds
+DEFAULT_READ_TIMEOUT = 30  # seconds
+DEFAULT_JITTER_MAX = 1.0  # seconds
+PROPERTY_CACHE_FILE = ".vacasa_property_cache.json"
+
 # API
 AUTH_URL = "https://accounts.vacasa.io/login"
 API_BASE_URL = "https://owner.vacasa.io/api/v1"
 TOKEN_CACHE_FILE = ".vacasa_token.json"
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
+RETRY_BACKOFF_MULTIPLIER = 2
 
 # Stay types
 STAY_TYPE_GUEST = "guest"

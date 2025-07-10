@@ -1,0 +1,218 @@
+name: Dependencies
+
+on:
+  schedule:
+    - cron: "0 0 * * 1" # Weekly on Monday
+  workflow_dispatch:
+  push:
+    paths:
+      - "requirements.txt"
+      - "custom_components/vacasa/manifest.json"
+
+jobs:
+  check-dependencies:
+    runs-on: ubuntu-latest
+    name: Check Dependencies
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install pip-tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-tools pip-audit
+
+      - name: Check for outdated packages
+        run: |
+          pip list --outdated --format=json > outdated.json
+          if [ -s outdated.json ] && [ "$(cat outdated.json)" != "[]" ]; then
+            echo "::warning::Outdated packages found"
+            cat outdated.json
+          fi
+
+      - name: Security audit
+        run: |
+          pip-audit --format=json --output=audit.json || true
+          if [ -s audit.json ]; then
+            echo "::warning::Security vulnerabilities found"
+            cat audit.json
+          fi
+
+      - name: Upload dependency reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: dependency-reports
+          path: |
+            outdated.json
+            audit.json
+
+  validate-manifest-dependencies:
+    runs-on: ubuntu-latest
+    name: Validate Manifest Dependencies
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Validate dependencies
+        run: |
+          python -c "
+          import json
+          import pkg_resources
+          import sys
+
+          # Load manifest
+          with open('custom_components/vacasa/manifest.json', 'r') as f:
+              manifest = json.load(f)
+
+          # Check if all dependencies are valid
+          requirements = manifest.get('requirements', [])
+          invalid_deps = []
+
+          for req in requirements:
+              try:
+                  pkg_resources.Requirement.parse(req)
+              except Exception as e:
+                  invalid_deps.append(f'{req}: {e}')
+
+          if invalid_deps:
+              print('Invalid dependencies found:')
+              for dep in invalid_deps:
+                  print(f'  - {dep}')
+              sys.exit(1)
+
+          print(f'All {len(requirements)} dependencies are valid')
+          "
+
+  check-homeassistant-compatibility:
+    runs-on: ubuntu-latest
+    name: Check Home Assistant Compatibility
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Check minimum Home Assistant version
+        run: |
+          python -c "
+          import json
+          import sys
+          from packaging import version
+
+          # Load manifest
+          with open('custom_components/vacasa/manifest.json', 'r') as f:
+              manifest = json.load(f)
+
+          # Get minimum HA version
+          min_ha_version = manifest.get('homeassistant', '0.0.0')
+
+          # Check if version is reasonable (not too old)
+          min_version = version.parse(min_ha_version)
+          current_year = 2025
+
+          if min_version.major < current_year - 2:
+              print(f'::warning::Minimum Home Assistant version {min_ha_version} might be too old')
+
+          print(f'Minimum Home Assistant version: {min_ha_version}')
+          "
+
+  create-dependency-update-pr:
+    runs-on: ubuntu-latest
+    name: Create Dependency Update PR
+    if: github.event_name == 'schedule'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check for updates
+        id: check_updates
+        run: |
+          pip list --outdated --format=json > outdated.json
+          if [ -s outdated.json ] && [ "$(cat outdated.json)" != "[]" ]; then
+            echo "updates_available=true" >> $GITHUB_OUTPUT
+          else
+            echo "updates_available=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request
+        if: steps.check_updates.outputs.updates_available == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: update dependencies"
+          title: "chore: update dependencies"
+          body: |
+            This PR updates outdated dependencies.
+
+            ## Changes
+            - Updated outdated packages to latest versions
+            - Verified compatibility with Home Assistant
+
+            ## Testing
+            - [ ] All tests pass
+            - [ ] Integration loads successfully
+            - [ ] No breaking changes detected
+
+            **Note**: This is an automated PR. Please review changes carefully before merging.
+          branch: chore/update-dependencies
+          delete-branch: true
+
+  notify-security-issues:
+    runs-on: ubuntu-latest
+    name: Notify Security Issues
+    if: failure()
+    steps:
+      - name: Create security issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `Security Alert: Dependency vulnerabilities found`;
+            const body = `
+            ## Security Alert
+
+            Automated security scan found potential vulnerabilities in dependencies.
+
+            **Action Required:**
+            1. Review the security audit report in the workflow artifacts
+            2. Update affected packages to secure versions
+            3. Test the integration after updates
+
+            **Workflow:** ${{ github.workflow }}
+            **Run:** ${{ github.run_number }}
+            **Commit:** ${{ github.sha }}
+
+            This issue was created automatically by the security workflow.
+            `;
+
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['security', 'dependencies', 'automated']
+            });

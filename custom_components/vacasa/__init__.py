@@ -2,8 +2,9 @@
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, Dict
+from typing import Any
 
 import async_timeout
 from homeassistant.config_entries import ConfigEntry
@@ -17,8 +18,6 @@ from .const import (
     CONF_PASSWORD,
     CONF_REFRESH_INTERVAL,
     CONF_USERNAME,
-    DATA_CLIENT,
-    DATA_COORDINATOR,
     DEFAULT_REFRESH_INTERVAL,
     DOMAIN,
     PLATFORMS,
@@ -29,10 +28,56 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Vacasa from a config entry."""
-    hass.data.setdefault(DOMAIN, {})
+@dataclass
+class VacasaData:
+    """Runtime data for Vacasa integration."""
 
+    client: VacasaApiClient
+    coordinator: "VacasaDataUpdateCoordinator"
+
+
+# Type alias for config entry (compatible with older Python versions)
+VacasaConfigEntry = ConfigEntry[VacasaData]
+
+
+class VacasaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    """Class to manage fetching data from the Vacasa API."""
+
+    def __init__(self, hass: HomeAssistant, client: VacasaApiClient) -> None:
+        """Initialize coordinator."""
+        super().__init__(
+            hass,
+            _LOGGER,
+            name="Vacasa",
+            update_interval=timedelta(hours=DEFAULT_REFRESH_INTERVAL),
+        )
+        self.client = client
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        """Update data via API."""
+        try:
+            # We don't actually need to fetch any data here, as the calendar
+            # entities will fetch their own data when needed. This is just to
+            # ensure the client is authenticated.
+            async with async_timeout.timeout(30):
+                await self.client.ensure_token()
+            return {"last_update": self.client._token_expiry}
+        except AuthenticationError as err:
+            _LOGGER.error("Authentication error during update: %s", err)
+            raise UpdateFailed(f"Authentication failed: {err}") from err
+        except ApiError as err:
+            _LOGGER.error("API error during update: %s", err)
+            raise UpdateFailed(f"API error: {err}") from err
+        except asyncio.TimeoutError as err:
+            _LOGGER.error("Timeout error during update")
+            raise UpdateFailed("Timeout while fetching data") from err
+        except Exception as err:
+            _LOGGER.exception("Unexpected error during update: %s", err)
+            raise UpdateFailed(f"Unexpected error: {err}") from err
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: VacasaConfigEntry) -> bool:
+    """Set up Vacasa from a config entry."""
     # Get configuration
     username = entry.data[CONF_USERNAME]
     password = entry.data[CONF_PASSWORD]
@@ -41,7 +86,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL),
     )
 
-    # Create API client
+    # Create API client with modern session injection
     session = async_get_clientsession(hass)
     client = VacasaApiClient(
         username=username,
@@ -61,23 +106,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("API error during setup: %s", err)
         raise ConfigEntryNotReady from err
 
-    # Create update coordinator
-    coordinator = DataUpdateCoordinator(
-        hass,
-        _LOGGER,
-        name="Vacasa",
-        update_method=lambda: _async_update_data(client),
-        update_interval=timedelta(hours=refresh_interval),
-    )
+    # Create update coordinator with proper class
+    coordinator = VacasaDataUpdateCoordinator(hass, client)
+
+    # Update coordinator with options refresh interval
+    coordinator.update_interval = timedelta(hours=refresh_interval)
 
     # Fetch initial data
     await coordinator.async_config_entry_first_refresh()
 
-    # Store client and coordinator
-    hass.data[DOMAIN][entry.entry_id] = {
-        DATA_CLIENT: client,
-        DATA_COORDINATOR: coordinator,
-    }
+    # Store runtime data using modern pattern
+    entry.runtime_data = VacasaData(client=client, coordinator=coordinator)
 
     # Register services
     async def handle_refresh_data(call: ServiceCall) -> None:
@@ -109,51 +148,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+async def async_update_options(hass: HomeAssistant, entry: VacasaConfigEntry) -> None:
     """Handle options update."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: VacasaConfigEntry) -> bool:
     """Unload a config entry."""
     # Unload platforms
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
-    # Remove services if this is the last entry
-    if len(hass.data[DOMAIN]) == 1:
+    # Remove services if this is the last entry - use modern pattern
+    other_loaded_entries = [
+        _entry
+        for _entry in hass.config_entries.async_loaded_entries(DOMAIN)
+        if _entry.entry_id != entry.entry_id
+    ]
+    if not other_loaded_entries:
+        # The last config entry is being unloaded, remove shared services
         for service in [SERVICE_REFRESH_DATA, SERVICE_CLEAR_CACHE]:
             if hass.services.has_service(DOMAIN, service):
                 hass.services.async_remove(DOMAIN, service)
 
-    # Remove entry data
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-
-        # Remove domain data if empty
-        if not hass.data[DOMAIN]:
-            hass.data.pop(DOMAIN)
-
+    # Runtime data is automatically cleaned up
     return unload_ok
-
-
-async def _async_update_data(client: VacasaApiClient) -> Dict[str, Any]:
-    """Update data via API."""
-    try:
-        # We don't actually need to fetch any data here, as the calendar
-        # entities will fetch their own data when needed. This is just to
-        # ensure the client is authenticated.
-        async with async_timeout.timeout(30):
-            await client.ensure_token()
-        return {"last_update": client._token_expiry}
-    except AuthenticationError as err:
-        _LOGGER.error("Authentication error during update: %s", err)
-        raise UpdateFailed(f"Authentication failed: {err}") from err
-    except ApiError as err:
-        _LOGGER.error("API error during update: %s", err)
-        raise UpdateFailed(f"API error: {err}") from err
-    except asyncio.TimeoutError as err:
-        _LOGGER.error("Timeout error during update")
-        raise UpdateFailed("Timeout while fetching data") from err
-    except Exception as err:
-        _LOGGER.exception("Unexpected error during update: %s", err)
-        raise UpdateFailed(f"Unexpected error: {err}") from err
