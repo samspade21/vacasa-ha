@@ -9,7 +9,7 @@ import time
 # Add the custom components path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'custom_components', 'vacasa'))
 
-from cached_data import CachedData, RetryWithBackoff
+from cached_data import CachedData, RetryWithBackoff  # noqa: E402
 
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG)

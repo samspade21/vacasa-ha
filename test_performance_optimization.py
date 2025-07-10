@@ -2,9 +2,7 @@
 
 import asyncio
 import logging
-import os
 import time
-from datetime import datetime
 
 from custom_components.vacasa.api_client import VacasaApiClient
 from custom_components.vacasa.cached_data import CachedData, RetryWithBackoff

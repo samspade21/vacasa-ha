@@ -10,13 +10,6 @@ import tempfile
 import os
 
 from custom_components.vacasa.api_client import VacasaApiClient
-from custom_components.vacasa.const import (
-    STAY_TYPE_GUEST,
-    STAY_TYPE_OWNER,
-    STAY_TYPE_MAINTENANCE,
-    STAY_TYPE_BLOCK,
-    STAY_TYPE_OTHER,
-)
 
 
 @pytest.fixture
@@ -71,13 +64,13 @@ def api_client_no_hass(temp_token_cache):
 
 @pytest.fixture
 def valid_token():
-    """Valid JWT token for testing."""
+    """Return valid JWT token for testing."""
     return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
 
 
 @pytest.fixture
 def valid_token_cache_data():
-    """Valid token cache data."""
+    """Return valid token cache data."""
     expiry_time = datetime.now(timezone.utc) + timedelta(minutes=30)
     return {
         "token": "valid_test_token",
