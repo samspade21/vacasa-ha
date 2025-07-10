@@ -1,21 +1,19 @@
 """Unit tests for the Vacasa API client."""
 
 import json
-import pytest
-from unittest.mock import Mock, AsyncMock, patch, mock_open
-from datetime import datetime, timezone, timedelta
-import aiohttp
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, Mock, mock_open, patch
 
-from custom_components.vacasa.api_client import (
-    VacasaApiClient,
-    ApiError,
-)
+import aiohttp
+import pytest
+
+from custom_components.vacasa.api_client import ApiError, VacasaApiClient
 from custom_components.vacasa.const import (
-    STAY_TYPE_GUEST,
-    STAY_TYPE_OWNER,
-    STAY_TYPE_MAINTENANCE,
     STAY_TYPE_BLOCK,
+    STAY_TYPE_GUEST,
+    STAY_TYPE_MAINTENANCE,
     STAY_TYPE_OTHER,
+    STAY_TYPE_OWNER,
 )
 
 
@@ -43,7 +41,7 @@ class TestVacasaApiClient:
             password="password",
             session=mock_session,
             token_cache_path=temp_token_cache,
-            hass=mock_hass
+            hass=mock_hass,
         )
 
         assert client._username == "test@example.com"
@@ -105,20 +103,16 @@ class TestReservationCategorization:
         result = api_client.categorize_reservation(mock_owner_reservation)
         assert result == STAY_TYPE_OWNER
 
-    def test_categorize_reservation_maintenance(self, api_client, mock_maintenance_reservation):
+    def test_categorize_reservation_maintenance(
+        self, api_client, mock_maintenance_reservation
+    ):
         """Test maintenance categorization."""
         result = api_client.categorize_reservation(mock_maintenance_reservation)
         assert result == STAY_TYPE_MAINTENANCE
 
     def test_categorize_reservation_property_care(self, api_client):
         """Test property care categorization (alternative maintenance type)."""
-        reservation = {
-            "attributes": {
-                "ownerHold": {
-                    "holdType": "Property Care"
-                }
-            }
-        }
+        reservation = {"attributes": {"ownerHold": {"holdType": "Property Care"}}}
         result = api_client.categorize_reservation(reservation)
         assert result == STAY_TYPE_MAINTENANCE
 
@@ -134,36 +128,20 @@ class TestReservationCategorization:
 
     def test_categorize_reservation_owner_hold_unknown_type(self, api_client):
         """Test categorization with unknown owner hold type."""
-        reservation = {
-            "attributes": {
-                "ownerHold": {
-                    "holdType": "Unknown Type"
-                }
-            }
-        }
+        reservation = {"attributes": {"ownerHold": {"holdType": "Unknown Type"}}}
         result = api_client.categorize_reservation(reservation)
         assert result == STAY_TYPE_BLOCK
 
     def test_categorize_reservation_case_insensitive(self, api_client):
         """Test categorization is case insensitive."""
-        reservation = {
-            "attributes": {
-                "ownerHold": {
-                    "holdType": "OWNER"
-                }
-            }
-        }
+        reservation = {"attributes": {"ownerHold": {"holdType": "OWNER"}}}
         result = api_client.categorize_reservation(reservation)
         assert result == STAY_TYPE_OWNER
 
     def test_categorize_reservation_partial_guest_info(self, api_client):
         """Test categorization with partial guest information."""
         reservation = {
-            "attributes": {
-                "firstName": "John",
-                "lastName": None,
-                "ownerHold": None
-            }
+            "attributes": {"firstName": "John", "lastName": None, "ownerHold": None}
         }
         result = api_client.categorize_reservation(reservation)
         assert result == STAY_TYPE_OTHER
@@ -191,7 +169,7 @@ class TestTokenCaching:
         api_client._token_expiry = datetime.now(timezone.utc) + timedelta(minutes=10)
 
         # Mock the synchronous save method
-        with patch.object(api_client, '_save_token_to_cache_sync') as mock_save:
+        with patch.object(api_client, "_save_token_to_cache_sync") as mock_save:
             await api_client._save_token_to_cache()
 
             # Verify hass executor was called
@@ -201,10 +179,12 @@ class TestTokenCaching:
     async def test_save_token_to_cache_without_hass(self, api_client_no_hass):
         """Test saving token to cache without hass instance."""
         api_client_no_hass._token = "test_token"
-        api_client_no_hass._token_expiry = datetime.now(timezone.utc) + timedelta(minutes=10)
+        api_client_no_hass._token_expiry = datetime.now(timezone.utc) + timedelta(
+            minutes=10
+        )
 
         # Mock the synchronous save method
-        with patch.object(api_client_no_hass, '_save_token_to_cache_sync') as mock_save:
+        with patch.object(api_client_no_hass, "_save_token_to_cache_sync") as mock_save:
             await api_client_no_hass._save_token_to_cache()
 
             # Verify synchronous method was called directly
@@ -213,7 +193,7 @@ class TestTokenCaching:
     @pytest.mark.asyncio
     async def test_save_token_to_cache_no_token(self, api_client):
         """Test saving token to cache when no token is present."""
-        with patch.object(api_client, '_save_token_to_cache_sync') as mock_save:
+        with patch.object(api_client, "_save_token_to_cache_sync") as mock_save:
             await api_client._save_token_to_cache()
 
             # Should not call save if no token
@@ -225,21 +205,25 @@ class TestTokenCaching:
         api_client._token_expiry = datetime.now(timezone.utc) + timedelta(minutes=10)
 
         mock_file = mock_open()
-        with patch('builtins.open', mock_file), \
-             patch('json.dump') as mock_dump, \
-             patch('os.chmod') as mock_chmod:
+        with (
+            patch("builtins.open", mock_file),
+            patch("json.dump") as mock_dump,
+            patch("os.chmod") as mock_chmod,
+        ):
 
             api_client._save_token_to_cache_sync()
 
             # Verify file operations
-            mock_file.assert_called_once_with(api_client._token_cache_file, 'w')
+            mock_file.assert_called_once_with(api_client._token_cache_file, "w")
             mock_dump.assert_called_once()
             mock_chmod.assert_called_once_with(api_client._token_cache_file, 0o600)
 
     @pytest.mark.asyncio
     async def test_load_token_from_cache_with_hass(self, api_client):
         """Test loading token from cache with hass instance."""
-        with patch.object(api_client, '_load_token_from_cache_sync', return_value=True) as mock_load:
+        with patch.object(
+            api_client, "_load_token_from_cache_sync", return_value=True
+        ) as mock_load:
             # Configure hass mock to return the expected value
             api_client._hass.async_add_executor_job.return_value = True
 
@@ -252,7 +236,9 @@ class TestTokenCaching:
     @pytest.mark.asyncio
     async def test_load_token_from_cache_without_hass(self, api_client_no_hass):
         """Test loading token from cache without hass instance."""
-        with patch.object(api_client_no_hass, '_load_token_from_cache_sync', return_value=True) as mock_load:
+        with patch.object(
+            api_client_no_hass, "_load_token_from_cache_sync", return_value=True
+        ) as mock_load:
             result = await api_client_no_hass._load_token_from_cache()
 
             # Verify synchronous method was called directly
@@ -261,22 +247,26 @@ class TestTokenCaching:
 
     def test_load_token_from_cache_sync_file_not_exists(self, api_client):
         """Test loading token from cache when file doesn't exist."""
-        with patch('os.path.exists', return_value=False):
+        with patch("os.path.exists", return_value=False):
             result = api_client._load_token_from_cache_sync()
             assert result is False
 
-    def test_load_token_from_cache_sync_valid_cache(self, api_client, valid_token_cache_data):
+    def test_load_token_from_cache_sync_valid_cache(
+        self, api_client, valid_token_cache_data
+    ):
         """Test loading valid token from cache."""
         mock_file = mock_open(read_data=json.dumps(valid_token_cache_data))
 
-        with patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_file), \
-             patch('json.load', return_value=valid_token_cache_data):
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", mock_file),
+            patch("json.load", return_value=valid_token_cache_data),
+        ):
 
             result = api_client._load_token_from_cache_sync()
 
             assert result is True
-            assert api_client._token == valid_token_cache_data['token']
+            assert api_client._token == valid_token_cache_data["token"]
             assert api_client._token_expiry is not None
 
     def test_load_token_from_cache_sync_invalid_cache(self, api_client):
@@ -284,9 +274,11 @@ class TestTokenCaching:
         invalid_data = {"invalid": "data"}
         mock_file = mock_open(read_data=json.dumps(invalid_data))
 
-        with patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_file), \
-             patch('json.load', return_value=invalid_data):
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", mock_file),
+            patch("json.load", return_value=invalid_data),
+        ):
 
             result = api_client._load_token_from_cache_sync()
 
@@ -295,9 +287,15 @@ class TestTokenCaching:
     @pytest.mark.asyncio
     async def test_load_token_from_cache_json_error(self, api_client):
         """Test loading token from cache with JSON decode error."""
-        with patch.object(api_client, '_load_token_from_cache_sync', side_effect=json.JSONDecodeError("Invalid", "", 0)):
+        with patch.object(
+            api_client,
+            "_load_token_from_cache_sync",
+            side_effect=json.JSONDecodeError("Invalid", "", 0),
+        ):
             # Configure hass mock to raise the exception through executor
-            api_client._hass.async_add_executor_job.side_effect = json.JSONDecodeError("Invalid", "", 0)
+            api_client._hass.async_add_executor_job.side_effect = json.JSONDecodeError(
+                "Invalid", "", 0
+            )
 
             result = await api_client._load_token_from_cache()
             assert result is False
@@ -308,8 +306,10 @@ class TestTokenCaching:
         api_client._token = "test_token"
         api_client._token_expiry = datetime.now(timezone.utc)
 
-        with patch('os.path.exists', return_value=True), \
-             patch('os.remove') as mock_remove:
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("os.remove") as mock_remove,
+        ):
 
             await api_client.clear_cache()
 
@@ -320,8 +320,10 @@ class TestTokenCaching:
     @pytest.mark.asyncio
     async def test_clear_cache_file_not_exists(self, api_client):
         """Test clearing cache when file doesn't exist."""
-        with patch('os.path.exists', return_value=False), \
-             patch('os.remove') as mock_remove:
+        with (
+            patch("os.path.exists", return_value=False),
+            patch("os.remove") as mock_remove,
+        ):
 
             await api_client.clear_cache()
 
@@ -346,8 +348,14 @@ class TestAuthenticationTokenHandling:
     @pytest.mark.asyncio
     async def test_ensure_token_load_from_cache(self, api_client):
         """Test ensure_token loading valid token from cache."""
-        with patch.object(api_client, '_load_token_from_cache', return_value=True), \
-             patch.object(type(api_client), 'is_token_valid', new_callable=lambda: property(lambda self: True)):
+        with (
+            patch.object(api_client, "_load_token_from_cache", return_value=True),
+            patch.object(
+                type(api_client),
+                "is_token_valid",
+                new_callable=lambda: property(lambda self: True),
+            ),
+        ):
 
             api_client._token = "cached_token"
             result = await api_client.ensure_token()
@@ -357,9 +365,11 @@ class TestAuthenticationTokenHandling:
     @pytest.mark.asyncio
     async def test_ensure_token_authenticate_and_save(self, api_client):
         """Test ensure_token authenticating and saving new token."""
-        with patch.object(api_client, '_load_token_from_cache', return_value=False), \
-             patch.object(api_client, 'authenticate') as mock_auth, \
-             patch.object(api_client, '_save_token_to_cache') as mock_save:
+        with (
+            patch.object(api_client, "_load_token_from_cache", return_value=False),
+            patch.object(api_client, "authenticate") as mock_auth,
+            patch.object(api_client, "_save_token_to_cache") as mock_save,
+        ):
 
             api_client._token = "new_token"
             result = await api_client.ensure_token()
@@ -371,7 +381,7 @@ class TestAuthenticationTokenHandling:
     @pytest.mark.asyncio
     async def test_ensure_session_creates_new_session(self, api_client):
         """Test ensure_session creates new session when none exists."""
-        with patch('aiohttp.ClientSession') as mock_session_class:
+        with patch("aiohttp.ClientSession") as mock_session_class:
             mock_session = Mock()
             mock_session_class.return_value = mock_session
 
@@ -382,7 +392,9 @@ class TestAuthenticationTokenHandling:
             assert api_client._close_session is True
 
     @pytest.mark.asyncio
-    async def test_ensure_session_returns_existing_session(self, api_client, mock_session):
+    async def test_ensure_session_returns_existing_session(
+        self, api_client, mock_session
+    ):
         """Test ensure_session returns existing session."""
         api_client._session = mock_session
 
@@ -395,7 +407,7 @@ class TestAuthenticationTokenHandling:
         """Test context manager creates and closes session."""
         client = VacasaApiClient("test@example.com", "password")
 
-        with patch('aiohttp.ClientSession') as mock_session_class:
+        with patch("aiohttp.ClientSession") as mock_session_class:
             mock_session = Mock()
             mock_session.close = AsyncMock()
             mock_session_class.return_value = mock_session
@@ -428,9 +440,11 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_get_units_api_error(self, api_client):
         """Test get_units with API error response."""
-        with patch.object(api_client, 'ensure_token'), \
-             patch.object(api_client, 'get_owner_id', return_value="owner123"), \
-             patch.object(api_client, 'ensure_session') as mock_session_method:
+        with (
+            patch.object(api_client, "ensure_token"),
+            patch.object(api_client, "get_owner_id", return_value="owner123"),
+            patch.object(api_client, "ensure_session") as mock_session_method,
+        ):
 
             mock_response = Mock()
             mock_response.status = 401
@@ -449,9 +463,11 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_get_units_network_error(self, api_client):
         """Test get_units with network error."""
-        with patch.object(api_client, 'ensure_token'), \
-             patch.object(api_client, 'get_owner_id', return_value="owner123"), \
-             patch.object(api_client, 'ensure_session') as mock_session_method:
+        with (
+            patch.object(api_client, "ensure_token"),
+            patch.object(api_client, "get_owner_id", return_value="owner123"),
+            patch.object(api_client, "ensure_session") as mock_session_method,
+        ):
 
             mock_session = Mock()
             mock_session.get.side_effect = aiohttp.ClientError("Network error")
@@ -463,9 +479,11 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_get_reservations_api_error(self, api_client):
         """Test get_reservations with API error response."""
-        with patch.object(api_client, 'ensure_token'), \
-             patch.object(api_client, 'get_owner_id', return_value="owner123"), \
-             patch.object(api_client, 'ensure_session') as mock_session_method:
+        with (
+            patch.object(api_client, "ensure_token"),
+            patch.object(api_client, "get_owner_id", return_value="owner123"),
+            patch.object(api_client, "ensure_session") as mock_session_method,
+        ):
 
             mock_response = Mock()
             mock_response.status = 404
@@ -484,8 +502,10 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_get_owner_id_api_error(self, api_client):
         """Test get_owner_id with API error response."""
-        with patch.object(api_client, 'ensure_token'), \
-             patch.object(api_client, 'ensure_session') as mock_session_method:
+        with (
+            patch.object(api_client, "ensure_token"),
+            patch.object(api_client, "ensure_session") as mock_session_method,
+        ):
 
             mock_response = Mock()
             mock_response.status = 403
@@ -498,14 +518,18 @@ class TestErrorHandling:
             mock_session.post.return_value = mock_context_manager
             mock_session_method.return_value = mock_session
 
-            with pytest.raises(ApiError, match="Failed to get owner info from verify-token: 403"):
+            with pytest.raises(
+                ApiError, match="Failed to get owner info from verify-token: 403"
+            ):
                 await api_client.get_owner_id()
 
     @pytest.mark.asyncio
     async def test_get_owner_id_unexpected_response(self, api_client):
         """Test get_owner_id with unexpected response format."""
-        with patch.object(api_client, 'ensure_token'), \
-             patch.object(api_client, 'ensure_session') as mock_session_method:
+        with (
+            patch.object(api_client, "ensure_token"),
+            patch.object(api_client, "ensure_session") as mock_session_method,
+        ):
 
             mock_response = Mock()
             mock_response.status = 200
@@ -518,7 +542,9 @@ class TestErrorHandling:
             mock_session.post.return_value = mock_context_manager
             mock_session_method.return_value = mock_session
 
-            with pytest.raises(ApiError, match="Unexpected verify-token response format"):
+            with pytest.raises(
+                ApiError, match="Unexpected verify-token response format"
+            ):
                 await api_client.get_owner_id()
 
 
@@ -528,9 +554,11 @@ class TestApiResponseParsing:
     @pytest.mark.asyncio
     async def test_get_units_success(self, api_client, mock_units_response):
         """Test successful get_units response parsing."""
-        with patch.object(api_client, 'ensure_token'), \
-             patch.object(api_client, 'get_owner_id', return_value="owner123"), \
-             patch.object(api_client, 'ensure_session') as mock_session_method:
+        with (
+            patch.object(api_client, "ensure_token"),
+            patch.object(api_client, "get_owner_id", return_value="owner123"),
+            patch.object(api_client, "ensure_session") as mock_session_method,
+        ):
 
             mock_response = Mock()
             mock_response.status = 200
@@ -546,15 +574,17 @@ class TestApiResponseParsing:
             result = await api_client.get_units()
 
             assert len(result) == 1
-            assert result[0]['id'] == 'unit123'
-            assert result[0]['attributes']['name'] == 'Beach House'
+            assert result[0]["id"] == "unit123"
+            assert result[0]["attributes"]["name"] == "Beach House"
 
     @pytest.mark.asyncio
     async def test_get_units_empty_response(self, api_client):
         """Test get_units with empty response."""
-        with patch.object(api_client, 'ensure_token'), \
-             patch.object(api_client, 'get_owner_id', return_value="owner123"), \
-             patch.object(api_client, 'ensure_session') as mock_session_method:
+        with (
+            patch.object(api_client, "ensure_token"),
+            patch.object(api_client, "get_owner_id", return_value="owner123"),
+            patch.object(api_client, "ensure_session") as mock_session_method,
+        ):
 
             mock_response = Mock()
             mock_response.status = 200
@@ -574,9 +604,11 @@ class TestApiResponseParsing:
     @pytest.mark.asyncio
     async def test_get_units_no_data_field(self, api_client):
         """Test get_units with response missing data field."""
-        with patch.object(api_client, 'ensure_token'), \
-             patch.object(api_client, 'get_owner_id', return_value="owner123"), \
-             patch.object(api_client, 'ensure_session') as mock_session_method:
+        with (
+            patch.object(api_client, "ensure_token"),
+            patch.object(api_client, "get_owner_id", return_value="owner123"),
+            patch.object(api_client, "ensure_session") as mock_session_method,
+        ):
 
             mock_response = Mock()
             mock_response.status = 200
@@ -594,11 +626,15 @@ class TestApiResponseParsing:
             assert result == []
 
     @pytest.mark.asyncio
-    async def test_get_reservations_success(self, api_client, mock_reservations_response):
+    async def test_get_reservations_success(
+        self, api_client, mock_reservations_response
+    ):
         """Test successful get_reservations response parsing."""
-        with patch.object(api_client, 'ensure_token'), \
-             patch.object(api_client, 'get_owner_id', return_value="owner123"), \
-             patch.object(api_client, 'ensure_session') as mock_session_method:
+        with (
+            patch.object(api_client, "ensure_token"),
+            patch.object(api_client, "get_owner_id", return_value="owner123"),
+            patch.object(api_client, "ensure_session") as mock_session_method,
+        ):
 
             mock_response = Mock()
             mock_response.status = 200
@@ -614,14 +650,16 @@ class TestApiResponseParsing:
             result = await api_client.get_reservations("unit123", "2024-01-01")
 
             assert len(result) == 2
-            assert result[0]['id'] == '12345'
-            assert result[1]['id'] == '67890'
+            assert result[0]["id"] == "12345"
+            assert result[1]["id"] == "67890"
 
     @pytest.mark.asyncio
     async def test_get_owner_id_success(self, api_client, mock_verify_token_response):
         """Test successful get_owner_id response parsing."""
-        with patch.object(api_client, 'ensure_token'), \
-             patch.object(api_client, 'ensure_session') as mock_session_method:
+        with (
+            patch.object(api_client, "ensure_token"),
+            patch.object(api_client, "ensure_session") as mock_session_method,
+        ):
 
             mock_response = Mock()
             mock_response.status = 200
@@ -649,11 +687,19 @@ class TestApiResponseParsing:
         assert result == "cached_owner"
 
     @pytest.mark.asyncio
-    async def test_get_categorized_reservations(self, api_client, mock_reservations_response):
+    async def test_get_categorized_reservations(
+        self, api_client, mock_reservations_response
+    ):
         """Test get_categorized_reservations."""
-        with patch.object(api_client, 'get_reservations', return_value=mock_reservations_response['data']):
+        with patch.object(
+            api_client,
+            "get_reservations",
+            return_value=mock_reservations_response["data"],
+        ):
 
-            result = await api_client.get_categorized_reservations("unit123", "2024-01-01")
+            result = await api_client.get_categorized_reservations(
+                "unit123", "2024-01-01"
+            )
 
             assert len(result[STAY_TYPE_GUEST]) == 1
             assert len(result[STAY_TYPE_OWNER]) == 1
@@ -667,9 +713,9 @@ class TestApiResponseParsing:
 
         headers = api_client._get_headers()
 
-        assert headers['Authorization'] == 'Bearer test_token'
-        assert headers['Accept'] == 'application/json, text/plain, */*'
-        assert 'X-Authorization-Contact' not in headers
+        assert headers["Authorization"] == "Bearer test_token"
+        assert headers["Accept"] == "application/json, text/plain, */*"
+        assert "X-Authorization-Contact" not in headers
 
     def test_get_headers_with_owner_id(self, api_client):
         """Test _get_headers with owner ID."""
@@ -678,8 +724,8 @@ class TestApiResponseParsing:
 
         headers = api_client._get_headers()
 
-        assert headers['Authorization'] == 'Bearer test_token'
-        assert headers['X-Authorization-Contact'] == 'owner123'
+        assert headers["Authorization"] == "Bearer test_token"
+        assert headers["X-Authorization-Contact"] == "owner123"
 
     def test_format_params(self, api_client):
         """Test _format_params utility method."""

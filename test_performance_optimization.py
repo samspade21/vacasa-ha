@@ -95,10 +95,7 @@ async def test_api_client_backward_compatibility():
 
     # Test that old constructor still works
     try:
-        client = VacasaApiClient(
-            username="test@example.com",
-            password="test_password"
-        )
+        client = VacasaApiClient(username="test@example.com", password="test_password")
         print("✓ Basic constructor still works")
     except Exception as e:
         print(f"✗ Basic constructor failed: {e}")
@@ -111,7 +108,7 @@ async def test_api_client_backward_compatibility():
             password="test_password",
             cache_ttl=1800,  # 30 minutes
             max_connections=5,
-            max_retries=2
+            max_retries=2,
         )
         print("✓ New constructor parameters work")
     except Exception as e:
@@ -119,9 +116,13 @@ async def test_api_client_backward_compatibility():
         return False
 
     # Test that new methods exist
-    assert hasattr(client, 'clear_property_cache'), "Missing clear_property_cache method"
-    assert hasattr(client, 'get_cache_stats'), "Missing get_cache_stats method"
-    assert hasattr(client, 'cleanup_expired_cache'), "Missing cleanup_expired_cache method"
+    assert hasattr(
+        client, "clear_property_cache"
+    ), "Missing clear_property_cache method"
+    assert hasattr(client, "get_cache_stats"), "Missing get_cache_stats method"
+    assert hasattr(
+        client, "cleanup_expired_cache"
+    ), "Missing cleanup_expired_cache method"
     print("✓ New methods are available")
 
     # Test cache stats (should work without API calls)
@@ -141,7 +142,7 @@ async def test_session_optimization():
         username="test@example.com",
         password="test_password",
         max_connections=8,
-        keepalive_timeout=45
+        keepalive_timeout=45,
     )
 
     # Test session creation
@@ -149,8 +150,12 @@ async def test_session_optimization():
         session = await client.ensure_session()
 
         # Check that session has the expected configuration
-        assert session.connector.limit == 8, f"Expected 8 connections, got {session.connector.limit}"
-        assert session.connector.keepalive_timeout == 45, f"Expected 45s keepalive, got {session.connector.keepalive_timeout}"
+        assert (
+            session.connector.limit == 8
+        ), f"Expected 8 connections, got {session.connector.limit}"
+        assert (
+            session.connector.keepalive_timeout == 45
+        ), f"Expected 45s keepalive, got {session.connector.keepalive_timeout}"
 
         print("✓ Session created with optimized settings")
         print(f"  - Max connections: {session.connector.limit}")
@@ -184,6 +189,7 @@ async def main():
     except Exception as e:
         print(f"\n❌ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 

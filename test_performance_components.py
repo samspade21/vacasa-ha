@@ -7,7 +7,9 @@ import sys
 import time
 
 # Add the custom components path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'custom_components', 'vacasa'))
+sys.path.insert(
+    0, os.path.join(os.path.dirname(__file__), "custom_components", "vacasa")
+)
 
 from cached_data import CachedData, RetryWithBackoff  # noqa: E402
 
@@ -165,7 +167,9 @@ async def test_performance_characteristics():
         await cache.set(f"perf_key_{i}", {"index": i, "data": f"value_{i}"})
 
     set_time = time.time() - start_time
-    print(f"✓ Set {num_items} items in {set_time:.3f}s ({num_items / set_time:.0f} items/sec)")
+    print(
+        f"✓ Set {num_items} items in {set_time:.3f}s ({num_items / set_time:.0f} items/sec)"
+    )
 
     # Test retrieval performance
     start_time = time.time()
@@ -175,14 +179,18 @@ async def test_performance_characteristics():
         assert value is not None, f"Failed to retrieve item {i}"
 
     get_time = time.time() - start_time
-    print(f"✓ Retrieved {num_items} items in {get_time:.3f}s ({num_items / get_time:.0f} items/sec)")
+    print(
+        f"✓ Retrieved {num_items} items in {get_time:.3f}s ({num_items / get_time:.0f} items/sec)"
+    )
 
     # Test cleanup performance
     start_time = time.time()
     cleaned = await cache.cleanup_expired()
     cleanup_time = time.time() - start_time
 
-    print(f"✓ Cleanup scan completed in {cleanup_time:.3f}s (cleaned {cleaned} expired items)")
+    print(
+        f"✓ Cleanup scan completed in {cleanup_time:.3f}s (cleaned {cleaned} expired items)"
+    )
 
     await cache.clear()
     print("✓ Performance characteristics tests passed")
@@ -211,6 +219,7 @@ async def main():
     except Exception as e:
         print(f"\n❌ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 

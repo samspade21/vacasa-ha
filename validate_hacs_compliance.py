@@ -19,7 +19,7 @@ def check_file_exists(file_path, description):
 def validate_json_file(file_path, required_fields=None):
     """Validate JSON file structure."""
     try:
-        with open(file_path, 'r') as f:
+        with open(file_path, "r") as f:
             data = json.load(f)
 
         if required_fields:
@@ -43,27 +43,35 @@ def validate_manifest():
     print("\n🔍 Validating manifest.json...")
 
     required_fields = [
-        'domain', 'name', 'codeowners', 'config_flow',
-        'documentation', 'iot_class', 'issue_tracker',
-        'requirements', 'version'
+        "domain",
+        "name",
+        "codeowners",
+        "config_flow",
+        "documentation",
+        "iot_class",
+        "issue_tracker",
+        "requirements",
+        "version",
     ]
 
-    if not validate_json_file('custom_components/vacasa/manifest.json', required_fields):
+    if not validate_json_file(
+        "custom_components/vacasa/manifest.json", required_fields
+    ):
         return False
 
     # Additional validation
-    with open('custom_components/vacasa/manifest.json', 'r') as f:
+    with open("custom_components/vacasa/manifest.json", "r") as f:
         manifest = json.load(f)
 
     # Check version format
-    version = manifest.get('version', '')
-    if not version or version.count('.') < 2:
+    version = manifest.get("version", "")
+    if not version or version.count(".") < 2:
         print(f"❌ Invalid version format: {version}")
         return False
 
     # Check codeowners format
-    codeowners = manifest.get('codeowners', [])
-    if not codeowners or not all(owner.startswith('@') for owner in codeowners):
+    codeowners = manifest.get("codeowners", [])
+    if not codeowners or not all(owner.startswith("@") for owner in codeowners):
         print(f"❌ Invalid codeowners format: {codeowners}")
         return False
 
@@ -75,17 +83,19 @@ def validate_hacs_json():
     """Validate hacs.json compliance."""
     print("\n🔍 Validating hacs.json...")
 
-    required_fields = ['name', 'content_in_root', 'render_readme']
+    required_fields = ["name", "content_in_root", "render_readme"]
 
-    if not validate_json_file('hacs.json', required_fields):
+    if not validate_json_file("hacs.json", required_fields):
         return False
 
-    with open('hacs.json', 'r') as f:
+    with open("hacs.json", "r") as f:
         hacs_config = json.load(f)
 
     # Check recommended fields
-    recommended_fields = ['homeassistant', 'hacs', 'iot_class']
-    missing_recommended = [field for field in recommended_fields if field not in hacs_config]
+    recommended_fields = ["homeassistant", "hacs", "iot_class"]
+    missing_recommended = [
+        field for field in recommended_fields if field not in hacs_config
+    ]
 
     if missing_recommended:
         print(f"⚠️  Missing recommended fields: {missing_recommended}")
@@ -99,16 +109,16 @@ def validate_repository_structure():
     print("\n🔍 Validating repository structure...")
 
     required_files = [
-        ('README.md', 'README file'),
-        ('LICENSE', 'License file'),
-        ('hacs.json', 'HACS configuration'),
-        ('custom_components/vacasa/__init__.py', 'Integration init file'),
-        ('custom_components/vacasa/manifest.json', 'Integration manifest'),
-        ('custom_components/vacasa/config_flow.py', 'Configuration flow'),
-        ('.github/ISSUE_TEMPLATE/bug_report.yml', 'Bug report template'),
-        ('.github/ISSUE_TEMPLATE/feature_request.yml', 'Feature request template'),
-        ('.github/pull_request_template.md', 'Pull request template'),
-        ('.github/workflows/validate.yml', 'Validation workflow'),
+        ("README.md", "README file"),
+        ("LICENSE", "License file"),
+        ("hacs.json", "HACS configuration"),
+        ("custom_components/vacasa/__init__.py", "Integration init file"),
+        ("custom_components/vacasa/manifest.json", "Integration manifest"),
+        ("custom_components/vacasa/config_flow.py", "Configuration flow"),
+        (".github/ISSUE_TEMPLATE/bug_report.yml", "Bug report template"),
+        (".github/ISSUE_TEMPLATE/feature_request.yml", "Feature request template"),
+        (".github/pull_request_template.md", "Pull request template"),
+        (".github/workflows/validate.yml", "Validation workflow"),
     ]
 
     all_present = True
@@ -124,19 +134,18 @@ def validate_documentation():
     print("\n🔍 Validating documentation...")
 
     try:
-        with open('README.md', 'r') as f:
+        with open("README.md", "r") as f:
             readme_content = f.read()
 
         required_sections = [
-            'Installation',
-            'Configuration',
-            'Troubleshooting',
-            'Contributing'
+            "Installation",
+            "Configuration",
+            "Troubleshooting",
+            "Contributing",
         ]
 
         missing_sections = [
-            section for section in required_sections
-            if section not in readme_content
+            section for section in required_sections if section not in readme_content
         ]
 
         if missing_sections:
@@ -144,7 +153,7 @@ def validate_documentation():
             return False
 
         # Check for HACS badge
-        if 'hacs_badge' not in readme_content:
+        if "hacs_badge" not in readme_content:
             print("❌ README.md missing HACS badge")
             return False
 
@@ -161,9 +170,9 @@ def validate_github_templates():
     print("\n🔍 Validating GitHub templates...")
 
     templates = [
-        '.github/ISSUE_TEMPLATE/bug_report.yml',
-        '.github/ISSUE_TEMPLATE/feature_request.yml',
-        '.github/pull_request_template.md'
+        ".github/ISSUE_TEMPLATE/bug_report.yml",
+        ".github/ISSUE_TEMPLATE/feature_request.yml",
+        ".github/pull_request_template.md",
     ]
 
     all_valid = True
@@ -179,9 +188,9 @@ def validate_workflows():
     print("\n🔍 Validating GitHub workflows...")
 
     workflows = [
-        '.github/workflows/validate.yml',
-        '.github/workflows/dependencies.yml',
-        '.github/workflows/release.yml'
+        ".github/workflows/validate.yml",
+        ".github/workflows/dependencies.yml",
+        ".github/workflows/release.yml",
     ]
 
     all_valid = True
@@ -203,7 +212,7 @@ def calculate_compliance_score():
         ("HACS Configuration", validate_hacs_json()),
         ("Documentation", validate_documentation()),
         ("GitHub Templates", validate_github_templates()),
-        ("GitHub Workflows", validate_workflows())
+        ("GitHub Workflows", validate_workflows()),
     ]
 
     passed = sum(1 for _, result in validations if result)
