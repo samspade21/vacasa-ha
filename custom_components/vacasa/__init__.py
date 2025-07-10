@@ -6,7 +6,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import async_timeout
 from homeassistant.config_entries import ConfigEntry
@@ -38,8 +38,12 @@ class VacasaData:
     coordinator: "VacasaDataUpdateCoordinator"
 
 
-# Type alias for config entry (compatible with older Python versions)
-VacasaConfigEntry = ConfigEntry[VacasaData]
+if TYPE_CHECKING:
+    # Type alias for config entry (compatible with older Python versions)
+    VacasaConfigEntry = ConfigEntry[VacasaData]
+else:
+    # For runtime, use the base class
+    VacasaConfigEntry = ConfigEntry
 
 
 class VacasaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
