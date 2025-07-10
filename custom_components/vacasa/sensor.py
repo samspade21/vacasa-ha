@@ -1,16 +1,14 @@
 """Sensor platform for Vacasa integration."""
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from . import VacasaConfigEntry
 from .const import (
-    DATA_CLIENT,
-    DATA_COORDINATOR,
     DOMAIN,
     SENSOR_ADDRESS,
     SENSOR_BATHROOMS,
@@ -35,12 +33,13 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: VacasaConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Vacasa sensor platform."""
-    client = hass.data[DOMAIN][config_entry.entry_id][DATA_CLIENT]
-    coordinator = hass.data[DOMAIN][config_entry.entry_id][DATA_COORDINATOR]
+    data = config_entry.runtime_data
+    client = data.client
+    coordinator = data.coordinator
 
     # Get all units
     try:
@@ -188,11 +187,11 @@ class VacasaBaseSensor(SensorEntity):
         coordinator,
         unit_id: str,
         name: str,
-        unit_attributes: Dict[str, Any],
+        unit_attributes: dict[str, Any],
         sensor_type: str,
         icon: str = "mdi:home",
-        device_class: Optional[str] = None,
-        state_class: Optional[str] = None,
+        device_class: str | None = None,
+        state_class: str | None = None,
     ) -> None:
         """Initialize the Vacasa sensor."""
         super().__init__()
@@ -234,7 +233,7 @@ class VacasaRatingSensor(VacasaBaseSensor):
         coordinator,
         unit_id: str,
         name: str,
-        unit_attributes: Dict[str, Any],
+        unit_attributes: dict[str, Any],
     ) -> None:
         """Initialize the rating sensor."""
         super().__init__(
@@ -249,7 +248,7 @@ class VacasaRatingSensor(VacasaBaseSensor):
         self._attr_native_unit_of_measurement = "★"
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the rating value."""
         return self._unit_attributes.get("rating")
 
@@ -262,7 +261,7 @@ class VacasaLocationSensor(VacasaBaseSensor):
         coordinator,
         unit_id: str,
         name: str,
-        unit_attributes: Dict[str, Any],
+        unit_attributes: dict[str, Any],
     ) -> None:
         """Initialize the location sensor."""
         super().__init__(
@@ -275,7 +274,7 @@ class VacasaLocationSensor(VacasaBaseSensor):
         )
 
     @property
-    def native_value(self) -> Optional[str]:
+    def native_value(self) -> str | None:
         """Return the location value."""
         location = self._unit_attributes.get("location", {})
         if location and "lat" in location and "lng" in location:
@@ -283,7 +282,7 @@ class VacasaLocationSensor(VacasaBaseSensor):
         return None
 
     @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
+    def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
         location = self._unit_attributes.get("location", {})
         if location and "lat" in location and "lng" in location:
@@ -302,7 +301,7 @@ class VacasaTimezoneSensor(VacasaBaseSensor):
         coordinator,
         unit_id: str,
         name: str,
-        unit_attributes: Dict[str, Any],
+        unit_attributes: dict[str, Any],
     ) -> None:
         """Initialize the timezone sensor."""
         super().__init__(
@@ -315,7 +314,7 @@ class VacasaTimezoneSensor(VacasaBaseSensor):
         )
 
     @property
-    def native_value(self) -> Optional[str]:
+    def native_value(self) -> str | None:
         """Return the timezone value."""
         return self._unit_attributes.get("timezone")
 
@@ -328,7 +327,7 @@ class VacasaMaxOccupancySensor(VacasaBaseSensor):
         coordinator,
         unit_id: str,
         name: str,
-        unit_attributes: Dict[str, Any],
+        unit_attributes: dict[str, Any],
     ) -> None:
         """Initialize the max occupancy sensor."""
         super().__init__(
@@ -343,7 +342,7 @@ class VacasaMaxOccupancySensor(VacasaBaseSensor):
         self._attr_native_unit_of_measurement = "people"
 
     @property
-    def native_value(self) -> Optional[int]:
+    def native_value(self) -> int | None:
         """Return the max occupancy value."""
         return self._unit_attributes.get("maxOccupancyTotal")
 
@@ -356,7 +355,7 @@ class VacasaMaxAdultsSensor(VacasaBaseSensor):
         coordinator,
         unit_id: str,
         name: str,
-        unit_attributes: Dict[str, Any],
+        unit_attributes: dict[str, Any],
     ) -> None:
         """Initialize the max adults sensor."""
         super().__init__(
@@ -371,7 +370,7 @@ class VacasaMaxAdultsSensor(VacasaBaseSensor):
         self._attr_native_unit_of_measurement = "people"
 
     @property
-    def native_value(self) -> Optional[int]:
+    def native_value(self) -> int | None:
         """Return the max adults value."""
         return self._unit_attributes.get("maxAdults")
 
@@ -384,7 +383,7 @@ class VacasaMaxChildrenSensor(VacasaBaseSensor):
         coordinator,
         unit_id: str,
         name: str,
-        unit_attributes: Dict[str, Any],
+        unit_attributes: dict[str, Any],
     ) -> None:
         """Initialize the max children sensor."""
         super().__init__(
@@ -399,7 +398,7 @@ class VacasaMaxChildrenSensor(VacasaBaseSensor):
         self._attr_native_unit_of_measurement = "people"
 
     @property
-    def native_value(self) -> Optional[int]:
+    def native_value(self) -> int | None:
         """Return the max children value."""
         return self._unit_attributes.get("maxChildren")
 
@@ -412,7 +411,7 @@ class VacasaMaxPetsSensor(VacasaBaseSensor):
         coordinator,
         unit_id: str,
         name: str,
-        unit_attributes: Dict[str, Any],
+        unit_attributes: dict[str, Any],
     ) -> None:
         """Initialize the max pets sensor."""
         super().__init__(
@@ -427,7 +426,7 @@ class VacasaMaxPetsSensor(VacasaBaseSensor):
         self._attr_native_unit_of_measurement = "pets"
 
     @property
-    def native_value(self) -> Optional[int]:
+    def native_value(self) -> int | None:
         """Return the max pets value."""
         return self._unit_attributes.get("maxPets")
 
@@ -440,7 +439,7 @@ class VacasaBedroomsSensor(VacasaBaseSensor):
         coordinator,
         unit_id: str,
         name: str,
-        unit_attributes: Dict[str, Any],
+        unit_attributes: dict[str, Any],
     ) -> None:
         """Initialize the bedrooms sensor."""
         super().__init__(
@@ -455,14 +454,14 @@ class VacasaBedroomsSensor(VacasaBaseSensor):
         self._attr_native_unit_of_measurement = "rooms"
 
     @property
-    def native_value(self) -> Optional[int]:
+    def native_value(self) -> int | None:
         """Return the bedrooms value."""
         amenities = self._unit_attributes.get("amenities", {})
         rooms = amenities.get("rooms", {})
         return rooms.get("bedrooms") if rooms else None
 
     @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
+    def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
         amenities = self._unit_attributes.get("amenities", {})
         beds = amenities.get("beds", {})
@@ -486,7 +485,7 @@ class VacasaBathroomsSensor(VacasaBaseSensor):
         coordinator,
         unit_id: str,
         name: str,
-        unit_attributes: Dict[str, Any],
+        unit_attributes: dict[str, Any],
     ) -> None:
         """Initialize the bathrooms sensor."""
         super().__init__(
@@ -501,7 +500,7 @@ class VacasaBathroomsSensor(VacasaBaseSensor):
         self._attr_native_unit_of_measurement = "rooms"
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the bathrooms value."""
         amenities = self._unit_attributes.get("amenities", {})
         rooms = amenities.get("rooms", {})
@@ -515,7 +514,7 @@ class VacasaBathroomsSensor(VacasaBaseSensor):
         return None
 
     @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
+    def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
         amenities = self._unit_attributes.get("amenities", {})
         rooms = amenities.get("rooms", {})
@@ -537,7 +536,7 @@ class VacasaHotTubSensor(VacasaBaseSensor):
         coordinator,
         unit_id: str,
         name: str,
-        unit_attributes: Dict[str, Any],
+        unit_attributes: dict[str, Any],
     ) -> None:
         """Initialize the hot tub sensor."""
         super().__init__(
@@ -550,7 +549,7 @@ class VacasaHotTubSensor(VacasaBaseSensor):
         )
 
     @property
-    def native_value(self) -> Optional[str]:
+    def native_value(self) -> str | None:
         """Return the hot tub value."""
         amenities = self._unit_attributes.get("amenities", {})
         hot_tub = amenities.get("hotTub")
@@ -569,7 +568,7 @@ class VacasaPetFriendlySensor(VacasaBaseSensor):
         coordinator,
         unit_id: str,
         name: str,
-        unit_attributes: Dict[str, Any],
+        unit_attributes: dict[str, Any],
     ) -> None:
         """Initialize the pet friendly sensor."""
         super().__init__(
@@ -582,7 +581,7 @@ class VacasaPetFriendlySensor(VacasaBaseSensor):
         )
 
     @property
-    def native_value(self) -> Optional[str]:
+    def native_value(self) -> str | None:
         """Return the pet friendly value."""
         amenities = self._unit_attributes.get("amenities", {})
         pet_friendly = amenities.get("petsFriendly")
@@ -601,7 +600,7 @@ class VacasaParkingSensor(VacasaBaseSensor):
         coordinator,
         unit_id: str,
         name: str,
-        unit_attributes: Dict[str, Any],
+        unit_attributes: dict[str, Any],
     ) -> None:
         """Initialize the parking sensor."""
         super().__init__(
@@ -616,13 +615,13 @@ class VacasaParkingSensor(VacasaBaseSensor):
         self._attr_native_unit_of_measurement = "spaces"
 
     @property
-    def native_value(self) -> Optional[int]:
+    def native_value(self) -> int | None:
         """Return the parking value."""
         parking = self._unit_attributes.get("parking", {})
         return parking.get("total") if parking else None
 
     @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
+    def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
         parking = self._unit_attributes.get("parking", {})
 
@@ -656,7 +655,7 @@ class VacasaAddressSensor(VacasaBaseSensor):
         coordinator,
         unit_id: str,
         name: str,
-        unit_attributes: Dict[str, Any],
+        unit_attributes: dict[str, Any],
     ) -> None:
         """Initialize the address sensor."""
         super().__init__(
@@ -669,7 +668,7 @@ class VacasaAddressSensor(VacasaBaseSensor):
         )
 
     @property
-    def native_value(self) -> Optional[str]:
+    def native_value(self) -> str | None:
         """Return the address value."""
         address = self._unit_attributes.get("address", {})
         if not address:
@@ -702,7 +701,7 @@ class VacasaAddressSensor(VacasaBaseSensor):
         return ", ".join(parts) if parts else None
 
     @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
+    def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
         address = self._unit_attributes.get("address", {})
 

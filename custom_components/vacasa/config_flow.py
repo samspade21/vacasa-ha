@@ -1,6 +1,7 @@
 """Config flow for Vacasa integration."""
 
 import logging
+import re
 from typing import Any, Dict, Optional
 
 import voluptuous as vol
@@ -20,6 +21,47 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# Email validation regex pattern
+EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+
+
+def validate_email(value: str) -> str:
+    """Validate email format."""
+    if not value:
+        raise vol.Invalid("Email cannot be empty")
+
+    value = value.strip()
+    if not EMAIL_REGEX.match(value):
+        raise vol.Invalid("Please enter a valid email address")
+
+    return value
+
+
+def validate_password(value: str) -> str:
+    """Validate password requirements."""
+    if not value:
+        raise vol.Invalid("Password cannot be empty")
+
+    # Check if password is only whitespace
+    if not value.strip():
+        raise vol.Invalid("Password cannot be empty or contain only spaces")
+
+    # Check minimum length
+    if len(value) < 8:
+        raise vol.Invalid("Password must be at least 8 characters long")
+
+    return value
+
+
+def validate_password_optional(value: str) -> str:
+    """Validate password requirements for optional fields (options flow)."""
+    if not value:
+        # Empty password is allowed in options flow (keeps current password)
+        return value
+
+    # If password is provided, apply the same validation as required password
+    return validate_password(value)
 
 
 async def validate_input(hass: HomeAssistant, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -86,6 +128,19 @@ class VacasaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             try:
+                # Manual validation since we can't use custom validators in schema
+                try:
+                    validate_email(user_input[CONF_USERNAME])
+                    validate_password(user_input[CONF_PASSWORD])
+                except vol.Invalid as err:
+                    if "email" in str(err).lower():
+                        errors[CONF_USERNAME] = "invalid_email"
+                    elif "password" in str(err).lower():
+                        errors[CONF_PASSWORD] = "invalid_password"
+                    else:
+                        errors["base"] = "invalid_input"
+                    raise
+
                 info = await validate_input(self.hass, user_input)
 
                 # Check if this account is already configured
@@ -93,6 +148,9 @@ class VacasaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
 
                 return self.async_create_entry(title=info["title"], data=user_input)
+            except vol.Invalid:
+                # Handle validation errors already set above
+                pass
             except CannotConnect:
                 errors["base"] = "cannot_connect"
             except InvalidAuth:
@@ -162,6 +220,20 @@ class VacasaOptionsFlowHandler(config_entries.OptionsFlow):
             if credentials_changed:
                 # Validate new credentials if they changed
                 try:
+                    # Manual validation since we can't use custom validators in schema
+                    try:
+                        validate_email(new_username)
+                        if new_password:  # Only validate password if provided
+                            validate_password(new_password)
+                    except vol.Invalid as err:
+                        if "email" in str(err).lower():
+                            errors[CONF_USERNAME] = "invalid_email"
+                        elif "password" in str(err).lower():
+                            errors[CONF_PASSWORD] = "invalid_password"
+                        else:
+                            errors["base"] = "invalid_input"
+                        raise
+
                     # Create a validation dict with the new credentials
                     validation_data = {
                         CONF_USERNAME: new_username,
@@ -182,6 +254,9 @@ class VacasaOptionsFlowHandler(config_entries.OptionsFlow):
                         self.config_entry, data=new_data
                     )
 
+                except vol.Invalid:
+                    # Handle validation errors already set above
+                    pass
                 except CannotConnect:
                     errors["base"] = "cannot_connect"
                 except InvalidAuth:

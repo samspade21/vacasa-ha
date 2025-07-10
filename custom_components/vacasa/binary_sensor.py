@@ -4,31 +4,33 @@ import asyncio
 import logging
 import re
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .const import DATA_CLIENT, DATA_COORDINATOR, DOMAIN, SENSOR_OCCUPANCY
+from . import VacasaConfigEntry
+from .const import DOMAIN, SENSOR_OCCUPANCY
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: VacasaConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Vacasa binary sensor platform."""
-    client = hass.data[DOMAIN][config_entry.entry_id][DATA_CLIENT]
-    coordinator = hass.data[DOMAIN][config_entry.entry_id][DATA_COORDINATOR]
+    # Use modern runtime data pattern
+    data = config_entry.runtime_data
+    client = data.client
+    coordinator = data.coordinator
 
     # Get all units
     try:
@@ -106,7 +108,7 @@ class VacasaOccupancySensor(BinarySensorEntity):
         return self._current_event is not None
 
     @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
+    def extra_state_attributes(self) -> dict[str, Any]:
         """Return the state attributes."""
         attrs = {}
 
@@ -197,7 +199,7 @@ class VacasaOccupancySensor(BinarySensorEntity):
 
     async def _find_calendar_entity_with_retry(
         self, max_retries: int = 3
-    ) -> Optional[str]:
+    ) -> str | None:
         """Find calendar entity with retry mechanism for timing issues."""
         for attempt in range(max_retries):
             entity_id = await self._find_calendar_entity()
@@ -222,7 +224,7 @@ class VacasaOccupancySensor(BinarySensorEntity):
         )
         return None
 
-    async def _find_calendar_entity(self) -> Optional[str]:
+    async def _find_calendar_entity(self) -> str | None:
         """Find the corresponding calendar entity ID for this unit."""
         # Generate possible entity IDs to try
         sanitized_name = self._sanitize_entity_name(self._name)
@@ -444,7 +446,7 @@ class VacasaOccupancySensor(BinarySensorEntity):
             # Don't mark as unavailable for temporary API issues
             # Keep last known state
 
-    def _extract_guest_name_from_event(self, event) -> Optional[str]:
+    def _extract_guest_name_from_event(self, event) -> str | None:
         """Extract guest name from calendar event summary."""
         if not event or not event.summary:
             return None
@@ -467,7 +469,7 @@ class VacasaOccupancySensor(BinarySensorEntity):
 
         return None
 
-    def _extract_reservation_type_from_event(self, event) -> Optional[str]:
+    def _extract_reservation_type_from_event(self, event) -> str | None:
         """Extract reservation type from calendar event summary."""
         if not event or not event.summary:
             return None
@@ -490,7 +492,7 @@ class VacasaOccupancySensor(BinarySensorEntity):
         # Fallback - return the whole summary if no colon
         return summary
 
-    def _format_datetime(self, dt: Optional[datetime]) -> Optional[str]:
+    def _format_datetime(self, dt: datetime | None) -> str | None:
         """Format a datetime for display."""
         if not dt:
             return None

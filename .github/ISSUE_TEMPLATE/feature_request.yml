@@ -1,0 +1,150 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for the Vacasa integration
+title: "[Feature] "
+labels: [feature-request, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Please fill out the sections below to help us understand your request.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Prerequisites
+      description: Please confirm you have completed these steps
+      options:
+        - label: I have searched existing issues and this feature has not been requested before
+          required: true
+        - label: I have checked the latest version of the integration
+          required: true
+        - label: I have reviewed the documentation and existing features
+          required: true
+
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: Feature Description
+      description: A clear and concise description of the feature you'd like to see
+      placeholder: Describe the feature you would like to have implemented
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem-statement
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve?
+      placeholder: |
+        Is your feature request related to a problem? Please describe.
+        A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution
+      description: How would you like this feature to work?
+      placeholder: |
+        A clear and concise description of what you want to happen.
+        Include details about:
+        - New entities that should be created
+        - Configuration options needed
+        - How it should integrate with existing features
+    validations:
+      required: true
+
+  - type: dropdown
+    id: feature-category
+    attributes:
+      label: Feature Category
+      description: What type of feature is this?
+      options:
+        - New Entity Type
+        - Configuration Option
+        - Service/Action
+        - UI/UX Improvement
+        - API Enhancement
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: Describe how you would use this feature
+      placeholder: |
+        Provide a detailed use case or scenario where this feature would be helpful.
+        Include automation examples if applicable.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What alternatives have you considered?
+      placeholder: |
+        A clear and concise description of any alternative solutions or features you've considered.
+        This could include workarounds you're currently using.
+
+  - type: textarea
+    id: implementation-suggestions
+    attributes:
+      label: Implementation Suggestions
+      description: Do you have any ideas about how this could be implemented?
+      placeholder: |
+        If you have technical knowledge, please share any implementation ideas or suggestions.
+        This is optional but can be helpful for developers.
+
+  - type: checkboxes
+    id: complexity
+    attributes:
+      label: Complexity Estimate
+      description: How complex do you think this feature might be to implement?
+      options:
+        - label: Simple (minor configuration change, small UI tweak)
+        - label: Medium (new entity, moderate API changes)
+        - label: Complex (major new functionality, significant changes)
+        - label: I'm not sure
+
+  - type: checkboxes
+    id: integration-impact
+    attributes:
+      label: Integration Impact
+      description: Which parts of the integration would this feature affect?
+      options:
+        - label: API Client
+        - label: Calendar Entities
+        - label: Binary Sensors
+        - label: Property Information Sensors
+        - label: Configuration Flow
+        - label: Services
+        - label: Documentation
+        - label: Other
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context or screenshots about the feature request
+      placeholder: |
+        Any additional information that might be helpful:
+        - Screenshots or mockups
+        - Links to related documentation
+        - Similar features in other integrations
+        - Urgency or priority level
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      description: Are you willing to contribute to this feature?
+      options:
+        - label: I would be willing to test this feature
+        - label: I would be willing to help with documentation
+        - label: I would be willing to contribute code (if I have the skills)
+        - label: I would be willing to sponsor/fund development

@@ -3,5 +3,11 @@
   "content_in_root": false,
   "render_readme": true,
   "homeassistant": "2025.1.0",
-  "hacs": "1.6.0"
+  "hacs": "1.6.0",
+  "iot_class": "Cloud Polling",
+  "country": ["US"],
+  "zip_release": true,
+  "filename": "vacasa.zip",
+  "hide_default_branch": true,
+  "persistent_directory": true
 }

@@ -2,22 +2,17 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import (
-    CoordinatorEntity,
-    DataUpdateCoordinator,
-)
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
+from . import VacasaConfigEntry, VacasaDataUpdateCoordinator
 from .api_client import VacasaApiClient
 from .const import (
-    DATA_CLIENT,
-    DATA_COORDINATOR,
     DOMAIN,
     STAY_TYPE_BLOCK,
     STAY_TYPE_GUEST,
@@ -32,12 +27,13 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: VacasaConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Vacasa calendar platform."""
-    client = hass.data[DOMAIN][config_entry.entry_id][DATA_CLIENT]
-    coordinator = hass.data[DOMAIN][config_entry.entry_id][DATA_COORDINATOR]
+    data = config_entry.runtime_data
+    client = data.client
+    coordinator = data.coordinator
 
     # Get all units
     try:
@@ -67,17 +63,17 @@ async def async_setup_entry(
         _LOGGER.error("Error setting up Vacasa calendars: %s", err)
 
 
-class VacasaCalendar(CoordinatorEntity, CalendarEntity):
+class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEntity):
     """Representation of a Vacasa calendar."""
 
     def __init__(
         self,
-        coordinator: DataUpdateCoordinator,
+        coordinator: VacasaDataUpdateCoordinator,
         client: VacasaApiClient,
         unit_id: str,
         name: str,
         code: str,
-        unit_attributes: Dict[str, Any],
+        unit_attributes: dict[str, Any],
     ) -> None:
         """Initialize the Vacasa calendar."""
         super().__init__(coordinator)
@@ -89,8 +85,8 @@ class VacasaCalendar(CoordinatorEntity, CalendarEntity):
         self._checkin_time = unit_attributes.get("checkInTime")
         self._checkout_time = unit_attributes.get("checkOutTime")
         self._timezone = unit_attributes.get("timezone")
-        self._event_cache: Dict[str, List[CalendarEvent]] = {}
-        self._current_event: Optional[CalendarEvent] = None
+        self._event_cache: dict[str, list[CalendarEvent]] = {}
+        self._current_event: CalendarEvent | None = None
 
         # Entity properties
         self._attr_unique_id = f"vacasa_calendar_{unit_id}"
@@ -106,7 +102,7 @@ class VacasaCalendar(CoordinatorEntity, CalendarEntity):
         }
 
     @property
-    def event(self) -> Optional[CalendarEvent]:
+    def event(self) -> CalendarEvent | None:
         """Return the next upcoming event."""
         return self._current_event
 
@@ -120,7 +116,7 @@ class VacasaCalendar(CoordinatorEntity, CalendarEntity):
         hass: HomeAssistant,
         start_date: datetime,
         end_date: datetime,
-    ) -> List[CalendarEvent]:
+    ) -> list[CalendarEvent]:
         """Get all events in a specific time frame."""
         # Convert to YYYY-MM-DD format for API
         start_str = start_date.strftime("%Y-%m-%d")
@@ -164,7 +160,7 @@ class VacasaCalendar(CoordinatorEntity, CalendarEntity):
         """Update the current event."""
         self._current_event = await self.async_get_next_event()
 
-    async def async_get_next_event(self) -> Optional[CalendarEvent]:
+    async def async_get_next_event(self) -> CalendarEvent | None:
         """Get the current event if active, otherwise the next upcoming event."""
         now = dt_util.now()
         events = await self.async_get_events(self.hass, now, now + timedelta(days=365))
@@ -211,8 +207,8 @@ class VacasaCalendar(CoordinatorEntity, CalendarEntity):
         await self._update_current_event()
 
     def _reservation_to_event(  # noqa: C901
-        self, reservation: Dict[str, Any], stay_type: str
-    ) -> Optional[CalendarEvent]:
+        self, reservation: dict[str, Any], stay_type: str
+    ) -> CalendarEvent | None:
         """Convert a reservation to a calendar event."""
         try:
             attributes = reservation.get("attributes", {})
