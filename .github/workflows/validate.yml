@@ -27,10 +27,6 @@ jobs:
           pip install homeassistant
           pip install -r requirements.txt
 
-      - name: Run hassfest
-        run: |
-          python -m homeassistant.scripts.hassfest --integration-path custom_components/vacasa
-
   hacs-validation:
     runs-on: ubuntu-latest
     name: HACS Validation
@@ -49,7 +45,7 @@ jobs:
     name: Lint
     strategy:
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12"]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -82,7 +78,7 @@ jobs:
     name: Test
     strategy:
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12"]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

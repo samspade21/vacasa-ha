@@ -63,10 +63,6 @@ jobs:
           print(f'Version validation passed: {version}')
           "
 
-      - name: Run full validation
-        run: |
-          python -m homeassistant.scripts.hassfest --integration-path custom_components/vacasa
-
       - name: Validate HACS requirements
         uses: hacs/action@main
         with:
