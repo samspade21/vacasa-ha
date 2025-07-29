@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2025-07-29
+
+### Fixed
+- **Critical Occupancy Detection Fix**: Resolved missing calendar entity state property that prevented binary sensors from detecting occupancy status correctly
+- **Calendar State Integration**: Added missing `state` property to VacasaCalendar class that returns "on" when current event exists, "off" otherwise
+- **Binary Sensor Accuracy**: Occupancy sensors now properly read calendar entity state and correctly show "occupied" during active reservations
+
+### Improved
+- **Enhanced Logging**: Added comprehensive debug logging for calendar state changes and event detection with detailed timestamps
+- **Coordinator Integration**: Enhanced calendar entity coordinator update handlers to ensure proper state refresh during data updates
+- **Debugging Visibility**: Improved diagnostic information for troubleshooting occupancy detection issues
+
+### Technical Details
+- Fixed missing `@property state` method in [`VacasaCalendar`](custom_components/vacasa/calendar.py) class
+- Binary sensor logic correctly checks `calendar_state.state == "on"` but calendar entity was never setting this critical property
+- Added coordinator update event handlers to ensure calendar state refreshes properly during data coordinator updates
+- Enhanced event detection logging shows current vs future event identification for better debugging
+
 ## [1.2.0] - 2025-07-10
 
 ### Added
