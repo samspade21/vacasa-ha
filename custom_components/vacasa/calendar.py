@@ -107,6 +107,22 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         return self._current_event
 
     @property
+    def state(self) -> str:
+        """Return the state of the calendar entity.
+
+        Returns 'on' if there's a current event happening now, 'off' otherwise.
+        This is critical for the binary sensor occupancy detection to work properly.
+        """
+        state = "on" if self._current_event is not None else "off"
+        _LOGGER.debug(
+            "Calendar %s state: %s (current_event: %s)",
+            self._name,
+            state,
+            self._current_event.summary if self._current_event else "None",
+        )
+        return state
+
+    @property
     def event_types(self) -> list[str]:
         """Return a list of supported event types."""
         return list(STAY_TYPE_TO_CATEGORY.values())
@@ -165,20 +181,40 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         now = dt_util.now()
         events = await self.async_get_events(self.hass, now, now + timedelta(days=365))
 
+        _LOGGER.debug(
+            "Checking events for %s at %s - found %d total events",
+            self._name,
+            now.isoformat(),
+            len(events),
+        )
+
         # First, check for current events (happening right now)
         current_event = None
         for event in events:
             event_start = event.start
             event_end = event.end
-            if event_start and event_end and event_start <= now < event_end:
-                # This event is currently active
-                current_event = event
-                break
+            if event_start and event_end:
+                _LOGGER.debug(
+                    "Checking event %s: start=%s, end=%s, now=%s, is_current=%s",
+                    event.summary,
+                    event_start.isoformat(),
+                    event_end.isoformat(),
+                    now.isoformat(),
+                    event_start <= now < event_end,
+                )
+                if event_start <= now < event_end:
+                    # This event is currently active
+                    current_event = event
+                    break
 
         # If there's a current event, return it
         if current_event:
             _LOGGER.debug(
-                "Found current event for %s: %s", self._name, current_event.summary
+                "Found current event for %s: %s (start: %s, end: %s)",
+                self._name,
+                current_event.summary,
+                current_event.start.isoformat(),
+                current_event.end.isoformat(),
             )
             return current_event
 
@@ -194,7 +230,12 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                         next_event = event
 
         if next_event:
-            _LOGGER.debug("Found next event for %s: %s", self._name, next_event.summary)
+            _LOGGER.debug(
+                "Found next event for %s: %s (starts: %s)",
+                self._name,
+                next_event.summary,
+                next_event.start.isoformat(),
+            )
         else:
             _LOGGER.debug("No current or next event found for %s", self._name)
 
@@ -205,6 +246,34 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         await super().async_added_to_hass()
         # Update current event when entity is added to hass
         await self._update_current_event()
+
+    def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update."""
+        # Update current event when coordinator updates
+        self.hass.async_create_task(self._async_coordinator_update())
+
+    async def _async_coordinator_update(self) -> None:
+        """Handle coordinator update asynchronously."""
+        try:
+            # Clear event cache to ensure fresh data
+            self._event_cache.clear()
+
+            # Update current event based on fresh data
+            await self._update_current_event()
+
+            # Write the state to Home Assistant
+            self.async_write_ha_state()
+
+            _LOGGER.debug(
+                "Successfully updated calendar state for %s - current event: %s, state: %s",
+                self._name,
+                self._current_event.summary if self._current_event else "None",
+                self.state,
+            )
+        except Exception as err:
+            _LOGGER.error(
+                "Error during coordinator update for calendar %s: %s", self._name, err
+            )
 
     def _reservation_to_event(  # noqa: C901
         self, reservation: dict[str, Any], stay_type: str
