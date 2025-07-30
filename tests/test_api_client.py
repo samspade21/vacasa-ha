@@ -1,6 +1,7 @@
 """Unit tests for the Vacasa API client."""
 
 import json
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, Mock, mock_open, patch
 
@@ -737,9 +738,21 @@ class TestApiResponseParsing:
         params = {"key1": "value1", "key2": "value2"}
         result = api_client._format_params(params)
 
-        assert "key1=value1" in result
-        assert "key2=value2" in result
-        assert "&" in result
+        parsed = dict(urllib.parse.parse_qsl(result))
+        assert parsed == params
+
+    def test_format_params_special_characters(self, api_client):
+        """Test parameter formatting with special characters."""
+        params = {
+            "spaced key": "value with spaces",
+            "amp": "a&b",
+            "equals": "x=y",
+        }
+
+        result = api_client._format_params(params)
+        parsed = dict(urllib.parse.parse_qsl(result))
+
+        assert parsed == params
 
     def test_base64_url_decode(self, api_client):
         """Test _base64_url_decode utility method."""
