@@ -1,6 +1,7 @@
 """API client for the Vacasa integration."""
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -8,9 +9,9 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import urlencode
 
 import aiohttp
-import base64
 
 from .cached_data import CachedData, RetryWithBackoff
 from .const import (
@@ -139,7 +140,6 @@ class VacasaApiClient:
             backoff_multiplier=RETRY_BACKOFF_MULTIPLIER,
             max_jitter=jitter_max,
         )
-
 
         _LOGGER.debug(
             "Initialized Vacasa API client with cache TTL: %s, max connections: %s",
@@ -373,7 +373,7 @@ class VacasaApiClient:
         Returns:
             Formatted parameters string
         """
-        return "&".join([f"{k}={v}" for k, v in params.items()])
+        return urlencode(params)
 
     def _base64_url_decode(self, input: str) -> str:
         """Decode base64url-encoded string.
@@ -494,7 +494,7 @@ class VacasaApiClient:
                 _LOGGER.debug(
                     "Auth URL with params: %s?%s",
                     AUTH_URL,
-                    "&".join([f"{k}={v}" for k, v in auth_params.items()]),
+                    self._format_params(auth_params),
                 )
 
                 async with session.get(
