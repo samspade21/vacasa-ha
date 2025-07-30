@@ -13,3 +13,5 @@ types-setuptools>=65.0.0
 
 # Runtime dependencies
 aiohttp>=3.8.0
+async_timeout>=4.0.0
+voluptuous>=0.13
