@@ -72,6 +72,12 @@ exceptions.ConfigEntryNotReady = ConfigEntryNotReady
 helpers = types.ModuleType("homeassistant.helpers")
 aiohttp_client = types.ModuleType("homeassistant.helpers.aiohttp_client")
 update_coordinator = types.ModuleType("homeassistant.helpers.update_coordinator")
+entity_registry = types.ModuleType("homeassistant.helpers.entity_registry")
+entity_platform = types.ModuleType("homeassistant.helpers.entity_platform")
+components = types.ModuleType("homeassistant.components")
+binary_sensor_comp = types.ModuleType("homeassistant.components.binary_sensor")
+util = types.ModuleType("homeassistant.util")
+dt_util = types.ModuleType("homeassistant.util.dt")
 
 
 async def async_get_clientsession(hass):
@@ -95,6 +101,45 @@ aiohttp_client.async_get_clientsession = async_get_clientsession
 update_coordinator.DataUpdateCoordinator = DataUpdateCoordinator
 update_coordinator.UpdateFailed = UpdateFailed
 
+class BinarySensorEntity:
+    pass
+
+
+class BinarySensorDeviceClass:
+    OCCUPANCY = "occupancy"
+
+
+binary_sensor_comp.BinarySensorEntity = BinarySensorEntity
+binary_sensor_comp.BinarySensorDeviceClass = BinarySensorDeviceClass
+
+
+def AddEntitiesCallback(entities, update_before_add=False):  # pragma: no cover
+    return None
+
+
+entity_platform.AddEntitiesCallback = AddEntitiesCallback
+
+
+class EntityRegistry:
+    def __init__(self):
+        self.entities = {}
+
+
+def async_get(hass):
+    return EntityRegistry()
+
+
+entity_registry.EntityRegistry = EntityRegistry
+entity_registry.async_get = async_get
+
+
+def parse_datetime(value):
+    return datetime.fromisoformat(value)
+
+
+dt_util.parse_datetime = parse_datetime
+util.dt = dt_util
+
 helpers.aiohttp_client = aiohttp_client
 helpers.update_coordinator = update_coordinator
 
@@ -115,6 +160,12 @@ modules = {
     "homeassistant.helpers": helpers,
     "homeassistant.helpers.aiohttp_client": aiohttp_client,
     "homeassistant.helpers.update_coordinator": update_coordinator,
+    "homeassistant.helpers.entity_registry": entity_registry,
+    "homeassistant.helpers.entity_platform": entity_platform,
+    "homeassistant.components": components,
+    "homeassistant.components.binary_sensor": binary_sensor_comp,
+    "homeassistant.util": util,
+    "homeassistant.util.dt": dt_util,
     "homeassistant.data_entry_flow": data_entry_flow,
 }
 
