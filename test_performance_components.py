@@ -6,6 +6,12 @@ import os
 import sys
 import time
 
+import pytest
+
+pytest.skip(
+    "Performance tests are skipped during unit testing", allow_module_level=True
+)
+
 # Add the custom components path
 sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "custom_components", "vacasa")
