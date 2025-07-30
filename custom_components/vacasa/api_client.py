@@ -139,9 +139,6 @@ class VacasaApiClient:
             max_jitter=jitter_max,
         )
 
-        # Track cached unit details to avoid redundant API calls
-        self._cached_units: list[dict[str, Any]] | None = None
-        self._units_cache_time: float | None = None
 
         _LOGGER.debug(
             "Initialized Vacasa API client with cache TTL: %s, max connections: %s",
