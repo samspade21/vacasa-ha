@@ -207,7 +207,8 @@ class VacasaOccupancySensor(BinarySensorEntity):
                 return entity_id
 
             if attempt < max_retries - 1:
-                wait_time = 2**attempt  # 2s, 4s, 8s
+                # Exponential backoff: wait 2s, 4s, 8s between retries
+                wait_time = 2 ** (attempt + 1)
                 _LOGGER.debug(
                     "Calendar entity not found for unit %s, retrying in %ss (attempt %d/%d)",
                     self._unit_id,
