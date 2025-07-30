@@ -319,7 +319,6 @@ class VacasaOccupancySensor(BinarySensorEntity):
                 )
 
                 # Add additional debugging info only if needed
-                from homeassistant.helpers import entity_registry as er
 
                 try:
                     registry = er.async_get(self.hass)
