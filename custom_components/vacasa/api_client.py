@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import aiohttp
+import base64
 
 from .cached_data import CachedData, RetryWithBackoff
 from .const import (
@@ -386,8 +387,6 @@ class VacasaApiClient:
         Returns:
             The decoded string
         """
-        import base64
-
         # Use the standard library's base64 module with proper URL-safe decoding
         # Add padding if needed
         padding = len(input) % 4
