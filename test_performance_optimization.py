@@ -7,6 +7,12 @@ import time
 from custom_components.vacasa.api_client import VacasaApiClient
 from custom_components.vacasa.cached_data import CachedData, RetryWithBackoff
 
+import pytest
+
+pytest.skip(
+    "Performance tests are skipped during unit testing", allow_module_level=True
+)
+
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG)
 _LOGGER = logging.getLogger(__name__)

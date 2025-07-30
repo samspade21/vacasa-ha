@@ -1,5 +1,126 @@
 """Pytest configuration and fixtures for the Vacasa integration tests."""
 
+# flake8: noqa
+
+# Provide minimal stubs for the Home Assistant modules used during import.
+import sys
+import types
+
+ha = types.ModuleType("homeassistant")
+config_entries = types.ModuleType("homeassistant.config_entries")
+
+
+class ConfigEntry:
+    """Simplified ConfigEntry stub."""
+
+    def __init__(self, data=None, options=None, hass=None):
+        self.data = data or {}
+        self.options = options or {}
+        self.hass = hass
+
+
+class OptionsFlow:
+    """Simplified OptionsFlow stub."""
+
+    def __init__(self, config_entry):
+        self.hass = config_entry.hass
+        self.config_entry = config_entry
+
+
+config_entries.ConfigEntry = ConfigEntry
+config_entries.OptionsFlow = OptionsFlow
+
+
+class ConfigFlow:
+    def __init__(self, hass=None):
+        self.hass = hass
+
+    def __init_subclass__(cls, **kwargs):  # pragma: no cover - only for import
+        pass
+
+
+config_entries.ConfigFlow = ConfigFlow
+
+core = types.ModuleType("homeassistant.core")
+
+
+class HomeAssistant:
+    pass
+
+
+class ServiceCall:
+    pass
+
+
+core.HomeAssistant = HomeAssistant
+core.ServiceCall = ServiceCall
+
+exceptions = types.ModuleType("homeassistant.exceptions")
+
+
+class HomeAssistantError(Exception):
+    pass
+
+
+class ConfigEntryNotReady(Exception):
+    pass
+
+
+exceptions.HomeAssistantError = HomeAssistantError
+exceptions.ConfigEntryNotReady = ConfigEntryNotReady
+
+helpers = types.ModuleType("homeassistant.helpers")
+aiohttp_client = types.ModuleType("homeassistant.helpers.aiohttp_client")
+update_coordinator = types.ModuleType("homeassistant.helpers.update_coordinator")
+
+
+async def async_get_clientsession(hass):
+    return None
+
+
+class DataUpdateCoordinator:
+    def __init__(self, hass, logger, name, update_interval):
+        self.hass = hass
+
+    # Support subscription like DataUpdateCoordinator[dict]
+    def __class_getitem__(cls, item):  # pragma: no cover - typing only
+        return cls
+
+
+class UpdateFailed(Exception):
+    pass
+
+
+aiohttp_client.async_get_clientsession = async_get_clientsession
+update_coordinator.DataUpdateCoordinator = DataUpdateCoordinator
+update_coordinator.UpdateFailed = UpdateFailed
+
+helpers.aiohttp_client = aiohttp_client
+helpers.update_coordinator = update_coordinator
+
+data_entry_flow = types.ModuleType("homeassistant.data_entry_flow")
+
+
+class FlowResult(dict):
+    pass
+
+
+data_entry_flow.FlowResult = FlowResult
+
+modules = {
+    "homeassistant": ha,
+    "homeassistant.config_entries": config_entries,
+    "homeassistant.core": core,
+    "homeassistant.exceptions": exceptions,
+    "homeassistant.helpers": helpers,
+    "homeassistant.helpers.aiohttp_client": aiohttp_client,
+    "homeassistant.helpers.update_coordinator": update_coordinator,
+    "homeassistant.data_entry_flow": data_entry_flow,
+}
+
+for name, module in modules.items():
+    sys.modules.setdefault(name, module)
+
 import json
 import os
 import tempfile
