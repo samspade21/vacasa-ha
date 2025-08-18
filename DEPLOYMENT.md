@@ -1,19 +1,23 @@
-# Deployment Guide - Automated Release Process
+# Deployment Guide - Streamlined Release Process
 
 ## Overview
 
-The Vacasa Home Assistant Integration uses a fully automated deployment process that handles the entire release workflow from development branch to production release on GitHub and HACS distribution.
+The Vacasa Home Assistant Integration uses a clean, streamlined deployment process with clear separation of responsibilities:
+- **`deploy.sh`** - Simple script that creates release pull request
+- **GitHub Actions** - Handle all automation after PR merge
 
 ## 🚀 Quick Start
 
 ```bash
 # 1. Update version and changelog on development branch
 # 2. Commit all changes
-# 3. Run the automated deployment
+# 3. Create release pull request
 ./deploy.sh
+# 4. Merge the PR when ready
+# 5. GitHub Actions automatically create tag and release!
 ```
 
-That's it! The script handles everything automatically.
+**Clean separation:** Script creates PR, GitHub Actions handle everything else automatically.
 
 ---
 
@@ -23,7 +27,6 @@ That's it! The script handles everything automatically.
 - **Git** - Version control
 - **GitHub CLI (gh)** - GitHub API access
 - **Python 3.9+** - For version validation scripts
-- **Pre-commit** - Code quality hooks (optional but recommended)
 
 ### Setup Instructions
 
@@ -52,7 +55,7 @@ That's it! The script handles everything automatically.
 
 ---
 
-## 📦 Release Process
+## 📦 Streamlined Release Process
 
 ### Step 1: Prepare Release on Development Branch
 
@@ -85,132 +88,78 @@ That's it! The script handles everything automatically.
    git commit -m "chore: prepare release v1.4.0"
    ```
 
-### Step 2: Execute Automated Deployment
+### Step 2: Create Release Pull Request
 
 ```bash
 ./deploy.sh
 ```
 
-The script will automatically:
-- ✅ Validate prerequisites and environment
-- ✅ Check version consistency across files
-- ✅ Run tests and pre-commit hooks
-- ✅ Push development branch to GitHub
-- ✅ Wait for CI/CD validation to complete
-- ✅ Create pull request from development to main
-- ✅ Wait for PR checks and merge automatically
-- ✅ Trigger GitHub release workflow
-- ✅ Monitor release completion
-- ✅ Verify release creation and main branch update
-- ✅ Switch back to development branch
+**What the script does:**
+- ✅ Validates prerequisites and version consistency
+- ✅ Pushes development branch to GitHub
+- ✅ Creates pull request from development to main
+- ✅ Displays PR information and next steps
+
+**What it does NOT do:**
+- ❌ Merge the PR (manual step for safety)
+- ❌ Create tags (handled by GitHub Actions)
+- ❌ Create releases (handled by GitHub Actions)
+- ❌ Monitor workflows (optional manual monitoring)
+
+### Step 3: Merge PR (Manual Review)
+
+1. **Review the PR** in GitHub web interface
+2. **Ensure all CI checks pass**
+3. **Merge the PR** when ready
+
+### Step 4: Automated Release (GitHub Actions)
+
+Once the PR merges to main, GitHub Actions automatically:
+
+1. **Auto-Tag Workflow** (`auto-tag.yml`):
+   - Detects release merge by commit message
+   - Reads version from VERSION file and manifest.json
+   - Creates annotated git tag with changelog content
+   - Pushes tag to trigger release workflow
+
+2. **Release Workflow** (`release.yml`):
+   - Triggered by new git tag
+   - Validates HACS requirements
+   - Extracts changelog from CHANGELOG.md
+   - Creates GitHub release with assets
+   - Provides HACS distribution notification
 
 ---
 
-## 🔍 What the Script Does
+## 🔄 Workflow Responsibilities
 
-### Phase 1: Validation
-- Checks if GitHub CLI is installed and authenticated
-- Verifies you're on the development branch
-- Ensures working directory is clean
-- Validates version consistency between VERSION file and manifest.json
-- Confirms CHANGELOG.md has entry for the new version
+### `deploy.sh` Script
+**Purpose**: Create release pull request only
+- Prerequisites validation
+- Version consistency checks
+- Development branch push
+- PR creation
+- Information display
 
-### Phase 2: Testing
-- Runs pre-commit hooks for code quality
-- Executes pytest if available
-- Ensures all tests pass before proceeding
+### `auto-tag.yml` Workflow
+**Purpose**: Auto-create tags from main branch merges
+- **Trigger**: Push to main branch
+- **Detection**: Release merge pattern matching
+- **Action**: Create git tag from VERSION file
+- **Result**: Triggers release workflow
 
-### Phase 3: Development Branch Deployment
-- Pushes latest development branch changes to GitHub
-- Waits for CI/CD workflows to complete successfully
-- Validates all GitHub Actions pass (linting, testing, HACS validation)
+### `release.yml` Workflow
+**Purpose**: Create GitHub release from git tags
+- **Trigger**: New git tag (v*.*.*)
+- **Validation**: HACS requirements only
+- **Action**: Create GitHub release with changelog and assets
+- **Result**: Production release ready for HACS
 
-### Phase 4: Main Branch Integration
-- Creates pull request from development to main branch
-- Waits for PR status checks to complete
-- Automatically merges the PR when all checks pass
-
-### Phase 5: Release Creation
-- Switches to main branch and pulls latest changes
-- Triggers GitHub release workflow via `gh workflow run`
-- Monitors release workflow progress
-- Waits for successful completion
-
-### Phase 6: Verification & Cleanup
-- Verifies GitHub release was created successfully
-- Checks that main branch version matches release version
-- Switches back to development branch
-- Displays success summary with release links
-
----
-
-## 🛠️ Manual Steps (If Needed)
-
-### Emergency Manual Release
-
-If the automated script fails, you can manually execute the process:
-
-```bash
-# 1. Push development branch
-git push origin development
-
-# 2. Create PR manually
-gh pr create --base main --head development --title "Release vX.X.X"
-
-# 3. Merge PR after checks pass
-gh pr merge --merge
-
-# 4. Trigger release workflow
-git checkout main && git pull
-gh workflow run release.yml --field version="vX.X.X"
-
-# 5. Monitor release
-gh run list --workflow=release.yml
-```
-
-### Rollback Process
-
-If a release needs to be rolled back:
-
-```bash
-# 1. Delete the GitHub release
-gh release delete vX.X.X
-
-# 2. Delete the git tag
-git tag -d vX.X.X
-git push origin :refs/tags/vX.X.X
-
-# 3. Revert main branch if needed
-git checkout main
-git revert <commit-hash>
-git push origin main
-```
-
----
-
-## 📊 Monitoring and Validation
-
-### GitHub Actions Workflows
-
-The deployment process triggers several workflows:
-- **CI Workflow**: Linting, testing across Python versions, security scans
-- **Dependencies Workflow**: Dependency monitoring and updates
-- **Release Workflow**: Version validation, HACS validation, release creation
-
-### Release Artifacts
-
-Successful releases create:
-- GitHub release with changelog and downloadable assets
-- Git tag (vX.X.X format)
-- Release archive (vacasa-X.X.X.zip)
-- Updated main branch with version bump
-
-### HACS Integration
-
-After release:
-- HACS automatically detects new releases
-- Users receive update notifications
-- Integration becomes available for easy installation
+### `ci.yml` Workflow
+**Purpose**: Continuous integration validation
+- **Trigger**: Push/PR to main or development
+- **Validation**: Tests, linting, security scans
+- **Result**: Quality gate for all changes
 
 ---
 
@@ -236,56 +185,58 @@ git stash
 - Ensure VERSION file and manifest.json have the same version
 - Check CHANGELOG.md has an entry for the new version
 
-#### "CI/CD workflows failed"
-- Check GitHub Actions tab for specific error details
-- Fix failing tests or linting issues
-- Re-run the deployment script
+#### "PR creation failed"
+- Check branch protection settings
+- Verify GitHub CLI permissions
+- Ensure development branch is ahead of main
 
-#### "PR merge failed due to branch protection"
-- Ensure branch protection rules allow the merge
-- Check that all required status checks pass
-- May need admin privileges for protected main branch
+#### "Auto-tag workflow didn't trigger"
+- Check commit message contains "Release v" pattern
+- Verify auto-tag.yml workflow is enabled
+- Check GitHub Actions logs for errors
 
-### Debug Mode
+### Debug and Monitoring
 
-For verbose output during deployment:
 ```bash
-# Enable bash debug mode
-bash -x ./deploy.sh
-```
-
-### Logs and Monitoring
-
-Monitor deployment progress:
-```bash
-# Watch GitHub Actions
+# Monitor GitHub Actions
 gh run list --limit 10
 
-# View specific workflow run
+# View specific workflow
 gh run view <run-id>
 
-# Check releases
+# Check current releases
 gh release list
+
+# View specific PR
+gh pr view <pr-number>
 ```
 
 ---
 
-## 🔧 Customization
+## 🔧 Advanced Configuration
 
-### Script Configuration
+### Customizing the Script
 
-Edit `deploy.sh` to modify:
-- Branch names (REQUIRED_BRANCH, TARGET_BRANCH)
-- Timeout values for CI/CD waiting
-- PR template and release notes format
-- Validation requirements
+Edit `deploy.sh` variables:
+```bash
+REQUIRED_BRANCH="development"  # Source branch
+TARGET_BRANCH="main"           # Target branch
+```
 
-### Workflow Integration
+### Branch Protection Settings
 
-The script integrates with GitHub Actions workflows:
-- `.github/workflows/ci.yml` - Main CI/CD pipeline
-- `.github/workflows/release.yml` - Release automation
-- `.github/workflows/dependencies.yml` - Dependency monitoring
+Recommended GitHub branch protection for main:
+- ✅ Require status checks to pass
+- ✅ Require CI workflow completion
+- ✅ Dismiss stale reviews when new commits are pushed
+- ✅ Require conversation resolution before merging
+
+### Workflow Customization
+
+Modify workflows in `.github/workflows/`:
+- `auto-tag.yml` - Adjust release detection patterns
+- `release.yml` - Customize release asset creation
+- `ci.yml` - Add/modify quality gates
 
 ---
 
@@ -293,39 +244,63 @@ The script integrates with GitHub Actions workflows:
 
 ### Version Management
 - Use semantic versioning (MAJOR.MINOR.PATCH)
-- Update CHANGELOG.md for every release
-- Keep VERSION file and manifest.json in sync
+- Update CHANGELOG.md before every release
+- Keep VERSION file and manifest.json synchronized
+- Test version changes locally first
 
-### Development Workflow
-- Always work on development branch
-- Test thoroughly before releasing
-- Use meaningful commit messages
-- Follow conventional commit format
-
-### Release Schedule
-- Release regularly with small, focused changes
-- Test releases in staging environment first
-- Monitor community feedback after releases
+### Release Cadence
+- Release small, focused changes frequently
+- Test on development branch thoroughly
+- Monitor GitHub Actions for any issues
 - Keep release notes comprehensive and user-friendly
 
----
-
-## 📚 Additional Resources
-
-- [GitHub CLI Documentation](https://cli.github.com/manual/)
-- [GitHub Actions Documentation](https://docs.github.com/en/actions)
-- [HACS Documentation](https://hacs.xyz/)
-- [Home Assistant Integration Development](https://developers.home-assistant.io/)
-- [Semantic Versioning](https://semver.org/)
+### Quality Assurance
+- All changes must pass CI before merge
+- Manual PR review for release changes
+- Monitor HACS integration after releases
+- Track community feedback and issues
 
 ---
 
-## 🤝 Contributing
+## 📚 Workflow Architecture
 
-When contributing to the deployment process:
-1. Test changes thoroughly in a fork first
-2. Update this documentation for any process changes
-3. Ensure backward compatibility with existing workflows
-4. Follow the established patterns and conventions
+```mermaid
+graph TD
+    A[Developer on development branch] --> B[Update VERSION, manifest.json, CHANGELOG.md]
+    B --> C[Commit changes]
+    C --> D[Run ./deploy.sh]
+    D --> E[Script creates PR to main]
+    E --> F[Manual PR review and merge]
+    F --> G[auto-tag.yml detects merge]
+    G --> H[Creates git tag vX.X.X]
+    H --> I[release.yml triggered by tag]
+    I --> J[GitHub release created]
+    J --> K[HACS distribution ready]
+```
 
-For questions or issues with the deployment process, please open a GitHub issue with the `deployment` label.
+### Key Separation Points
+- **Script responsibility ends** at PR creation
+- **GitHub Actions responsibility starts** at main branch merge
+- **No overlap or duplication** between components
+- **Clear handoff points** for troubleshooting
+
+---
+
+## 📞 Getting Help
+
+### Documentation
+- **This guide** - Deployment process overview
+- **README.md** - Integration features and usage
+- **Memory Bank** - Detailed technical context
+- **GitHub Issues** - Bug reports and feature requests
+
+### Support Channels
+- **GitHub Discussions** - General questions and community support
+- **GitHub Issues** - Bug reports with deployment label
+- **Code Review** - PR comments for deployment process improvements
+
+For deployment-specific issues, please open a GitHub issue with the `deployment` label and include:
+- Error messages from script or GitHub Actions
+- Current branch and git status
+- GitHub CLI authentication status
+- Steps you followed before the error
