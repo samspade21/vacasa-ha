@@ -38,7 +38,7 @@ async def async_setup_entry(
     # Get all units
     try:
         units = await client.get_units()
-        _LOGGER.debug("Found %s Vacasa units", len(units))
+        _LOGGER.info("Found %d Vacasa units for calendars", len(units))
 
         # Create a calendar entity for each unit
         entities = []
@@ -173,11 +173,11 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         await self._update_current_event()
 
     async def _update_current_event(self) -> None:
-        """Update the current event."""
-        self._current_event = await self.async_get_next_event()
+        """Update the current event - only sets current event if it's actually happening now."""
+        self._current_event = await self.async_get_current_event()
 
-    async def async_get_next_event(self) -> CalendarEvent | None:
-        """Get the current event if active, otherwise the next upcoming event."""
+    async def async_get_current_event(self) -> CalendarEvent | None:
+        """Get the current event if active right now, otherwise None."""
         now = dt_util.now()
         events = await self.async_get_events(self.hass, now, now + timedelta(days=365))
 
@@ -188,8 +188,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             len(events),
         )
 
-        # First, check for current events (happening right now)
-        current_event = None
+        # Check for current events (happening right now)
         for event in events:
             event_start = event.start
             event_end = event.end
@@ -204,18 +203,26 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                 )
                 if event_start <= now < event_end:
                     # This event is currently active
-                    current_event = event
-                    break
+                    _LOGGER.debug(
+                        "Found current event for %s: %s (start: %s, end: %s)",
+                        self._name,
+                        event.summary,
+                        event_start.isoformat(),
+                        event_end.isoformat(),
+                    )
+                    return event
 
-        # If there's a current event, return it
+        _LOGGER.debug("No current event found for %s", self._name)
+        return None
+
+    async def async_get_next_event(self) -> CalendarEvent | None:
+        """Get the next upcoming event (for display purposes)."""
+        now = dt_util.now()
+        events = await self.async_get_events(self.hass, now, now + timedelta(days=365))
+
+        # First check if there's a current event
+        current_event = await self.async_get_current_event()
         if current_event:
-            _LOGGER.debug(
-                "Found current event for %s: %s (start: %s, end: %s)",
-                self._name,
-                current_event.summary,
-                current_event.start.isoformat(),
-                current_event.end.isoformat(),
-            )
             return current_event
 
         # No current event, find the next future event
@@ -237,7 +244,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                 next_event.start.isoformat(),
             )
         else:
-            _LOGGER.debug("No current or next event found for %s", self._name)
+            _LOGGER.debug("No next event found for %s", self._name)
 
         return next_event
 
