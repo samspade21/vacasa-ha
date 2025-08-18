@@ -24,7 +24,18 @@ The integration is fully compatible with Home Assistant's async architecture and
 
 ## Recent Changes
 
-1. **Occupancy Detection Reliability Fixes (v1.3.0) - JUST COMPLETED**
+1. **Ruff Pre-commit Migration (v1.3.1) - JUST COMPLETED**
+   - **Complete Tooling Migration**: Successfully migrated from black, flake8, and isort to ruff for all linting and formatting
+   - **Ruff Configuration**: Added comprehensive ruff configuration in pyproject.toml with Home Assistant best practices
+   - **Pre-commit Integration**: Updated both .pre-commit-config.yaml and .pre-commit-config-ci.yaml to use ruff-pre-commit
+   - **Configuration Consolidation**: Moved all linting/formatting settings from setup.cfg to pyproject.toml
+   - **Performance Benefits**: Significantly faster linting and formatting with ruff's Rust-based implementation
+   - **Maintained Compatibility**: Kept mypy for type checking while consolidating other tools
+   - **Auto-fixing**: Enabled automatic import sorting, whitespace fixes, and other code quality improvements
+   - **CI/CD Integration**: Ensured both local development and CI environments use consistent ruff configuration
+   - **Testing Success**: Verified complete migration with pre-commit hooks working correctly
+
+2. **Occupancy Detection Reliability Fixes (v1.3.0) - Previously Completed**
    - **Enhanced Startup Coordination**: Binary sensors now properly wait for calendar entities to be available before initial updates
    - **Event-Driven Recovery Mechanisms**: Automatic retry logic when calendar entities are temporarily unavailable
    - **Corrected Calendar Logic**: Fixed current vs future event detection - calendar now properly identifies active reservations happening right now
@@ -163,15 +174,24 @@ The integration is fully compatible with Home Assistant's async architecture and
 ## Current Focus
 
 We are currently focused on:
-1. **Release Preparation (v1.3.0) - CURRENT PRIORITY**:
+1. **Development Tooling Modernization (v1.3.1) - CURRENT PRIORITY**:
+   - ✅ **COMPLETED**: Migrated from black, flake8, and isort to ruff-pre-commit
+   - ✅ **COMPLETED**: Consolidated all linting/formatting configuration in pyproject.toml
+   - ✅ **COMPLETED**: Updated pre-commit hooks for both development and CI environments
+   - ✅ **COMPLETED**: Verified all tooling works correctly with existing codebase
+   - ✅ **COMPLETED**: Maintained mypy integration for type checking
+   - 🔄 **IN PROGRESS**: Final documentation updates for development setup
+   - ⏳ **NEXT**: Consider updating development dependencies and documentation
+
+2. **Release Preparation (v1.3.0) - Previously Completed**:
    - ✅ **COMPLETED**: All critical timing and reliability issues resolved
    - ✅ **COMPLETED**: Enhanced startup coordination for binary sensors
    - ✅ **COMPLETED**: Event-driven recovery mechanisms implemented
    - ✅ **COMPLETED**: Corrected calendar logic for current vs future events
    - ✅ **COMPLETED**: Platform dependencies properly configured
    - ✅ **COMPLETED**: Production-ready logging with clean output
-   - 🔄 **IN PROGRESS**: Final documentation updates and release preparation
-   - ⏳ **NEXT**: Version tagging and release distribution
+   - ✅ **COMPLETED**: Final documentation updates and release preparation
+   - ✅ **COMPLETED**: Version tagging and release distribution
 
 2. **System Stability**: Ensuring reliable production operation
    - ✅ **COMPLETED**: Occupancy detection timing issues fully resolved
@@ -198,7 +218,8 @@ We are currently focused on:
    - ✅ **COMPLETED**: Proper error handling without information leakage
    - ✅ **COMPLETED**: Async/await patterns verification
    - ✅ **COMPLETED**: File operations async compliance audit
-   - **Status**: Code is mature and ready for long-term maintenance
+   - ✅ **COMPLETED**: Modern development tooling with ruff-pre-commit migration
+   - **Status**: Code is mature and ready for long-term maintenance with modern tooling
 
 6. **Documentation and Examples**: Supporting user adoption
    - 🔄 **IN PROGRESS**: Updating documentation to reflect reliability improvements

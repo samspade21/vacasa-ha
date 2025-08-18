@@ -32,11 +32,5 @@ jobs:
         run: |
           pre-commit run --all-files
 
-      - name: flake8
-        run: flake8 --extend-ignore=E704 .
-
-      - name: isort
-        run: isort --diff --check .
-
-      - name: Black
-        run: black --line-length 88 --diff --check .
+      - name: Run mypy type checking
+        run: mypy custom_components/vacasa/
