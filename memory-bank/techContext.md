@@ -10,13 +10,19 @@
 
 ### Home Assistant Components
 - **Calendar Platform**: Base platform for calendar integration
+- **Binary Sensor Platform**: Platform for occupancy status sensors
+- **Sensor Platform**: Platform for property information sensors
 - **Config Flow**: UI-based configuration system
-- **Entity Component**: Base for creating calendar entities
+- **Entity Component**: Base for creating calendar and sensor entities
+- **Platform Dependencies**: Explicit dependency management for proper startup sequencing
+- **Entity Registry**: Integration with Home Assistant's entity management system
 
 ### External APIs
 - **Vacasa API**: Proprietary API for accessing reservation data
   - Authentication endpoint: `https://accounts.vacasa.io/login`
   - API base URL: `https://owner.vacasa.io/api/v1`
+  - **Status**: Stable integration with robust error handling and retry mechanisms
+  - **Current State**: Production-ready with enhanced reliability features
 
 ## Development Environment
 
@@ -174,18 +180,27 @@ The integration registers custom services:
 
 ### API Rate Limiting
 - Vacasa API may have rate limits
-- Default refresh interval: 4 hours
-- Implement exponential backoff for retries
+- Default refresh interval: 4 hours (configurable)
+- Exponential backoff with jitter implemented for network resilience
+- Connection pooling optimization for better HTTP performance
 
 ### Caching Strategy
-- Token cached to file with secure permissions
-- Property data cached in memory
-- Reservation data refreshed on schedule
+- Token cached to file with secure permissions (0600)
+- Property data cached with TTL-based intelligent caching
+- Reservation data refreshed on coordinated schedule
+- Memory management optimization to reduce redundant operations
 
 ### Resource Usage
-- Minimal memory footprint
-- Low CPU usage
-- Network requests only when needed
+- Minimal memory footprint with efficient state tracking
+- Low CPU usage with optimized refresh patterns
+- Network requests only when needed with connection reuse
+- Clean logging patterns to reduce I/O overhead
+
+### Startup Coordination
+- Enhanced platform dependency management
+- Staggered entity initialization (calendar → binary_sensor → sensor)
+- Event-driven recovery mechanisms for temporary unavailability
+- Graceful handling of Home Assistant startup timing variations
 
 ## Security Considerations
 
@@ -195,11 +210,21 @@ The integration registers custom services:
 - Minimal permission scope requested
 
 ### Token Storage
-- Token stored with 0600 permissions
-- Token refreshed automatically
-- Token validated before use
+- Token stored with 0600 permissions for security
+- Token refreshed automatically with proactive renewal
+- Token validated before use with integrity checks
+- Cache file operations use async patterns for Home Assistant compliance
 
 ### Error Handling
-- Secure error messages (no credential leakage)
-- Graceful handling of authentication failures
-- Logging without sensitive information
+- Secure error messages without credential or token leakage
+- Graceful handling of authentication failures with retry logic
+- Logging without sensitive information (sanitized output)
+- Production-ready error recovery with exponential backoff
+- Clean error reporting for troubleshooting without exposing internals
+
+### Integration Reliability
+- Enhanced startup coordination between entity types
+- Event-driven recovery when dependencies are temporarily unavailable
+- Robust state management with graceful degradation
+- Proper platform dependency declarations in manifest
+- Current event detection with corrected datetime logic

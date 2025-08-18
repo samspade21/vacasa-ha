@@ -9,12 +9,14 @@ Vacation rental owners who use Vacasa property management services and Home Assi
 4. **Inconsistent Preparation**: Different stay types (guest, owner, maintenance) require different preparations
 
 ## Solution Overview
-The Vacasa Home Assistant Integration solves these problems by creating Home Assistant calendars that reflect real-time reservation data from Vacasa. This enables:
+The Vacasa Home Assistant Integration solves these problems by creating reliable Home Assistant calendars and occupancy sensors that reflect real-time reservation data from Vacasa. This enables:
 
-1. **Automated Energy Management**: Adjust climate settings based on occupancy status
-2. **Enhanced Guest Experience**: Prepare the property automatically for guest arrivals
+1. **Automated Energy Management**: Adjust climate settings based on reliable occupancy status
+2. **Enhanced Guest Experience**: Prepare the property automatically for guest arrivals with confidence
 3. **Owner Control**: Apply different settings for owner stays versus guest bookings
 4. **Maintenance Coordination**: Prepare differently for maintenance visits
+5. **Reliable Automation**: Trust that occupancy detection works consistently without manual intervention
+6. **Real-time Status**: Know immediately when reservation status changes
 
 ## User Journey
 
@@ -26,10 +28,13 @@ The Vacasa Home Assistant Integration solves these problems by creating Home Ass
 5. User creates automations based on calendar events
 
 ### Ongoing Experience
-1. Integration refreshes calendar data periodically (default: every 4 hours)
-2. Home Assistant automations trigger based on calendar events
-3. Property responds automatically to different stay types
-4. User can view upcoming reservations in Home Assistant
+1. Integration refreshes calendar data periodically (default: every 4 hours) with intelligent caching
+2. Binary sensors provide immediate occupancy status with reliable timing coordination
+3. Home Assistant automations trigger based on calendar events and occupancy sensors
+4. Property responds automatically to different stay types with enhanced reliability
+5. User can view upcoming reservations in Home Assistant with accurate current event detection
+6. System self-recovers from temporary issues automatically
+7. Clean, maintainable logging provides insight when needed without noise
 
 ## Key Differentiators
 
@@ -42,22 +47,32 @@ The Vacasa Home Assistant Integration solves these problems by creating Home Ass
 - **Specialized**: Built specifically for Vacasa's API and data structure
 - **Categorized**: Distinguishes between guest bookings, owner stays, and maintenance
 - **Secure**: Handles Vacasa authentication properly and securely
+- **Reliable**: Enhanced startup coordination and event-driven recovery mechanisms
+- **Production-Ready**: Mature error handling and clean logging for long-term stability
+- **Current Event Aware**: Correctly detects what's happening right now vs future events
 
 ## User Benefits
 
 ### For Property Owners
-- **Cost Savings**: Reduce energy costs through occupancy-based automation
-- **Peace of Mind**: Know that the property is prepared appropriately for each stay
-- **Enhanced Experience**: Create a better experience for guests through automation
-- **Convenience**: No manual intervention required to sync reservation data
+- **Cost Savings**: Reduce energy costs through reliable occupancy-based automation
+- **Peace of Mind**: Know that the property is prepared appropriately for each stay with confidence
+- **Enhanced Experience**: Create a better experience for guests through reliable automation
+- **Convenience**: No manual intervention required - system handles edge cases automatically
+- **Reliability**: Trust that occupancy detection works consistently without debugging needed
+- **Maintenance-Free Operation**: System self-recovers and provides clean status information
 
 ### For Guests
-- **Comfort**: Arrive to a property that's already at the right temperature
-- **Personalization**: Experience customized welcome settings (lights, music, etc.)
-- **Consistency**: Enjoy a reliable, well-prepared environment
+- **Comfort**: Arrive to a property that's already at the right temperature consistently
+- **Personalization**: Experience customized welcome settings that work reliably
+- **Consistency**: Enjoy a reliable, well-prepared environment every time
+- **Seamless Experience**: Benefit from behind-the-scenes automation that just works
 
 ## Implementation Considerations
 - **Privacy**: Only access the minimum required data from Vacasa
 - **Security**: Store credentials securely using Home Assistant's secrets management
-- **Reliability**: Handle API changes and authentication token refresh gracefully
-- **Performance**: Minimize API calls while keeping data reasonably fresh
+- **Reliability**: Handle API changes and authentication token refresh gracefully with enhanced retry mechanisms
+- **Performance**: Minimize API calls while keeping data reasonably fresh with intelligent caching and connection pooling
+- **Startup Coordination**: Ensure proper entity initialization order to prevent timing issues
+- **Error Recovery**: Automatically recover from temporary issues without user intervention
+- **Production Readiness**: Clean logging and maintainable code for long-term operation
+- **Current State Accuracy**: Correctly detect what's happening now vs what's coming up
