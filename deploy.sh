@@ -1,14 +1,9 @@
 #!/bin/bash
 
-# Vacasa Home Assistant Integration - Automated Release Deployment
+# Vacasa Home Assistant Integration - Simple Release Deployment
 #
-# This script fully automates the release process:
-# 1. Validates environment and version consistency
-# 2. Pushes development branch changes
-# 3. Creates and merges PR to main branch
-# 4. Triggers GitHub release workflow
-# 5. Monitors release completion
-# 6. Updates main branch automatically
+# This script creates a pull request from development to main.
+# GitHub Actions handle the rest of the automation automatically.
 #
 # Usage: ./deploy.sh
 # Prerequisites:
@@ -31,7 +26,6 @@ NC='\033[0m' # No Color
 # Configuration
 REQUIRED_BRANCH="development"
 TARGET_BRANCH="main"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Helper functions
 log_info() {
@@ -40,10 +34,6 @@ log_info() {
 
 log_success() {
     echo -e "${GREEN}✅ $1${NC}"
-}
-
-log_warning() {
-    echo -e "${YELLOW}⚠️  $1${NC}"
 }
 
 log_error() {
@@ -57,13 +47,12 @@ log_step() {
 check_prerequisites() {
     log_step "Checking Prerequisites"
 
-    # Check if gh CLI is installed
+    # Check if gh CLI is installed and authenticated
     if ! command -v gh &> /dev/null; then
         log_error "GitHub CLI (gh) is not installed. Please install it first."
         exit 1
     fi
 
-    # Check if gh is authenticated
     if ! gh auth status &> /dev/null; then
         log_error "GitHub CLI is not authenticated. Please run 'gh auth login' first."
         exit 1
@@ -86,8 +75,8 @@ check_prerequisites() {
     log_success "Prerequisites validated"
 }
 
-get_version_info() {
-    log_step "Reading Version Information"
+validate_version_info() {
+    log_step "Validating Version Information"
 
     # Read version from VERSION file
     if [ ! -f "VERSION" ]; then
@@ -128,113 +117,47 @@ get_version_info() {
     echo "  📝 CHANGELOG.md: Entry found"
 }
 
-run_tests() {
-    log_step "Running Tests"
+push_and_create_pr() {
+    log_step "Creating Release Pull Request"
 
-    # Run pre-commit hooks
-    log_info "Running pre-commit hooks..."
-    if ! pre-commit run --all-files; then
-        log_error "Pre-commit hooks failed"
-        exit 1
-    fi
-
-    # Run pytest if available
-    if [ -f "pytest.ini" ] && command -v pytest &> /dev/null; then
-        log_info "Running pytest..."
-        if ! pytest; then
-            log_error "Tests failed"
-            exit 1
-        fi
-    fi
-
-    log_success "All tests passed"
-}
-
-push_development_branch() {
-    log_step "Pushing Development Branch"
-
-    # Ensure we have latest changes
-    git fetch origin
-
-    # Check if there are any commits to push
-    if [ -z "$(git log origin/$REQUIRED_BRANCH..$REQUIRED_BRANCH --oneline)" ]; then
-        log_info "No new commits to push on $REQUIRED_BRANCH branch"
-    else
-        log_info "Pushing commits to origin/$REQUIRED_BRANCH..."
-        git push origin $REQUIRED_BRANCH
-        log_success "Development branch pushed successfully"
-    fi
-}
-
-wait_for_ci() {
-    log_step "Waiting for CI/CD Validation"
-
-    log_info "Checking GitHub Actions status..."
-
-    # Wait for workflows to complete
-    local max_wait=300  # 5 minutes
-    local wait_time=0
-    local check_interval=10
-
-    while [ $wait_time -lt $max_wait ]; do
-        # Check if there are any pending/running workflows
-        local status=$(gh run list --branch $REQUIRED_BRANCH --limit 1 --json status --jq '.[0].status')
-
-        if [ "$status" = "completed" ]; then
-            local conclusion=$(gh run list --branch $REQUIRED_BRANCH --limit 1 --json conclusion --jq '.[0].conclusion')
-            if [ "$conclusion" = "success" ]; then
-                log_success "All CI/CD workflows passed"
-                return 0
-            else
-                log_error "CI/CD workflows failed with conclusion: $conclusion"
-                gh run list --branch $REQUIRED_BRANCH --limit 3
-                exit 1
-            fi
-        elif [ "$status" = "in_progress" ] || [ "$status" = "queued" ]; then
-            log_info "CI/CD workflows still running... (${wait_time}s elapsed)"
-            sleep $check_interval
-            wait_time=$((wait_time + check_interval))
-        else
-            log_error "Unexpected workflow status: $status"
-            exit 1
-        fi
-    done
-
-    log_error "CI/CD validation timed out after ${max_wait}s"
-    exit 1
-}
-
-create_and_merge_pr() {
-    log_step "Creating and Merging Pull Request"
+    # Push development branch
+    git push origin $REQUIRED_BRANCH
+    log_success "Pushed $REQUIRED_BRANCH branch to GitHub"
 
     # Create PR title and body
     local pr_title="Release v$VERSION"
-    local pr_body="## 🚀 Automated Release v$VERSION
+    local pr_body="## 🚀 Release v$VERSION
 
-This is an automated release deployment from the development branch.
+This PR contains the release preparations for version $VERSION.
 
 ### 📋 Release Checklist
 - ✅ Version updated in VERSION file: \`$VERSION\`
 - ✅ Version updated in manifest.json: \`$VERSION\`
 - ✅ CHANGELOG.md updated with release notes
-- ✅ All tests passing on development branch
-- ✅ CI/CD workflows validated
 
 ### 📝 Release Notes
 $(grep -A 20 "## \[$VERSION\]" CHANGELOG.md | head -20)
 
-### 🔧 Deployment Process
-This PR was created and will be merged automatically by the deployment script.
-The GitHub release will be triggered immediately after merge."
+### 🤖 Automated Process
+- ✅ Upon merge, GitHub Actions will automatically create tag \`v$VERSION\`
+- ✅ Tag creation will trigger the release workflow
+- ✅ GitHub release will be created with changelog and assets
+- ✅ HACS will be notified for distribution
+
+**No manual steps required after merge - everything is automated!** 🎉"
 
     # Check if PR already exists
     local existing_pr=$(gh pr list --base $TARGET_BRANCH --head $REQUIRED_BRANCH --json number --jq '.[0].number' 2>/dev/null || echo "")
 
     if [ -n "$existing_pr" ] && [ "$existing_pr" != "null" ]; then
-        log_info "Using existing PR #$existing_pr"
+        log_success "Existing PR #$existing_pr found"
         local pr_number=$existing_pr
+
+        # Update PR body
+        gh pr edit $pr_number --body "$pr_body"
+        log_success "Updated PR #$pr_number with latest information"
     else
-        log_info "Creating pull request..."
+        # Create new PR
         local pr_number=$(gh pr create \
             --base $TARGET_BRANCH \
             --head $REQUIRED_BRANCH \
@@ -245,137 +168,11 @@ The GitHub release will be triggered immediately after merge."
         log_success "Created PR #$pr_number"
     fi
 
-    # Wait for PR checks
-    log_info "Waiting for PR checks to complete..."
-    local max_wait=300
-    local wait_time=0
-    local check_interval=10
-
-    while [ $wait_time -lt $max_wait ]; do
-        local pr_status=$(gh pr view $pr_number --json statusCheckRollup --jq '.statusCheckRollup[] | select(.state != "SUCCESS") | .state' | head -1)
-
-        if [ -z "$pr_status" ]; then
-            log_success "All PR checks passed"
-            break
-        elif echo "$pr_status" | grep -q "PENDING\|IN_PROGRESS"; then
-            log_info "PR checks still running... (${wait_time}s elapsed)"
-            sleep $check_interval
-            wait_time=$((wait_time + check_interval))
-        else
-            log_error "PR checks failed with status: $pr_status"
-            gh pr view $pr_number --json statusCheckRollup
-            exit 1
-        fi
-    done
-
-    if [ $wait_time -ge $max_wait ]; then
-        log_error "PR checks timed out after ${max_wait}s"
-        exit 1
-    fi
-
-    # Merge the PR
-    log_info "Merging pull request..."
-    if gh pr merge $pr_number --merge --delete-branch false; then
-        log_success "Pull request merged successfully"
-    else
-        log_error "Failed to merge pull request"
-        exit 1
-    fi
-}
-
-trigger_release() {
-    log_step "Triggering GitHub Release"
-
-    # Switch to main branch to trigger release
-    git fetch origin
-    git checkout $TARGET_BRANCH
-    git pull origin $TARGET_BRANCH
-
-    log_info "Triggering release workflow for v$VERSION..."
-    if gh workflow run release.yml --field version="v$VERSION"; then
-        log_success "Release workflow triggered successfully"
-    else
-        log_error "Failed to trigger release workflow"
-        exit 1
-    fi
-
-    # Wait for release workflow to start
-    sleep 5
-
-    # Monitor release progress
-    log_info "Monitoring release workflow..."
-    local max_wait=600  # 10 minutes
-    local wait_time=0
-    local check_interval=15
-
-    while [ $wait_time -lt $max_wait ]; do
-        local release_run=$(gh run list --workflow=release.yml --limit 1 --json status,conclusion --jq '.[0]')
-        local status=$(echo "$release_run" | jq -r '.status')
-        local conclusion=$(echo "$release_run" | jq -r '.conclusion')
-
-        if [ "$status" = "completed" ]; then
-            if [ "$conclusion" = "success" ]; then
-                log_success "Release workflow completed successfully"
-                break
-            else
-                log_error "Release workflow failed with conclusion: $conclusion"
-                gh run list --workflow=release.yml --limit 1
-                exit 1
-            fi
-        elif [ "$status" = "in_progress" ] || [ "$status" = "queued" ]; then
-            log_info "Release workflow running... (${wait_time}s elapsed)"
-            sleep $check_interval
-            wait_time=$((wait_time + check_interval))
-        else
-            log_error "Unexpected release workflow status: $status"
-            exit 1
-        fi
-    done
-
-    if [ $wait_time -ge $max_wait ]; then
-        log_error "Release workflow timed out after ${max_wait}s"
-        exit 1
-    fi
-}
-
-verify_release() {
-    log_step "Verifying Release"
-
-    # Check if GitHub release was created
-    if gh release view "v$VERSION" > /dev/null 2>&1; then
-        log_success "GitHub release v$VERSION created successfully"
-
-        # Show release details
-        echo -e "\n${BOLD}📦 Release Details:${NC}"
-        gh release view "v$VERSION" --json tagName,name,createdAt,assets --template '
-🏷️  Tag: {{.tagName}}
-📝 Name: {{.name}}
-📅 Created: {{.createdAt}}
-📎 Assets: {{len .assets}} files
-'
-    else
-        log_error "GitHub release v$VERSION not found"
-        exit 1
-    fi
-
-    # Verify main branch is updated
-    git fetch origin
-    local main_version=$(git show origin/$TARGET_BRANCH:VERSION 2>/dev/null || echo "")
-    if [ "$main_version" = "$VERSION" ]; then
-        log_success "Main branch updated with version v$VERSION"
-    else
-        log_warning "Main branch version ($main_version) doesn't match expected ($VERSION)"
-    fi
-}
-
-cleanup_and_switch_back() {
-    log_step "Final Cleanup"
-
-    # Switch back to development branch
-    git checkout $REQUIRED_BRANCH
-    git pull origin $REQUIRED_BRANCH
-
-    log_success "Switched back to development branch"
+    # Display PR information
+    echo -e "\n${BOLD}📋 Pull Request Created:${NC}"
+    echo "  🔗 URL: $(gh pr view $pr_number --json url --jq '.url')"
+    echo "  📝 Title: $pr_title"
+    echo "  🎯 Version: v$VERSION"
 }
 
 # Main execution flow
@@ -383,39 +180,36 @@ main() {
     echo -e "${BOLD}${CYAN}"
     echo "╔══════════════════════════════════════════════════════════════╗"
     echo "║               Vacasa Integration Release Deployment          ║"
-    echo "║                     Automated Release Process                ║"
+    echo "║                  Create Release Pull Request                 ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}\n"
 
     # Execute deployment steps
     check_prerequisites
-    get_version_info
-    run_tests
-    push_development_branch
-    wait_for_ci
-    create_and_merge_pr
-    trigger_release
-    verify_release
-    cleanup_and_switch_back
+    validate_version_info
+    push_and_create_pr
 
-    # Final success message
+    # Success message with next steps
     echo -e "\n${BOLD}${GREEN}"
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║                   🎉 DEPLOYMENT SUCCESSFUL! 🎉               ║"
+    echo "║                 🎉 PR CREATED SUCCESSFULLY! 🎉               ║"
     echo "║                                                              ║"
-    echo "║   ✅ Version v$VERSION has been released successfully        ║"
-    echo "║   ✅ GitHub release created with assets                      ║"
-    echo "║   ✅ Main branch updated automatically                       ║"
-    echo "║   ✅ Ready for HACS distribution                             ║"
-    echo "║                                                              ║"
-    echo "║   🔗 View release: https://github.com/samspade21/vacasa-ha   ║"
+    echo "║  ✅ Release PR ready for review and merge                    ║"
+    echo "║  🤖 GitHub Actions will handle everything after merge       ║"
+    echo "║  🏷️ Auto-tagging → Release workflow → HACS distribution    ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}\n"
 
     log_info "Next steps:"
-    echo "  • Monitor HACS integration for automatic updates"
-    echo "  • Check community feedback and issues"
-    echo "  • Continue development on the development branch"
+    echo "  1. Review the PR and ensure all checks pass"
+    echo "  2. Merge the PR when ready"
+    echo "  3. GitHub Actions will automatically:"
+    echo "     • Create git tag v$VERSION"
+    echo "     • Trigger release workflow"
+    echo "     • Create GitHub release with assets"
+    echo "     • Notify HACS for distribution"
+    echo ""
+    echo "  🔗 Monitor progress: https://github.com/samspade21/vacasa-ha/actions"
 }
 
 # Run main function

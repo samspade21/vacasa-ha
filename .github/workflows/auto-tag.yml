@@ -1,0 +1,165 @@
+name: Auto Tag on Main Merge
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  auto-tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check if this is a release merge
+        id: check-release
+        run: |
+          # Get the last commit message
+          LAST_COMMIT_MSG=$(git log -1 --pretty=%B)
+          echo "Last commit: $LAST_COMMIT_MSG"
+
+          # Check if this looks like a release merge (contains "Release v")
+          if echo "$LAST_COMMIT_MSG" | grep -q "Release v[0-9]"; then
+            echo "is_release=true" >> $GITHUB_OUTPUT
+            echo "This appears to be a release merge"
+          else
+            echo "is_release=false" >> $GITHUB_OUTPUT
+            echo "This is not a release merge, skipping tag creation"
+          fi
+
+      - name: Get version from files
+        id: get-version
+        if: steps.check-release.outputs.is_release == 'true'
+        run: |
+          # Read version from VERSION file
+          if [ -f "VERSION" ]; then
+            VERSION=$(cat VERSION | tr -d '[:space:]')
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+            echo "Found version: $VERSION"
+          else
+            echo "VERSION file not found"
+            exit 1
+          fi
+
+          # Validate version in manifest.json matches
+          MANIFEST_VERSION=$(python -c "
+          import json
+          with open('custom_components/vacasa/manifest.json', 'r') as f:
+              manifest = json.load(f)
+          print(manifest.get('version', ''))
+          ")
+
+          if [ "$VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "Version mismatch: VERSION file ($VERSION) != manifest.json ($MANIFEST_VERSION)"
+            exit 1
+          fi
+
+          echo "Version validation passed: $VERSION"
+
+      - name: Check if tag already exists
+        id: check-tag
+        if: steps.check-release.outputs.is_release == 'true'
+        run: |
+          TAG_NAME="${{ steps.get-version.outputs.tag }}"
+          if git tag -l | grep -q "^$TAG_NAME$"; then
+            echo "tag_exists=true" >> $GITHUB_OUTPUT
+            echo "Tag $TAG_NAME already exists, skipping creation"
+          else
+            echo "tag_exists=false" >> $GITHUB_OUTPUT
+            echo "Tag $TAG_NAME does not exist, will create"
+          fi
+
+      - name: Extract changelog for version
+        id: changelog
+        if: steps.check-release.outputs.is_release == 'true' && steps.check-tag.outputs.tag_exists == 'false'
+        run: |
+          VERSION="${{ steps.get-version.outputs.version }}"
+
+          # Extract changelog section for this version
+          python -c "
+          import sys
+
+          try:
+              with open('CHANGELOG.md', 'r') as f:
+                  content = f.read()
+
+              lines = content.split('\n')
+              in_version_section = False
+              changelog_lines = []
+
+              for line in lines:
+                  if line.startswith('## ') and '$VERSION' in line:
+                      in_version_section = True
+                      continue
+                  elif line.startswith('## ') and in_version_section:
+                      break
+                  elif in_version_section:
+                      changelog_lines.append(line)
+
+              changelog_content = '\n'.join(changelog_lines).strip()
+
+              if not changelog_content:
+                  changelog_content = 'Release version $VERSION'
+
+              # Write to file for GitHub Actions
+              with open('tag_message.txt', 'w') as f:
+                  f.write(f'Release {VERSION}\n\n{changelog_content}')
+
+              print(f'Extracted changelog for version $VERSION')
+
+          except Exception as e:
+              print(f'Error extracting changelog: {e}')
+              # Fallback message
+              with open('tag_message.txt', 'w') as f:
+                  f.write(f'Release $VERSION')
+          "
+
+      - name: Create and push tag
+        if: steps.check-release.outputs.is_release == 'true' && steps.check-tag.outputs.tag_exists == 'false'
+        run: |
+          TAG_NAME="${{ steps.get-version.outputs.tag }}"
+          VERSION="${{ steps.get-version.outputs.version }}"
+
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create annotated tag with changelog message
+          git tag -a "$TAG_NAME" -F tag_message.txt
+
+          # Push the tag
+          git push origin "$TAG_NAME"
+
+          echo "✅ Created and pushed tag: $TAG_NAME"
+
+          # Output summary
+          echo "### 🏷️ Tag Created Successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tag:** \`$TAG_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** $VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "- **Release workflow** will be triggered automatically" >> $GITHUB_STEP_SUMMARY
+          echo "- **Monitor progress:** [GitHub Actions](https://github.com/${{ github.repository }}/actions)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Summary for non-release
+        if: steps.check-release.outputs.is_release == 'false'
+        run: |
+          echo "### ℹ️ Non-Release Commit" >> $GITHUB_STEP_SUMMARY
+          echo "This commit to main branch was not identified as a release merge." >> $GITHUB_STEP_SUMMARY
+          echo "No tag was created." >> $GITHUB_STEP_SUMMARY
+
+      - name: Summary for existing tag
+        if: steps.check-release.outputs.is_release == 'true' && steps.check-tag.outputs.tag_exists == 'true'
+        run: |
+          echo "### ⚠️ Tag Already Exists" >> $GITHUB_STEP_SUMMARY
+          echo "Tag \`${{ steps.get-version.outputs.tag }}\` already exists." >> $GITHUB_STEP_SUMMARY
+          echo "No new tag was created." >> $GITHUB_STEP_SUMMARY
