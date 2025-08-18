@@ -52,12 +52,12 @@ Enhanced coordination between different entity types to ensure proper initializa
 async def _update_occupancy_from_calendar(self):
     calendar_entity_id = self._get_calendar_entity_id()
     calendar_state = self.hass.states.get(calendar_entity_id)
-    
+
     if calendar_state is None:
         # Calendar not ready yet - schedule retry
         self._schedule_retry()
         return
-    
+
     # Process calendar state now that it's available
 ```
 
@@ -129,7 +129,7 @@ Corrected logic for detecting current vs future events:
 def _is_current_event(self, event_start: datetime, event_end: datetime) -> bool:
     """Determine if an event is currently active."""
     now = datetime.now(event_start.tzinfo)
-    
+
     # Event is current if we're between start and end times
     # Use <= for end time to include checkout day until checkout time
     return event_start <= now <= event_end

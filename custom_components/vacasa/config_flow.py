@@ -5,6 +5,7 @@ import re
 from typing import Any, Dict, Optional
 
 import voluptuous as vol
+
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
@@ -120,9 +121,7 @@ class VacasaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    async def async_step_user(
-        self, user_input: Optional[Dict[str, Any]] = None
-    ) -> FlowResult:
+    async def async_step_user(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         """Handle the initial step."""
         errors: Dict[str, str] = {}
 
@@ -198,9 +197,7 @@ class VacasaOptionsFlowHandler(config_entries.OptionsFlow):
         """Initialize options flow."""
         super().__init__(config_entry)
 
-    async def async_step_init(
-        self, user_input: Optional[Dict[str, Any]] = None
-    ) -> FlowResult:
+    async def async_step_init(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         """Manage the options."""
         errors: Dict[str, str] = {}
 
@@ -236,9 +233,7 @@ class VacasaOptionsFlowHandler(config_entries.OptionsFlow):
                     # Create a validation dict with the new credentials
                     validation_data = {
                         CONF_USERNAME: new_username,
-                        CONF_PASSWORD: (
-                            new_password if new_password else current_password
-                        ),
+                        CONF_PASSWORD: (new_password if new_password else current_password),
                         CONF_REFRESH_INTERVAL: user_input[CONF_REFRESH_INTERVAL],
                     }
                     await validate_input(self.hass, validation_data)
@@ -249,9 +244,7 @@ class VacasaOptionsFlowHandler(config_entries.OptionsFlow):
                     if new_password:  # Only update password if provided
                         new_data[CONF_PASSWORD] = new_password
 
-                    self.hass.config_entries.async_update_entry(
-                        self.config_entry, data=new_data
-                    )
+                    self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
 
                 except vol.Invalid:
                     # Handle validation errors already set above

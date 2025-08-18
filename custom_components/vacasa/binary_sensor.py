@@ -10,7 +10,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
-from homeassistant.core import HomeAssistant, Event
+from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
@@ -28,7 +28,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up the Vacasa binary sensor platform."""
     _LOGGER.debug("Setting up Vacasa binary sensor platform")
-    
+
     # Use modern runtime data pattern
     data = config_entry.runtime_data
     client = data.client
@@ -61,10 +61,11 @@ async def async_setup_entry(
 
         _LOGGER.info("Adding %d binary sensor entities to Home Assistant", len(entities))
         async_add_entities(entities, True)
-        
+
     except Exception as err:
         _LOGGER.error("Error setting up Vacasa binary sensors: %s", err)
         import traceback
+
         _LOGGER.debug("Full traceback: %s", traceback.format_exc())
 
 
@@ -132,9 +133,7 @@ class VacasaOccupancySensor(BinarySensorEntity):
                 attrs["next_guest"] = guest_name
 
             # Extract reservation type from event
-            reservation_type = self._extract_reservation_type_from_event(
-                self._next_event
-            )
+            reservation_type = self._extract_reservation_type_from_event(self._next_event)
             if reservation_type:
                 attrs["next_reservation_type"] = reservation_type
 
@@ -158,9 +157,7 @@ class VacasaOccupancySensor(BinarySensorEntity):
                 attrs["current_guest"] = guest_name
 
             # Extract reservation type from event
-            reservation_type = self._extract_reservation_type_from_event(
-                self._current_event
-            )
+            reservation_type = self._extract_reservation_type_from_event(self._current_event)
             if reservation_type:
                 attrs["current_reservation_type"] = reservation_type
 
@@ -190,7 +187,8 @@ class VacasaOccupancySensor(BinarySensorEntity):
                 self._calendar_entity = await self._find_calendar_entity_with_retry()
                 if not self._calendar_entity:
                     _LOGGER.warning(
-                        "Calendar entity not found for %s after retries, occupancy will be unavailable",
+                        "Calendar entity not found for %s after retries, "
+                        "occupancy will be unavailable",
                         self._name,
                     )
                     self._attr_available = False
@@ -200,15 +198,11 @@ class VacasaOccupancySensor(BinarySensorEntity):
             await self._update_current_and_next_events()
 
         except Exception as err:
-            _LOGGER.error(
-                "Error updating occupancy from calendar for %s: %s", self._name, err
-            )
+            _LOGGER.error("Error updating occupancy from calendar for %s: %s", self._name, err)
             # Don't mark as unavailable for temporary issues
             # Keep last known state
 
-    async def _find_calendar_entity_with_retry(
-        self, max_retries: int = 3
-    ) -> str | None:
+    async def _find_calendar_entity_with_retry(self, max_retries: int = 3) -> str | None:
         """Find calendar entity with retry mechanism for timing issues."""
         for attempt in range(max_retries):
             entity_id = await self._find_calendar_entity()
@@ -237,7 +231,7 @@ class VacasaOccupancySensor(BinarySensorEntity):
     async def _find_calendar_entity(self) -> str | None:
         """Find the corresponding calendar entity ID for this unit."""
         _LOGGER.debug("Searching for calendar entity for unit %s (%s)", self._unit_id, self._name)
-        
+
         # Generate possible entity IDs to try
         sanitized_name = self._sanitize_entity_name(self._name)
         possible_entity_ids = [
@@ -263,11 +257,18 @@ class VacasaOccupancySensor(BinarySensorEntity):
                     entity_entry.unique_id == calendar_unique_id
                     and entity_entry.domain == "calendar"
                 ):
-                    _LOGGER.debug("Found calendar entity %s in registry for unit %s", entity_id, self._unit_id)
+                    _LOGGER.debug(
+                        "Found calendar entity %s in registry for unit %s",
+                        entity_id,
+                        self._unit_id,
+                    )
                     # Check if this entity also exists in state registry
                     state = self.hass.states.get(entity_id)
                     if not state:
-                        _LOGGER.warning("Calendar entity %s found in registry but not yet available in state", entity_id)
+                        _LOGGER.warning(
+                            "Calendar entity %s found in registry but not yet available in state",
+                            entity_id,
+                        )
                     return entity_id
 
         except Exception as e:
@@ -298,7 +299,10 @@ class VacasaOccupancySensor(BinarySensorEntity):
     async def _update_current_and_next_events(self) -> None:
         """Update current and next events from the calendar."""
         if not self._calendar_entity:
-            _LOGGER.error("No calendar entity set for unit %s - binary sensor cannot function", self._unit_id)
+            _LOGGER.error(
+                "No calendar entity set for unit %s - binary sensor cannot function",
+                self._unit_id,
+            )
             return
 
         # Reset current and next events
@@ -309,7 +313,11 @@ class VacasaOccupancySensor(BinarySensorEntity):
             # Get the calendar state
             calendar_state = self.hass.states.get(self._calendar_entity)
             if not calendar_state:
-                _LOGGER.warning("Calendar entity %s state not available for unit %s", self._calendar_entity, self._unit_id)
+                _LOGGER.warning(
+                    "Calendar entity %s state not available for unit %s",
+                    self._calendar_entity,
+                    self._unit_id,
+                )
                 return
 
             _LOGGER.debug("Calendar %s state: %s", self._calendar_entity, calendar_state.state)
@@ -342,9 +350,16 @@ class VacasaOccupancySensor(BinarySensorEntity):
                             self._current_event.end,
                         )
                     except Exception as event_err:
-                        _LOGGER.error("Error creating event object for %s: %s", self._name, event_err)
+                        _LOGGER.error(
+                            "Error creating event object for %s: %s",
+                            self._name,
+                            event_err,
+                        )
                 else:
-                    _LOGGER.warning("Calendar is 'on' but missing required event data for %s", self._name)
+                    _LOGGER.warning(
+                        "Calendar is 'on' but missing required event data for %s",
+                        self._name,
+                    )
 
         except Exception as err:
             _LOGGER.error("Error getting calendar events for %s: %s", self._name, err)
@@ -368,16 +383,20 @@ class VacasaOccupancySensor(BinarySensorEntity):
         self.hass.async_create_task(self._delayed_initial_update())
 
     async def _delayed_initial_update(self) -> None:
-        """Perform initial update with enhanced delay and calendar platform readiness check."""
+        """Perform initial update with enhanced delay and calendar readiness check."""
         _LOGGER.debug("Starting delayed initial update for %s", self._name)
-        
+
         # Enhanced startup coordination - wait for calendar platform to be ready
         await self._wait_for_calendar_platform_ready()
-        
+
         await self._update_from_calendar()
         self.async_write_ha_state()
-        
-        _LOGGER.debug("Initial update complete for %s - occupancy: %s", self._name, "on" if self.is_on else "off")
+
+        _LOGGER.debug(
+            "Initial update complete for %s - occupancy: %s",
+            self._name,
+            "on" if self.is_on else "off",
+        )
 
     async def async_will_remove_from_hass(self) -> None:
         """When entity will be removed from hass."""
@@ -402,9 +421,7 @@ class VacasaOccupancySensor(BinarySensorEntity):
             self.async_write_ha_state()
             _LOGGER.debug("Successfully updated occupancy for unit %s", self._unit_id)
         except Exception as err:
-            _LOGGER.warning(
-                "Error during coordinator update for unit %s: %s", self._unit_id, err
-            )
+            _LOGGER.warning("Error during coordinator update for unit %s: %s", self._unit_id, err)
             # Don't mark as unavailable for temporary API issues
             # Keep last known state
 
@@ -464,65 +481,81 @@ class VacasaOccupancySensor(BinarySensorEntity):
     async def _wait_for_calendar_platform_ready(self, max_wait_time: int = 10) -> None:
         """Wait for calendar platform to be fully ready with enhanced timing."""
         _LOGGER.debug("Waiting for calendar platform readiness...")
-        
+
         # Initial delay - increased from 1s to 3s based on diagnostic evidence
         await asyncio.sleep(3)
-        
+
         # Check if expected calendar entity is available in state registry
         expected_calendar_entity = f"calendar.vacasa_{self._sanitize_entity_name(self._name)}"
-        
+
         for attempt in range(max_wait_time):
             state = self.hass.states.get(expected_calendar_entity)
             if state:
-                _LOGGER.debug("✓ Calendar entity %s is ready in state registry", expected_calendar_entity)
+                _LOGGER.debug(
+                    "✓ Calendar entity %s is ready in state registry",
+                    expected_calendar_entity,
+                )
                 return
-                
-            _LOGGER.debug("Calendar entity %s not yet in state registry, waiting... (attempt %d/%d)",
-                         expected_calendar_entity, attempt + 1, max_wait_time)
+
+            _LOGGER.debug(
+                "Calendar entity %s not yet in state registry, waiting... (attempt %d/%d)",
+                expected_calendar_entity,
+                attempt + 1,
+                max_wait_time,
+            )
             await asyncio.sleep(1)
-        
+
         _LOGGER.warning("Calendar platform readiness timeout after %d seconds", max_wait_time + 3)
 
     def _handle_calendar_state_change(self, event: Event) -> None:
         """Handle calendar state changes for event-driven recovery."""
         event_data = event.data
         entity_id = event_data.get("entity_id", "")
-        
+
         # Only respond to calendar entity state changes
         if not entity_id.startswith("calendar.vacasa_"):
             return
-            
+
         # Check if this is our expected calendar entity
         expected_calendar_entity = f"calendar.vacasa_{self._sanitize_entity_name(self._name)}"
         if entity_id != expected_calendar_entity:
             return
-            
+
         new_state = event_data.get("new_state")
         old_state = event_data.get("old_state")
-        
+
         # If calendar entity just became available (new state exists but old didn't)
         if new_state and not old_state:
-            _LOGGER.debug("Calendar entity %s just became available - triggering recovery update", entity_id)
+            _LOGGER.debug(
+                "Calendar entity %s just became available - triggering recovery update",
+                entity_id,
+            )
             self._calendar_entity = entity_id
             self.hass.async_create_task(self._recovery_update())
         # If calendar state changed and we weren't previously available
         elif new_state and old_state and not self._attr_available:
-            _LOGGER.debug("Calendar entity %s state changed and sensor was unavailable - triggering recovery", entity_id)
+            _LOGGER.debug(
+                "Calendar entity %s state changed and sensor was unavailable - triggering recovery",
+                entity_id,
+            )
             self.hass.async_create_task(self._recovery_update())
 
     async def _recovery_update(self) -> None:
         """Perform recovery update when calendar becomes available."""
         _LOGGER.debug("Starting recovery update for %s", self._name)
-        
+
         try:
             await self._update_from_calendar()
             if self._calendar_entity and self.hass.states.get(self._calendar_entity):
                 self._attr_available = True
                 _LOGGER.debug("Recovery successful for %s - sensor now available", self._name)
             else:
-                _LOGGER.debug("Recovery attempted for %s but calendar still not available", self._name)
-                
+                _LOGGER.debug(
+                    "Recovery attempted for %s but calendar still not available",
+                    self._name,
+                )
+
             self.async_write_ha_state()
-            
+
         except Exception as err:
             _LOGGER.error("Error during recovery update for %s: %s", self._name, err)

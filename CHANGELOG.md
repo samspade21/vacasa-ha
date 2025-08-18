@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2025-08-18
+
+### Added
+- **Enhanced Startup Coordination**: Binary sensors now properly wait for calendar entities to be available before initial state updates, eliminating timing-dependent initialization issues
+- **Event-Driven Recovery Mechanisms**: Automatic retry logic when calendar entities are temporarily unavailable, providing self-healing capabilities for robust operation
+- **Platform Dependencies**: Explicit dependency declarations ensure proper startup order between calendar and binary sensor platforms
+- **Modern Python Tooling**: Complete migration to ruff-pre-commit for faster, more efficient linting and formatting with Rust-based performance benefits
+
+### Fixed
+- **Critical Occupancy Detection Reliability**: Resolved race conditions between calendar and binary sensor initialization that could cause incorrect occupancy states during startup
+- **Current Event Detection Logic**: Corrected calendar logic for accurately identifying active reservations happening right now vs future events
+- **Timing Dependency Issues**: Eliminated startup timing problems through enhanced coordination between entity platforms
+- **Binary Sensor State Consistency**: Fixed edge cases where occupancy sensors could show incorrect states due to calendar entity unavailability
+
+### Improved
+- **Production-Ready Logging**: Clean, maintainable debug output with reduced noise and clearer status messages suitable for long-term operation
+- **Robust State Management**: Binary sensors now gracefully handle calendar entity state transitions and temporary unavailability
+- **Error Recovery**: Enhanced automatic recovery mechanisms for handling temporary platform or network issues
+- **Startup Reliability**: Consistent entity initialization that works reliably without manual intervention across different Home Assistant configurations
+- **Development Workflow**: Consolidated all linting and formatting configuration in pyproject.toml with modern ruff tooling
+
+### Changed
+- **Linting Toolchain**: Migrated from black, flake8, and isort to unified ruff-pre-commit for faster development workflows
+- **Configuration Management**: Consolidated all code quality tools configuration in pyproject.toml while maintaining mypy for type checking
+- **Binary Sensor Architecture**: Enhanced entity coordination patterns for more reliable occupancy detection
+- **Calendar State Logic**: Improved current event identification algorithm for accurate real-time occupancy status
+- **Pre-commit Hooks**: Updated both development and CI environments to use consistent ruff-based tooling
+
+### Technical Improvements
+- **Platform Coordination**: Added explicit platform dependencies in [`binary_sensor.py`](custom_components/vacasa/binary_sensor.py) and [`calendar.py`](custom_components/vacasa/calendar.py)
+- **State Recovery**: Implemented event-driven recovery patterns for handling temporary entity unavailability
+- **Startup Sequencing**: Enhanced initialization order management to prevent race conditions
+- **Configuration Consolidation**: Moved all linting/formatting settings from setup.cfg to pyproject.toml for modern Python project structure
+- **CI/CD Consistency**: Aligned pre-commit configuration across development and continuous integration environments
+
+### Developer Experience
+- **Faster Tooling**: Ruff provides significantly faster linting and formatting compared to previous toolchain
+- **Simplified Configuration**: Single configuration file (pyproject.toml) for all code quality tools except type checking
+- **Enhanced Debugging**: Improved diagnostic logging for troubleshooting occupancy detection and entity coordination issues
+- **Maintainable Codebase**: Cleaner logging patterns and error handling suitable for production environments
+
+This release represents a major stability milestone, resolving all known timing and reliability issues while modernizing the development toolchain. The integration now provides consistent, reliable occupancy detection that works seamlessly across different Home Assistant installations and configurations.
+
 ## [1.2.1] - 2025-07-29
 
 ### Fixed
