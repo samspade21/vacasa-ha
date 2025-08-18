@@ -147,30 +147,46 @@ $(grep -A 20 "## \[$VERSION\]" CHANGELOG.md | head -20)
 **No manual steps required after merge - everything is automated!** 🎉"
 
     # Check if PR already exists
-    local existing_pr=$(gh pr list --base $TARGET_BRANCH --head $REQUIRED_BRANCH --json number --jq '.[0].number' 2>/dev/null || echo "")
+    local existing_pr_output=$(gh pr list --base $TARGET_BRANCH --head $REQUIRED_BRANCH 2>/dev/null || echo "")
+    local existing_pr=""
 
-    if [ -n "$existing_pr" ] && [ "$existing_pr" != "null" ]; then
+    if [ -n "$existing_pr_output" ] && [ "$existing_pr_output" != "no pull requests found" ]; then
+        # Extract PR number from the first line of output (format: "#15  Title  branch  timestamp")
+        existing_pr=$(echo "$existing_pr_output" | head -n1 | grep -o '^#[0-9]*' | sed 's/^#//')
+    fi
+
+    if [ -n "$existing_pr" ]; then
         log_success "Existing PR #$existing_pr found"
         local pr_number=$existing_pr
 
         # Update PR body
         gh pr edit $pr_number --body "$pr_body"
         log_success "Updated PR #$pr_number with latest information"
+
+        # Get the URL for existing PR using gh pr view
+        local pr_url=$(gh pr view $pr_number --web --dry-run 2>/dev/null | head -n1 || echo "")
+        if [ -z "$pr_url" ]; then
+            # Fallback: construct URL from git remote
+            local repo_url=$(git remote get-url origin | sed 's/\.git$//' | sed 's/git@github\.com:/https:\/\/github.com\//')
+            pr_url="${repo_url}/pull/${pr_number}"
+        fi
     else
-        # Create new PR
-        local pr_number=$(gh pr create \
+        # Create new PR and capture the URL
+        local pr_url=$(gh pr create \
             --base $TARGET_BRANCH \
             --head $REQUIRED_BRANCH \
             --title "$pr_title" \
-            --body "$pr_body" \
-            --json number --jq '.number')
+            --body "$pr_body")
+
+        # Extract PR number from URL (e.g., https://github.com/owner/repo/pull/15 -> 15)
+        local pr_number=$(echo "$pr_url" | grep -o '[0-9]*$')
 
         log_success "Created PR #$pr_number"
     fi
 
     # Display PR information
     echo -e "\n${BOLD}📋 Pull Request Created:${NC}"
-    echo "  🔗 URL: $(gh pr view $pr_number --json url --jq '.url')"
+    echo "  🔗 URL: $pr_url"
     echo "  📝 Title: $pr_title"
     echo "  🎯 Version: v$VERSION"
 }
