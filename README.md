@@ -2,21 +2,10 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/integration)
 [![GitHub Release](https://img.shields.io/github/release/samspade21/vacasa-ha.svg?style=flat-square)](https://github.com/samspade21/vacasa-ha/releases)
-[![GitHub Release Date](https://img.shields.io/github/release-date/samspade21/vacasa-ha.svg?style=flat-square)](https://github.com/samspade21/vacasa-ha/releases)
-[![License](https://img.shields.io/github/license/samspade21/vacasa-ha.svg?style=flat-square)](LICENSE)
 
 [![Validate](https://github.com/samspade21/vacasa-ha/actions/workflows/validate.yml/badge.svg)](https://github.com/samspade21/vacasa-ha/actions/workflows/validate.yml)
 [![Dependencies](https://github.com/samspade21/vacasa-ha/actions/workflows/dependencies.yml/badge.svg)](https://github.com/samspade21/vacasa-ha/actions/workflows/dependencies.yml)
 [![codecov](https://codecov.io/gh/samspade21/vacasa-ha/branch/main/graph/badge.svg)](https://codecov.io/gh/samspade21/vacasa-ha)
-
-[![GitHub issues](https://img.shields.io/github/issues/samspade21/vacasa-ha.svg?style=flat-square)](https://github.com/samspade21/vacasa-ha/issues)
-[![GitHub pull requests](https://img.shields.io/github/issues-pr/samspade21/vacasa-ha.svg?style=flat-square)](https://github.com/samspade21/vacasa-ha/pulls)
-[![GitHub stars](https://img.shields.io/github/stars/samspade21/vacasa-ha.svg?style=flat-square)](https://github.com/samspade21/vacasa-ha/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/samspade21/vacasa-ha.svg?style=flat-square)](https://github.com/samspade21/vacasa-ha/network)
-
-[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2025.1+-blue.svg)](https://www.home-assistant.io/)
-[![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 A comprehensive Home Assistant integration for Vacasa vacation rental properties that provides calendars, occupancy sensors, and detailed property information, enabling powerful smart home automation based on reservation status and property characteristics.
 
