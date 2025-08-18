@@ -324,4 +324,8 @@ class RetryWithBackoff:
                     )
 
         # Re-raise the last exception if all retries failed
-        raise last_exception
+        if last_exception is not None:
+            raise last_exception
+        else:
+            # This should not happen in normal operation, but provides safety
+            raise RuntimeError("All retry attempts failed, but no exception was captured")

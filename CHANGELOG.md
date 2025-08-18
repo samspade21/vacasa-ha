@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2025-08-18
+
+### Security
+- **Fixed URL Sanitization Vulnerability**: Enhanced hostname validation in [`api_client.py`](custom_components/vacasa/api_client.py:665) to prevent URL manipulation attacks by using proper hostname parsing instead of substring matching
+- **Fixed Exception Handling**: Corrected potential TypeError in [`cached_data.py`](custom_components/vacasa/cached_data.py:329) where None could be raised instead of a proper exception
+
+### Technical Improvements
+- **CodeQL Compliance**: Addressed all security findings from GitHub CodeQL code scanning
+- **Defensive Programming**: Added null checks and proper exception handling to prevent runtime errors
+- **Security Best Practices**: Implemented proper hostname validation to prevent bypass attacks using malicious URLs
+
+This release addresses GitHub security findings identified by CodeQL code scanning while maintaining full backward compatibility and functionality.
+
 ## [1.3.1] - 2025-08-18
 
 ### Added

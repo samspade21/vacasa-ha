@@ -660,7 +660,11 @@ class VacasaApiClient:
                                 return token
 
                         # If we've reached owners.vacasa.com without a token, try one more request
-                        if "owners.vacasa.com" in str(response.url.host):
+                        # Use proper hostname parsing to prevent URL manipulation attacks
+                        response_host = str(response.url.host).lower() if response.url.host else ""
+                        if response_host == "owners.vacasa.com" or response_host.endswith(
+                            ".owners.vacasa.com"
+                        ):
                             page_content = await response.text()
                             token_match = re.search(r'access_token=([^&"\']+)', page_content)
                             if token_match:
