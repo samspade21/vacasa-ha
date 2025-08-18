@@ -404,6 +404,50 @@ If you're still experiencing issues:
 pytest
 ```
 
+### Automated Release Deployment
+
+For maintainers, this project includes a fully automated release deployment process that handles the entire workflow from development branch to production release.
+
+#### Quick Release
+
+```bash
+# 1. Update VERSION file and manifest.json with new version
+# 2. Update CHANGELOG.md with release notes
+# 3. Commit changes to development branch
+# 4. Run automated deployment
+./deploy.sh
+```
+
+The script automatically:
+- ✅ Validates environment and version consistency
+- ✅ Runs all tests and quality checks
+- ✅ Pushes development branch and waits for CI/CD validation
+- ✅ Creates and merges pull request to main branch
+- ✅ Triggers GitHub release workflow
+- ✅ Monitors release completion and verifies success
+- ✅ Updates main branch with release artifacts
+
+#### Prerequisites for Release Deployment
+
+- **GitHub CLI**: `brew install gh` (macOS) or equivalent
+- **Authentication**: `gh auth login`
+- **Clean Development Branch**: All changes committed
+- **Version Consistency**: VERSION file and manifest.json updated
+- **Changelog Updated**: CHANGELOG.md contains release notes
+
+#### Release Process Documentation
+
+For detailed instructions, troubleshooting, and advanced configuration options, see:
+**📖 [Complete Deployment Guide](DEPLOYMENT.md)**
+
+The deployment guide covers:
+- Step-by-step setup instructions
+- Version management best practices
+- CI/CD workflow integration
+- Troubleshooting common issues
+- Manual deployment procedures
+- Rollback processes
+
 ## Contributing
 
 We welcome contributions from the community! Whether you're fixing bugs, adding features, improving documentation, or helping with testing, your contributions help make this integration better for everyone.
