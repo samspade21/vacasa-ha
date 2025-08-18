@@ -278,9 +278,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                 self.state,
             )
         except Exception as err:
-            _LOGGER.error(
-                "Error during coordinator update for calendar %s: %s", self._name, err
-            )
+            _LOGGER.error("Error during coordinator update for calendar %s: %s", self._name, err)
 
     def _reservation_to_event(  # noqa: C901
         self, reservation: dict[str, Any], stay_type: str
@@ -364,9 +362,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                             end_dt = naive_end.replace(tzinfo=tz)
                             _LOGGER.debug("End time with TZ: %s", end_dt)
                     except Exception as e:
-                        _LOGGER.warning(
-                            "Error applying timezone %s: %s", self._timezone, e
-                        )
+                        _LOGGER.warning("Error applying timezone %s: %s", self._timezone, e)
                         # Fall back to local timezone
                         if not is_all_day_start:
                             start_dt = dt_util.as_local(start_dt)
@@ -414,18 +410,14 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             if checkin_time and checkin_time not in ["00:00:00", "12:00:00"]:
                 description_parts.append(f"Check-in: {start_date} {checkin_time[:5]}")
             elif self._checkin_time:
-                description_parts.append(
-                    f"Check-in: {start_date} {self._checkin_time[:5]}"
-                )
+                description_parts.append(f"Check-in: {start_date} {self._checkin_time[:5]}")
             else:
                 description_parts.append(f"Check-in: {start_date}")
 
             if checkout_time and checkout_time not in ["00:00:00", "12:00:00"]:
                 description_parts.append(f"Check-out: {end_date} {checkout_time[:5]}")
             elif self._checkout_time:
-                description_parts.append(
-                    f"Check-out: {end_date} {self._checkout_time[:5]}"
-                )
+                description_parts.append(f"Check-out: {end_date} {self._checkout_time[:5]}")
             else:
                 description_parts.append(f"Check-out: {end_date}")
 
