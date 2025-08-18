@@ -4,6 +4,8 @@
 
 This document outlines the systematic approach for debugging the Vacasa integration using logs and diagnostic information. The integration is designed with structured logging to enable rapid problem identification and resolution.
 
+**Current Status**: As of v1.3.0, major timing and reliability issues have been resolved. The integration is now production-ready with enhanced startup coordination, event-driven recovery mechanisms, and corrected calendar logic. This document is maintained for reference and for handling any future edge cases that may emerge.
+
 ## Logging Levels & Patterns
 
 ### DEBUG Level (Most Verbose)
@@ -39,12 +41,14 @@ ERROR: Failed to process reservation 67890 for Mountain View Getaway: Invalid da
 
 ## Common Debugging Scenarios
 
-### 1. Authentication Issues
+### 1. Authentication Issues (RARE - Well Handled)
 
 **Symptoms**:
 - Integration fails to load
 - "Authentication failed" errors
 - Repeated login attempts
+
+**Current Status**: ✅ **STABLE** - Authentication is well-handled with robust retry mechanisms
 
 **Log Patterns to Look For**:
 ```
@@ -63,46 +67,52 @@ WARNING: Authentication attempt 2/3 failed: ConnectionTimeout
 - Clear token cache: Use "Clear Cache" service
 - Verify username/password in configuration
 - Check for Vacasa service outages
+- **Note**: Most authentication issues self-resolve with the enhanced retry mechanisms
 
-### 2. Calendar Entity Issues
+### 2. Calendar Entity Issues (RESOLVED - v1.3.0)
 
-**Symptoms**:
+**Previous Symptoms**:
 - Calendar entities not showing events
 - Binary sensors always show "unavailable"
 - Events not updating
 
-**Log Patterns to Look For**:
+**Current Status**: ✅ **RESOLVED** - Enhanced startup coordination ensures proper entity availability
+
+**Historical Log Patterns** (now rare):
 ```
 WARNING: Calendar entity not found for unit 12345
 ERROR: Error getting events for Mountain View Getaway: API timeout
 DEBUG: Retrieved 0 reservations for unit 12345
 ```
 
-**Diagnostic Steps**:
-1. Verify calendar entities exist in Home Assistant
-2. Check coordinator update status
-3. Examine API response data
-4. Verify property has reservations in Vacasa portal
+**Current Behavior**:
+- Calendar entities initialize properly with platform dependencies
+- Binary sensors wait for calendar availability with automatic retry
+- Events update reliably with corrected current event detection logic
+- If issues occur, they typically self-resolve with event-driven recovery mechanisms
 
-### 3. Binary Sensor Issues
+### 3. Binary Sensor Issues (RESOLVED - v1.3.0)
 
-**Symptoms**:
+**Previous Symptoms**:
 - Occupancy sensors don't update
 - Always show "off" despite active reservations
 - Missing guest information
 
-**Log Patterns to Look For**:
+**Current Status**: ✅ **FULLY RESOLVED** - Binary sensor timing and coordination issues eliminated
+
+**Historical Log Patterns** (now very rare):
 ```
 WARNING: Calendar entity not found for Mountain View Getaway, occupancy will be unavailable
 DEBUG: Calendar state not found for calendar.vacasa_mountain_view_getaway
 ERROR: Error updating occupancy from calendar for Mountain View Getaway: ...
 ```
 
-**Diagnostic Steps**:
-1. Verify corresponding calendar entity exists
-2. Check calendar entity state in Developer Tools
-3. Examine event summary parsing
-4. Verify entity registry entries
+**Current Behavior**:
+- Binary sensors coordinate properly with calendar entities via platform dependencies
+- Occupancy detection works reliably with enhanced startup coordination
+- Event-driven recovery handles any temporary unavailability automatically
+- Current event detection logic correctly identifies active reservations
+- Guest information parsing works consistently
 
 ### 4. Data Parsing Issues
 
@@ -120,7 +130,7 @@ ERROR: Error converting reservation to event: KeyError 'startDate'
 
 ## Troubleshooting Guide
 
-### Step 1: Enable Debug Logging
+### Step 1: Enable Debug Logging (if needed)
 
 Add to Home Assistant configuration.yaml:
 ```yaml
@@ -130,27 +140,33 @@ logger:
     custom_components.vacasa: debug
 ```
 
+**Note**: With v1.3.0 improvements, debug logging is typically only needed for edge cases or new issues.
+
 ### Step 2: Identify the Problem Area
 
-**Authentication Problems**:
+**Authentication Problems** (rare):
 - Look for: `auth`, `token`, `login` in logs
 - Focus on: Initial setup, credential validation
+- **Status**: Well-handled with automatic retry mechanisms
 
-**Data Retrieval Problems**:
+**Data Retrieval Problems** (rare):
 - Look for: `get_units`, `get_reservations`, `API error` in logs
 - Focus on: Network issues, API responses
+- **Status**: Robust error handling with exponential backoff
 
-**Entity Problems**:
+**Entity Problems** (resolved):
 - Look for: `entity`, `calendar`, `binary_sensor` in logs
 - Focus on: Entity creation, state updates
+- **Status**: Enhanced startup coordination eliminates most issues
 
-**Timezone/Date Problems**:
+**Timezone/Date Problems** (resolved):
 - Look for: `timezone`, `datetime`, `parse_datetime` in logs
 - Focus on: Date formatting, timezone conversion
+- **Status**: Current event detection logic corrected and working reliably
 
-### Step 3: Common Log Analysis Patterns
+### Step 3: Common Log Analysis Patterns (v1.3.0)
 
-**Successful Operation Flow**:
+**Typical Successful Operation Flow** (now standard):
 ```
 DEBUG: Found 2 Vacasa units for binary sensors
 DEBUG: Found calendar entity calendar.vacasa_mountain_view_getaway for unit 12345
@@ -158,12 +174,17 @@ DEBUG: Unit 12345 occupied: Guest Booking: John Doe
 INFO: Successfully updated occupancy for Mountain View Getaway
 ```
 
-**Failed Operation Flow**:
+**Historical Failed Operation Flow** (now rare with enhanced coordination):
 ```
 DEBUG: Found 2 Vacasa units for binary sensors
-WARNING: Calendar entity not found for unit 12345 (tried calendar.vacasa_mountain_view_getaway and calendar.vacasa_calendar_12345)
-ERROR: Error updating occupancy from calendar for Mountain View Getaway: Calendar entity not found
+WARNING: Calendar entity not found for unit 12345, scheduling retry
+DEBUG: Retrying occupancy update for unit 12345 (attempt 1/3)
+DEBUG: Found calendar entity calendar.vacasa_mountain_view_getaway for unit 12345
+DEBUG: Unit 12345 occupied: Guest Booking: John Doe
+INFO: Successfully updated occupancy for Mountain View Getaway after retry
 ```
+
+**Current Behavior**: The integration now handles temporary unavailability gracefully with automatic retries and event-driven recovery.
 
 ### Step 4: Entity Verification
 
@@ -223,40 +244,51 @@ ha core restart
 # Use Developer Tools > YAML > Integrations
 ```
 
-## Common Error Resolution
+## Common Error Resolution (Historical Reference)
 
-### "HomeAssistant object has no attribute 'helpers'"
-- **Cause**: Incorrect entity registry access pattern
-- **Fix**: Update to proper `entity_registry.async_get(hass)` pattern
-- **Prevention**: Use centralized const imports
+**Note**: Most of these issues have been resolved in v1.3.0. This section is maintained for reference.
 
-### "Calendar entity not found"
-- **Cause**: Entity ID mismatch between calendar and binary sensor
-- **Fix**: Check calendar entity names in Developer Tools
-- **Prevention**: Use predictable naming patterns
+### "HomeAssistant object has no attribute 'helpers'" (RESOLVED)
+- **Status**: ✅ **FIXED** - Proper entity registry access patterns implemented
+- **Previous Cause**: Incorrect entity registry access pattern
+- **Current State**: Uses centralized const imports and proper async patterns
 
-### "Authentication failed"
-- **Cause**: Invalid credentials or expired session
-- **Fix**: Reconfigure integration or clear cache
-- **Prevention**: Implement proper token refresh
+### "Calendar entity not found" (RESOLVED)
+- **Status**: ✅ **FIXED** - Enhanced startup coordination eliminates timing issues
+- **Previous Cause**: Entity ID mismatch between calendar and binary sensor during startup
+- **Current State**: Platform dependencies and event-driven recovery handle this automatically
 
-### "Blocking call to open"
-- **Cause**: Synchronous file operations in async context
-- **Fix**: Use `hass.async_add_executor_job()` for file operations
-- **Prevention**: Always use async patterns in Home Assistant
+### "Authentication failed" (WELL HANDLED)
+- **Status**: ✅ **ROBUST** - Enhanced retry mechanisms handle transient failures
+- **Cause**: Invalid credentials or expired session (still possible but rare)
+- **Current Handling**: Automatic retry with exponential backoff, clear cache service available
 
-## Escalation Criteria
+### "Blocking call to open" (RESOLVED)
+- **Status**: ✅ **FIXED** - All file operations now use proper async patterns
+- **Previous Cause**: Synchronous file operations in async context
+- **Current State**: Uses `hass.async_add_executor_job()` for all file operations
 
-Contact developer support when:
-1. Authentication works but no data is retrieved
-2. Calendar entities exist but never update
-3. Logs show successful API calls but empty responses
-4. Timezone handling produces incorrect dates consistently
-5. Memory leaks or performance degradation over time
+## Current Status & Escalation Criteria
 
-Include in support request:
+**Integration Status**: ✅ **PRODUCTION READY** - v1.3.0 is stable with all major issues resolved
+
+**Escalation Now Rarely Needed** - Contact developer support only for:
+1. **New/Unknown Issues**: Problems not covered by the enhanced recovery mechanisms
+2. **Vacasa API Changes**: If Vacasa makes breaking changes to their API structure
+3. **Performance Issues**: Unexpected memory leaks or performance degradation (should be rare)
+4. **Home Assistant Compatibility**: Issues with new Home Assistant versions
+
+**Most Common Historical Issues Are Now Resolved**:
+- ✅ Authentication reliability - enhanced with retry mechanisms
+- ✅ Calendar entity coordination - resolved with startup coordination
+- ✅ Binary sensor timing - resolved with event-driven recovery
+- ✅ Current event detection - resolved with corrected logic
+- ✅ Timezone handling - working correctly
+
+**Include in Support Request** (if needed):
 - Home Assistant version
-- Integration version
+- Integration version (should be v1.3.0 or later)
 - Relevant log excerpts (sanitized)
 - Entity states from Developer Tools
 - Number of properties and typical reservation volume
+- **New**: Description of why the enhanced recovery mechanisms didn't handle the issue
