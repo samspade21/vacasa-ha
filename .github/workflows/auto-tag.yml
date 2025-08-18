@@ -24,17 +24,17 @@ jobs:
       - name: Check if this is a release merge
         id: check-release
         run: |
-          # Get the last commit message
+          # Get the last commit message for info
           LAST_COMMIT_MSG=$(git log -1 --pretty=%B)
           echo "Last commit: $LAST_COMMIT_MSG"
 
-          # Check if this looks like a release merge (contains "Release v")
-          if echo "$LAST_COMMIT_MSG" | grep -q "Release v[0-9]"; then
+          # Check if VERSION file changed in this push (more reliable than commit message)
+          if git diff HEAD~1 HEAD --name-only | grep -q "^VERSION$"; then
             echo "is_release=true" >> $GITHUB_OUTPUT
-            echo "This appears to be a release merge"
+            echo "VERSION file changed - this appears to be a release merge"
           else
             echo "is_release=false" >> $GITHUB_OUTPUT
-            echo "This is not a release merge, skipping tag creation"
+            echo "VERSION file unchanged - this is not a release merge, skipping tag creation"
           fi
 
       - name: Get version from files
