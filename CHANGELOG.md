@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2025-08-18
+
+### Added
+- **Streamlined Automated Release System**: Complete deployment automation with clean separation of responsibilities
+- **One-Command Deployment**: Simple `./deploy.sh` script creates release PR, GitHub Actions handle the rest automatically
+- **Auto-Tagging Workflow**: Automatic git tag creation when release PRs merge to main branch
+- **Comprehensive Deployment Documentation**: Detailed guides with troubleshooting and workflow architecture
+
+### Improved
+- **Developer Experience**: Reduced 15+ manual deployment steps to single command execution
+- **Deployment Safety**: Clear separation between script (PR creation) and GitHub Actions (automation)
+- **Documentation Quality**: Complete deployment guide with workflow diagrams and best practices
+- **Release Reliability**: Eliminated duplicate validation logic and potential conflicts between components
+
+### Changed
+- **Release Workflow**: Simplified from 253 to 99 lines by removing redundant validation and update jobs
+- **File Organization**: Renamed original `deploy.sh` to `deploy-to-homeassistant.sh` for clarity
+- **Workflow Architecture**: Clean handoff points between manual and automated steps
+
+### Technical Improvements
+- **Zero Overlap Design**: Each component has single, distinct responsibility
+- **Enhanced Error Handling**: Clear error messages and actionable guidance at each step
+- **Performance Optimization**: Faster deployment with reduced complexity and redundancy
+- **Maintenance Reduction**: 60% reduction in workflow complexity for easier long-term maintenance
+
+This release introduces enterprise-grade deployment automation while maintaining the reliability and quality improvements from v1.3.0.
+
 ## [1.3.0] - 2025-08-18
 
 ### Added
