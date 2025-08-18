@@ -469,9 +469,7 @@ class VacasaBedroomsSensor(VacasaBaseSensor):
         attributes = {}
         if beds:
             for bed_type, count in beds.items():
-                if (
-                    count and bed_type != "child"
-                ):  # Skip child beds as they're not real beds
+                if count and bed_type != "child":  # Skip child beds as they're not real beds
                     attributes[f"{bed_type}_beds"] = count
 
         return attributes

@@ -355,9 +355,7 @@ def mock_auth_response():
     """Mock authentication response."""
     response = Mock()
     response.status = 200
-    response.url = (
-        "https://owner.vacasa.io/dashboard#access_token=test_token&expires_in=3600"
-    )
+    response.url = "https://owner.vacasa.io/dashboard#access_token=test_token&expires_in=3600"
     response.text = AsyncMock(return_value="Authentication successful")
     return response
 
@@ -435,10 +433,6 @@ def mock_datetime():
     """Mock datetime for consistent testing."""
     with patch("custom_components.vacasa.api_client.datetime") as mock_dt:
         mock_dt.now.return_value = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-        mock_dt.fromtimestamp.return_value = datetime(
-            2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc
-        )
-        mock_dt.fromisoformat.return_value = datetime(
-            2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc
-        )
+        mock_dt.fromtimestamp.return_value = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        mock_dt.fromisoformat.return_value = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
         yield mock_dt

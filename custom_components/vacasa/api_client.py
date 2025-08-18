@@ -103,9 +103,7 @@ class VacasaApiClient:
         self._owner_id = None
         self._token = None
         self._token_expiry = None
-        self._client_id = (
-            "KOIkAJP9XW7ZpTXwRa0B7O4qMuXSQ3p4BKFfTPhr"  # From the auth URL
-        )
+        self._client_id = "KOIkAJP9XW7ZpTXwRa0B7O4qMuXSQ3p4BKFfTPhr"  # From the auth URL
         self._close_session = False
 
         # Performance optimization settings
@@ -291,9 +289,7 @@ class VacasaApiClient:
         try:
             if self._hass:
                 # Use Home Assistant's executor for async file operations
-                return await self._hass.async_add_executor_job(
-                    self._load_token_from_cache_sync
-                )
+                return await self._hass.async_add_executor_job(self._load_token_from_cache_sync)
             else:
                 # Fallback to synchronous operation if no hass instance
                 return self._load_token_from_cache_sync()
@@ -460,9 +456,7 @@ class VacasaApiClient:
             try:
                 if retry_count > 0:
                     # Wait before retrying
-                    wait_time = RETRY_DELAY * (
-                        2 ** (retry_count - 1)
-                    )  # Exponential backoff
+                    wait_time = RETRY_DELAY * (2 ** (retry_count - 1))  # Exponential backoff
                     _LOGGER.debug(
                         "Retrying authentication (attempt %s/%s) after %ss",
                         retry_count + 1,
@@ -472,9 +466,7 @@ class VacasaApiClient:
                     await asyncio.sleep(wait_time)
 
                 # Step 1: Get the login page to obtain CSRF token
-                _LOGGER.debug(
-                    "Fetching login page (attempt %s/%s)", retry_count + 1, MAX_RETRIES
-                )
+                _LOGGER.debug("Fetching login page (attempt %s/%s)", retry_count + 1, MAX_RETRIES)
 
                 # Try with response_type=token to avoid unsupported_response_type error
                 auth_params = {
@@ -507,9 +499,7 @@ class VacasaApiClient:
                             response.status,
                             response_text[:200],
                         )
-                        raise AuthenticationError(
-                            f"Failed to load login page: {response.status}"
-                        )
+                        raise AuthenticationError(f"Failed to load login page: {response.status}")
 
                     login_page = await response.text()
 
@@ -522,9 +512,7 @@ class VacasaApiClient:
                             "Could not find CSRF token on login page. Page snippet: %s...",
                             login_page[:200],
                         )
-                        raise AuthenticationError(
-                            "Could not find CSRF token on login page"
-                        )
+                        raise AuthenticationError("Could not find CSRF token on login page")
 
                     csrf_token = csrf_match.group(1)
                     _LOGGER.debug("Found CSRF token: %s...", csrf_token[:10])
@@ -562,9 +550,7 @@ class VacasaApiClient:
                             "Login failed with status %s. Expected redirect (302/303).",
                             response.status,
                         )
-                        raise AuthenticationError(
-                            f"Login failed with status {response.status}"
-                        )
+                        raise AuthenticationError(f"Login failed with status {response.status}")
 
                     # Get redirect location
                     redirect_url = response.headers.get("Location")
@@ -580,9 +566,7 @@ class VacasaApiClient:
 
                 if not token:
                     _LOGGER.error("Failed to obtain token after authentication")
-                    raise AuthenticationError(
-                        "Failed to obtain token after authentication"
-                    )
+                    raise AuthenticationError("Failed to obtain token after authentication")
 
                 self._token = token
                 _LOGGER.debug("Successfully obtained authentication token")
@@ -593,16 +577,12 @@ class VacasaApiClient:
                     token_parts = token.split(".")
                     if len(token_parts) >= 2:
                         # Decode the payload (middle part)
-                        padded_payload = token_parts[1] + "=" * (
-                            4 - len(token_parts[1]) % 4
-                        )
+                        padded_payload = token_parts[1] + "=" * (4 - len(token_parts[1]) % 4)
                         payload = json.loads(self._base64_url_decode(padded_payload))
 
                         # Extract expiry timestamp
                         if "exp" in payload:
-                            self._token_expiry = self._timestamp_to_datetime(
-                                payload["exp"]
-                            )
+                            self._token_expiry = self._timestamp_to_datetime(payload["exp"])
                             _LOGGER.debug("Token expires at %s", self._token_expiry)
                         else:
                             _LOGGER.warning("No expiry found in token payload")
@@ -622,9 +602,7 @@ class VacasaApiClient:
                 retry_count += 1
 
         # If we've exhausted all retries, raise the last error
-        _LOGGER.error(
-            "Authentication failed after %s attempts: %s", MAX_RETRIES, last_error
-        )
+        _LOGGER.error("Authentication failed after %s attempts: %s", MAX_RETRIES, last_error)
         raise AuthenticationError(
             f"Authentication failed after {MAX_RETRIES} attempts: {last_error}"
         )
@@ -678,17 +656,13 @@ class VacasaApiClient:
                             match = re.search(r"access_token=([^&]+)", fragment)
                             if match:
                                 token = match.group(1)
-                                _LOGGER.debug(
-                                    "Extracted token from response URL fragment"
-                                )
+                                _LOGGER.debug("Extracted token from response URL fragment")
                                 return token
 
                         # If we've reached owners.vacasa.com without a token, try one more request
                         if "owners.vacasa.com" in str(response.url.host):
                             page_content = await response.text()
-                            token_match = re.search(
-                                r'access_token=([^&"\']+)', page_content
-                            )
+                            token_match = re.search(r'access_token=([^&"\']+)', page_content)
                             if token_match:
                                 token = token_match.group(1)
                                 _LOGGER.debug("Found token in page content")
@@ -735,25 +709,17 @@ class VacasaApiClient:
                         "Failed to get owner info from verify-token: %s",
                         response.status,
                     )
-                    raise ApiError(
-                        f"Failed to get owner info from verify-token: {response.status}"
-                    )
+                    raise ApiError(f"Failed to get owner info from verify-token: {response.status}")
 
                 data = await response.json()
                 _LOGGER.debug("Received response from verify-token endpoint: %s", data)
 
                 # Extract owner ID from the response
-                if (
-                    "data" in data
-                    and "contactIds" in data["data"]
-                    and data["data"]["contactIds"]
-                ):
+                if "data" in data and "contactIds" in data["data"] and data["data"]["contactIds"]:
                     contact_ids = data["data"]["contactIds"]
                     if contact_ids and len(contact_ids) > 0:
                         self._owner_id = str(contact_ids[0])
-                        _LOGGER.debug(
-                            "Retrieved owner ID from verify-token: %s", self._owner_id
-                        )
+                        _LOGGER.debug("Retrieved owner ID from verify-token: %s", self._owner_id)
                         return self._owner_id
                     else:
                         _LOGGER.error("No contact IDs found in verify-token response")
@@ -807,9 +773,7 @@ class VacasaApiClient:
                     raise ApiError(f"Failed to get units: {response.status}")
 
                 data = await response.json()
-                _LOGGER.debug(
-                    "Received units response with status: %s", response.status
-                )
+                _LOGGER.debug("Received units response with status: %s", response.status)
 
                 if "data" not in data:
                     _LOGGER.warning("No data field in units response: %s", data)
@@ -892,12 +856,8 @@ class VacasaApiClient:
                 end_date if end_date else "future",
             )
 
-            reservations_url = (
-                f"{API_BASE_URL}/owners/{owner_id}/units/{unit_id}/reservations"
-            )
-            _LOGGER.debug(
-                "Reservations URL: %s with params: %s", reservations_url, params
-            )
+            reservations_url = f"{API_BASE_URL}/owners/{owner_id}/units/{unit_id}/reservations"
+            _LOGGER.debug("Reservations URL: %s with params: %s", reservations_url, params)
 
             async with session.get(
                 reservations_url,
@@ -912,9 +872,7 @@ class VacasaApiClient:
                     raise ApiError(f"Failed to get reservations: {response.status}")
 
                 data = await response.json()
-                _LOGGER.debug(
-                    "Received reservations response with status: %s", response.status
-                )
+                _LOGGER.debug("Received reservations response with status: %s", response.status)
 
                 if "data" not in data:
                     _LOGGER.warning("No data field in reservations response: %s", data)
@@ -983,9 +941,7 @@ class VacasaApiClient:
                     raise ApiError(f"Failed to get unit details: {response.status}")
 
                 data = await response.json()
-                _LOGGER.debug(
-                    "Received unit details response with status: %s", response.status
-                )
+                _LOGGER.debug("Received unit details response with status: %s", response.status)
 
                 # Log unit name for debugging
                 if "data" in data and "attributes" in data["data"]:

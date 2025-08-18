@@ -54,9 +54,7 @@ class CachedData:
 
         return (current_time - entry_time) > ttl
 
-    async def get(
-        self, key: str, default: T | None = None, ttl: int | None = None
-    ) -> T | None:
+    async def get(self, key: str, default: T | None = None, ttl: int | None = None) -> T | None:
         """Get a value from cache.
 
         Args:
@@ -134,9 +132,7 @@ class CachedData:
             Number of entries removed
         """
         async with self._lock:
-            expired_keys = [
-                key for key, entry in self._cache.items() if self._is_expired(entry)
-            ]
+            expired_keys = [key for key, entry in self._cache.items() if self._is_expired(entry)]
 
             for key in expired_keys:
                 del self._cache[key]
@@ -210,9 +206,7 @@ class CachedData:
         try:
             if self._hass:
                 # Use Home Assistant's executor for async file operations
-                return await self._hass.async_add_executor_job(
-                    self._load_from_disk_sync
-                )
+                return await self._hass.async_add_executor_job(self._load_from_disk_sync)
             else:
                 # Fallback to synchronous operation
                 return self._load_from_disk_sync()
@@ -239,9 +233,7 @@ class CachedData:
             Dictionary with cache statistics
         """
         total_entries = len(self._cache)
-        expired_entries = sum(
-            1 for entry in self._cache.values() if self._is_expired(entry)
-        )
+        expired_entries = sum(1 for entry in self._cache.values() if self._is_expired(entry))
 
         return {
             "total_entries": total_entries,
