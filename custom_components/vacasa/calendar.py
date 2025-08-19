@@ -11,7 +11,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from . import VacasaConfigEntry, VacasaDataUpdateCoordinator
-from .api_client import VacasaApiClient
+from .api_client import ApiError, AuthenticationError, VacasaApiClient
 from .const import (
     DOMAIN,
     STAY_TYPE_BLOCK,
@@ -59,8 +59,10 @@ async def async_setup_entry(
             entities.append(entity)
 
         async_add_entities(entities, True)
-    except Exception as err:
-        _LOGGER.error("Error setting up Vacasa calendars: %s", err)
+    except AuthenticationError as err:
+        _LOGGER.error("Authentication error setting up Vacasa calendars: %s", err)
+    except ApiError as err:
+        _LOGGER.error("API error setting up Vacasa calendars: %s", err)
 
 
 class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEntity):

@@ -78,6 +78,7 @@ util = types.ModuleType("homeassistant.util")
 dt_util = types.ModuleType("homeassistant.util.dt")
 components = types.ModuleType("homeassistant.components")
 components_binary_sensor = types.ModuleType("homeassistant.components.binary_sensor")
+components_calendar = types.ModuleType("homeassistant.components.calendar")
 
 
 class BinarySensorEntity:
@@ -97,6 +98,16 @@ class BinarySensorDeviceClass:
 
 components_binary_sensor.BinarySensorEntity = BinarySensorEntity
 components_binary_sensor.BinarySensorDeviceClass = BinarySensorDeviceClass
+components_calendar.CalendarEntity = type("CalendarEntity", (), {})
+
+
+class CalendarEvent:
+    def __init__(self, **data):
+        for key, value in data.items():
+            setattr(self, key, value)
+
+
+components_calendar.CalendarEvent = CalendarEvent
 
 entity_platform.AddEntitiesCallback = None
 entity_registry.async_get = lambda hass: types.SimpleNamespace(entities={})
@@ -121,9 +132,25 @@ class UpdateFailed(Exception):
     pass
 
 
+class CoordinatorEntity:
+    def __init__(self, coordinator):
+        self.coordinator = coordinator
+        self.hass = coordinator.hass
+
+    async def async_added_to_hass(self):  # pragma: no cover - stub
+        return None
+
+    async def async_will_remove_from_hass(self):  # pragma: no cover - stub
+        return None
+
+    def __class_getitem__(cls, item):  # pragma: no cover - typing only
+        return cls
+
+
 aiohttp_client.async_get_clientsession = async_get_clientsession
 update_coordinator.DataUpdateCoordinator = DataUpdateCoordinator
 update_coordinator.UpdateFailed = UpdateFailed
+update_coordinator.CoordinatorEntity = CoordinatorEntity
 
 helpers.aiohttp_client = aiohttp_client
 helpers.update_coordinator = update_coordinator
@@ -151,6 +178,7 @@ modules = {
     "homeassistant.util.dt": dt_util,
     "homeassistant.components": components,
     "homeassistant.components.binary_sensor": components_binary_sensor,
+    "homeassistant.components.calendar": components_calendar,
     "homeassistant.data_entry_flow": data_entry_flow,
 }
 
