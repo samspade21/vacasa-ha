@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2025-08-19
+
+### Testing
+- **Release Pipeline Validation**: End-to-end testing of the completely rebuilt release automation system
+- **Consolidated Workflow Verification**: Validating that the single `auto-release.yml` workflow performs all release functions correctly
+- **VERSION Detection Testing**: Confirming the fixed multi-commit VERSION detection logic works properly
+- **Release Creation Testing**: Verifying automated tag creation, HACS validation, and GitHub release generation
+- **Changelog Extraction Testing**: Ensuring the fixed Python f-string bug in changelog processing is resolved
+
+### Validation Objectives
+- **Complete Pipeline Testing**: From VERSION detection through GitHub release creation
+- **Error Resolution Confirmation**: Verifying all previous GITHUB_TOKEN and changelog extraction issues are resolved
+- **Release Format Standards**: Ensuring continued compatibility with v1.3.2 release format expectations
+- **Automation Reliability**: Confirming the streamlined single-workflow approach provides consistent results
+
+This release specifically tests the comprehensive release automation fixes implemented in v1.4.1 to validate the complete tag → release pipeline is now fully operational and reliable.
+
 ## [1.4.1] - 2025-08-19
 
 ### Fixed
