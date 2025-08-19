@@ -8,6 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import VacasaConfigEntry
+from .api_client import ApiError, AuthenticationError
 from .const import (
     DOMAIN,
     SENSOR_ADDRESS,
@@ -175,8 +176,10 @@ async def async_setup_entry(
             )
 
         async_add_entities(entities, True)
-    except Exception as err:
-        _LOGGER.error("Error setting up Vacasa sensors: %s", err)
+    except AuthenticationError as err:
+        _LOGGER.error("Authentication error setting up Vacasa sensors: %s", err)
+    except ApiError as err:
+        _LOGGER.error("API error setting up Vacasa sensors: %s", err)
 
 
 class VacasaBaseSensor(SensorEntity):
