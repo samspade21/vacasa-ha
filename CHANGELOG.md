@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2025-08-18
+
+### Added
+- **Enhanced Test Coverage Support**: Added pytest coverage plugin to test requirements to align with standard Home Assistant testing workflows and provide comprehensive test coverage reporting
+- **Home Assistant Interface Stubs**: Implemented stub interfaces for Home Assistant's calendar and coordinator components, enabling custom integration tests to import required entities without dependency errors
+
+### Improved
+- **Test Reliability**: Updated calendar tests with explicit timezone handling and precise reservation timing to eliminate naive/aware datetime conflicts and ensure consistent test results
+- **Testing Configuration**: Simplified pytest configuration by removing strict coverage gating while retaining essential testing markers and flags for improved developer experience
+
+### Technical Improvements
+- **Development Workflow**: Enhanced testing infrastructure supports both local development and CI/CD pipelines with proper Home Assistant compatibility
+- **Test Isolation**: Stubbed interfaces provide clean separation between integration code and Home Assistant core dependencies during testing
+- **Configuration Optimization**: Streamlined pytest setup reduces complexity while maintaining comprehensive test execution capabilities
+
+This release focuses on improving the development and testing experience, making the integration more maintainable and compatible with standard Home Assistant development practices.
+
 ## [1.3.2] - 2025-08-18
 
 ### Security
