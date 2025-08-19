@@ -7,19 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.4.1] - 2025-08-19
 
-### Changed
-- **Optimized GitHub Actions Workflows**: Streamlined CI/CD pipeline for 25% faster execution
-  - Removed redundant `hassfest.yml` workflow - functionality consolidated into main CI workflow
-  - Restructured CI job dependencies for faster feedback (fast jobs run first, slower validation jobs run after)
-  - Improved workflow naming for clarity: "Test, Lint & Validate", "Dependency Management & Updates", "Issue & PR Management"
-  - Coordinated security scanning to eliminate duplication across workflows
-  - Enhanced job organization with proper dependency chains and parallel execution where beneficial
+### Fixed
+- **Critical Release Pipeline Fix**: Fixed broken release workflow that prevented automatic GitHub releases from being created after tag creation
+- **Changelog Extraction Bug**: Corrected Python f-string formatting error in auto-tag workflow that caused "name 'VERSION' is not defined" error
+- **Workflow Triggering Issue**: Resolved GITHUB_TOKEN limitation that prevented workflow-to-workflow triggering by consolidating auto-tag and release workflows
 
-### Technical Details
-- Eliminated duplicate hassfest validation between separate workflow files
-- Optimized CI workflow with strategic job dependencies (lint-and-test-fast → validation jobs)
-- Consolidated security scanning approach while maintaining comprehensive coverage
-- Reduced overall CI runtime and GitHub Actions costs through elimination of redundant operations
+### Changed
+- **Streamlined Release Process**: Consolidated separate auto-tag and release workflows into single `auto-release.yml` workflow to eliminate cross-workflow triggering issues
+- **Enhanced Error Handling**: Improved changelog extraction with proper Python variable substitution and fallback error handling
+- **Optimized Workflow Structure**: Reduced from 2 separate workflows to 1 consolidated workflow for more reliable release automation
+
+### Technical Improvements
+- **Single Workflow Architecture**: Auto-tag and release creation now happen in one atomic workflow execution, preventing GitHub security limitations
+- **Proper Variable Handling**: Fixed Python f-string usage in changelog extraction to prevent runtime errors
+- **Comprehensive Release Creation**: Automated tag creation, HACS validation, release archive generation, and GitHub release publication in one seamless process
+- **Maintained Release Quality**: Preserved v1.3.2 release format standards with proper changelog extraction and professional presentation
+
+### Developer Experience
+- **Reliable Automation**: Release pipeline now works consistently without manual intervention
+- **Clear Error Reporting**: Enhanced workflow summaries provide detailed feedback on release creation process
+- **Simplified Maintenance**: Single workflow file reduces complexity and potential points of failure
 
 ## [1.4.0] - 2025-08-18
 
