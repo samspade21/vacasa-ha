@@ -147,9 +147,9 @@ $(grep -A 20 "## \[$VERSION\]" CHANGELOG.md | head -20)
 **No manual steps required after merge - everything is automated!** 🎉"
 
     # Check if PR already exists
-    local existing_pr=$(gh pr list --base $TARGET_BRANCH --head $REQUIRED_BRANCH --json number --jq '.[0].number' 2>/dev/null || echo "")
+    local existing_pr=$(gh pr list --base $TARGET_BRANCH --head $REQUIRED_BRANCH 2>/dev/null | head -1 | awk '{print $1}' | sed 's/#//' || echo "")
 
-    if [ -n "$existing_pr" ] && [ "$existing_pr" != "null" ]; then
+    if [ -n "$existing_pr" ] && [ "$existing_pr" != "" ]; then
         log_success "Existing PR #$existing_pr found"
         local pr_number=$existing_pr
 
@@ -158,19 +158,21 @@ $(grep -A 20 "## \[$VERSION\]" CHANGELOG.md | head -20)
         log_success "Updated PR #$pr_number with latest information"
     else
         # Create new PR
-        local pr_number=$(gh pr create \
+        gh pr create \
             --base $TARGET_BRANCH \
             --head $REQUIRED_BRANCH \
             --title "$pr_title" \
-            --body "$pr_body" \
-            --json number --jq '.number')
+            --body "$pr_body"
+
+        # Get the PR number from the newly created PR
+        local pr_number=$(gh pr list --base $TARGET_BRANCH --head $REQUIRED_BRANCH 2>/dev/null | head -1 | awk '{print $1}' | sed 's/#//')
 
         log_success "Created PR #$pr_number"
     fi
 
     # Display PR information
     echo -e "\n${BOLD}📋 Pull Request Created:${NC}"
-    echo "  🔗 URL: $(gh pr view $pr_number --json url --jq '.url')"
+    echo "  🔗 URL: https://github.com/samspade21/vacasa-ha/pull/$pr_number"
     echo "  📝 Title: $pr_title"
     echo "  🎯 Version: v$VERSION"
 }
