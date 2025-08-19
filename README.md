@@ -390,6 +390,7 @@ If you're still experiencing issues:
 ### Running Tests
 
 ```bash
+pip install -r requirements-test.txt
 pytest
 ```
 
