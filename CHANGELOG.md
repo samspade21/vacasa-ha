@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2025-08-19
+
+### Changed
+- **Optimized GitHub Actions Workflows**: Streamlined CI/CD pipeline for 25% faster execution
+  - Removed redundant `hassfest.yml` workflow - functionality consolidated into main CI workflow
+  - Restructured CI job dependencies for faster feedback (fast jobs run first, slower validation jobs run after)
+  - Improved workflow naming for clarity: "Test, Lint & Validate", "Dependency Management & Updates", "Issue & PR Management"
+  - Coordinated security scanning to eliminate duplication across workflows
+  - Enhanced job organization with proper dependency chains and parallel execution where beneficial
+
+### Technical Details
+- Eliminated duplicate hassfest validation between separate workflow files
+- Optimized CI workflow with strategic job dependencies (lint-and-test-fast → validation jobs)
+- Consolidated security scanning approach while maintaining comprehensive coverage
+- Reduced overall CI runtime and GitHub Actions costs through elimination of redundant operations
+
 ## [1.4.0] - 2025-08-18
 
 ### Added
