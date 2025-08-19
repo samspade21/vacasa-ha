@@ -1,4 +1,4 @@
-name: Dependencies
+name: "Dependency Management & Updates"
 
 on:
   schedule:
@@ -36,11 +36,11 @@ jobs:
             cat outdated.json
           fi
 
-      - name: Security audit
+      - name: Comprehensive security audit
         run: |
           pip-audit --format=json --output=audit.json || true
           if [ -s audit.json ]; then
-            echo "::warning::Security vulnerabilities found"
+            echo "::warning::Security vulnerabilities found in dependencies"
             cat audit.json
           fi
 
@@ -139,6 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Create Dependency Update PR
     if: github.event_name == 'schedule'
+    needs: [check-dependencies, validate-manifest-dependencies, check-homeassistant-compatibility]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -192,6 +193,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Notify Security Issues
     if: failure()
+    needs: [check-dependencies]
     steps:
       - name: Create security issue
         uses: actions/github-script@v7
@@ -201,7 +203,7 @@ jobs:
             const body = `
             ## Security Alert
 
-            Automated security scan found potential vulnerabilities in dependencies.
+            Automated dependency security scan found potential vulnerabilities.
 
             **Action Required:**
             1. Review the security audit report in the workflow artifacts
@@ -212,7 +214,7 @@ jobs:
             **Run:** ${{ github.run_number }}
             **Commit:** ${{ github.sha }}
 
-            This issue was created automatically by the security workflow.
+            This issue was created automatically by the dependency management workflow.
             `;
 
             github.rest.issues.create({
