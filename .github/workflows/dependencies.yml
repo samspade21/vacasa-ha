@@ -9,6 +9,10 @@ on:
       - "requirements.txt"
       - "custom_components/vacasa/manifest.json"
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   check-dependencies:
     runs-on: ubuntu-latest
