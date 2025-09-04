@@ -138,6 +138,9 @@ jobs:
   create-dependency-update-pr:
     runs-on: ubuntu-latest
     name: Create Dependency Update PR
+    permissions:
+      contents: write
+      pull-requests: write
     if: github.event_name == 'schedule'
     needs: [check-dependencies, validate-manifest-dependencies, check-homeassistant-compatibility]
     steps:
