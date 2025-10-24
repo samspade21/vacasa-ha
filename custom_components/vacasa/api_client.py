@@ -14,17 +14,23 @@ from urllib.parse import urlencode
 import aiohttp
 
 from .cached_data import CachedData, RetryWithBackoff
+
+
 from .const import (
-    API_BASE_URL,
+    API_BASE_TEMPLATE,
     AUTH_URL,
+    DEFAULT_API_VERSION,
     DEFAULT_CACHE_TTL,
     DEFAULT_CONN_TIMEOUT,
     DEFAULT_JITTER_MAX,
     DEFAULT_KEEPALIVE_TIMEOUT,
     DEFAULT_MAX_CONNECTIONS,
     DEFAULT_READ_TIMEOUT,
+    DEFAULT_CLIENT_ID,
+    DEFAULT_STAY_TYPE_MAP,
     DEFAULT_TIMEOUT,
     MAX_RETRIES,
+    SUPPORTED_API_VERSIONS,
     PROPERTY_CACHE_FILE,
     RETRY_BACKOFF_MULTIPLIER,
     RETRY_DELAY,
@@ -33,6 +39,7 @@ from .const import (
     STAY_TYPE_MAINTENANCE,
     STAY_TYPE_OTHER,
     STAY_TYPE_OWNER,
+    STAY_TYPE_TO_CATEGORY,
     TOKEN_CACHE_FILE,
     TOKEN_REFRESH_MARGIN,
 )
@@ -69,6 +76,10 @@ class VacasaApiClient:
         token_cache_path: str | None = None,
         hass_config_dir: str | None = None,
         hass=None,
+        *,
+        client_id: str | None = None,
+        api_version: str | None = DEFAULT_API_VERSION,
+        stay_type_mapping: dict[str, str] | None = None,
         cache_ttl: int = DEFAULT_CACHE_TTL,
         max_connections: int = DEFAULT_MAX_CONNECTIONS,
         keepalive_timeout: int = DEFAULT_KEEPALIVE_TIMEOUT,
@@ -103,7 +114,14 @@ class VacasaApiClient:
         self._owner_id = None
         self._token = None
         self._token_expiry = None
-        self._client_id = "KOIkAJP9XW7ZpTXwRa0B7O4qMuXSQ3p4BKFfTPhr"  # From the auth URL
+        self._client_id = client_id or DEFAULT_CLIENT_ID
+        self._client_id_last_fetch: float | None = None
+        self._api_version = api_version or DEFAULT_API_VERSION
+        self._api_base_url = API_BASE_TEMPLATE.format(version=self._api_version)
+        self._stay_type_mapping = {
+            key.lower(): value
+            for key, value in {**DEFAULT_STAY_TYPE_MAP, **(stay_type_mapping or {})}.items()
+        }
         self._close_session = False
 
         # Performance optimization settings
@@ -175,6 +193,59 @@ class VacasaApiClient:
             < self._token_expiry
         )
 
+    async def _retrieve_client_id(self) -> str | None:
+        """Fetch the login page and extract the OAuth client ID."""
+        session = await self.ensure_session()
+
+        try:
+            async with session.get(AUTH_URL, timeout=DEFAULT_TIMEOUT) as response:
+                if response.status != 200:
+                    _LOGGER.warning(
+                        "Failed to fetch login page for client ID: %s", response.status
+                    )
+                    return None
+
+                html = await response.text()
+        except aiohttp.ClientError as err:
+            _LOGGER.warning("Error retrieving client ID: %s", err)
+            return None
+
+        patterns = [
+            r'data-client-id="([A-Za-z0-9_-]+)"',
+            r'client_id=([A-Za-z0-9_-]+)',
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, html)
+            if match:
+                return match.group(1)
+
+        _LOGGER.debug("Unable to parse client ID from login page")
+        return None
+
+    async def _ensure_client_id(self) -> str:
+        """Ensure the OAuth client ID is up to date."""
+        now = time.time()
+        cache_valid = (
+            self._client_id_last_fetch is not None
+            and now - self._client_id_last_fetch < 3600
+        )
+
+        if cache_valid and self._client_id:
+            return self._client_id
+
+        client_id = await self._retrieve_client_id()
+        if client_id:
+            self._client_id = client_id
+            self._client_id_last_fetch = now
+            _LOGGER.debug("Retrieved dynamic client ID")
+        else:
+            if not self._client_id:
+                self._client_id = DEFAULT_CLIENT_ID
+            _LOGGER.debug("Using cached or default client ID")
+
+        return self._client_id
+
     async def _create_optimized_session(self) -> aiohttp.ClientSession:
         """Create an optimized aiohttp session with connection pooling."""
         # Configure connection pool with optimized settings
@@ -214,6 +285,126 @@ class VacasaApiClient:
             self._session = await self._create_optimized_session()
             self._close_session = True
         return self._session
+
+    def _set_api_version(self, version: str) -> None:
+        """Persist the API version that successfully responded."""
+        if version != self._api_version:
+            _LOGGER.debug("Switching API version from %s to %s", self._api_version, version)
+        self._api_version = version
+        self._api_base_url = API_BASE_TEMPLATE.format(version=version)
+
+    def _build_api_url(self, path: str, version: str) -> str:
+        """Construct the full API URL for a given version and path."""
+        if not path.startswith("/"):
+            path = f"/{path}"
+        return f"{API_BASE_TEMPLATE.format(version=version)}{path}"
+
+    def _version_candidates(self, override: str | None = None) -> list[str]:
+        """Return API versions to try in priority order."""
+        if override:
+            return [override]
+
+        candidates: list[str] = []
+        if self._api_version:
+            candidates.append(self._api_version)
+
+        for version in SUPPORTED_API_VERSIONS:
+            if version not in candidates:
+                candidates.append(version)
+
+        return candidates
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json_data: Any | None = None,
+        acceptable_status: tuple[int, ...] = (200,),
+        version_override: str | None = None,
+        return_json: bool = True,
+        retry_on_unauthorized: bool = True,
+    ) -> Any:
+        """Perform an HTTP request with API version fallback and error handling."""
+
+        session = await self.ensure_session()
+        last_error: Exception | None = None
+
+        for version in self._version_candidates(version_override):
+            url = self._build_api_url(path, version)
+            try:
+                async with session.request(
+                    method,
+                    url,
+                    params=params,
+                    json=json_data,
+                    headers=self._get_headers(),
+                    timeout=DEFAULT_TIMEOUT,
+                ) as response:
+                    if response.status in acceptable_status:
+                        self._set_api_version(version)
+                        if not return_json:
+                            return await response.text()
+                        if response.content_type == "application/json":
+                            return await response.json()
+                        return await response.text()
+
+                    if response.status == 401:
+                        # Attempt token refresh once when unauthorized
+                        _LOGGER.warning(
+                            "API request unauthorized for %s, refreshing token", url
+                        )
+                        if retry_on_unauthorized:
+                            await self.authenticate()
+                            await self._save_token_to_cache()
+                            return await self._request(
+                                method,
+                                path,
+                                params=params,
+                                json_data=json_data,
+                                acceptable_status=acceptable_status,
+                                version_override=version,
+                                return_json=return_json,
+                                retry_on_unauthorized=False,
+                            )
+                        last_error = AuthenticationError("Unauthorized")
+                        continue
+
+                    if response.status == 403:
+                        last_error = AuthenticationError(
+                            f"Forbidden request to {path}: {response.status}"
+                        )
+                        break
+
+                    # Try next version on not found errors when fallbacks are allowed
+                    if response.status in (404, 400) and version_override is None:
+                        _LOGGER.debug(
+                            "API version %s returned %s for %s, trying fallback",
+                            version,
+                            response.status,
+                            path,
+                        )
+                        last_error = ApiError(
+                            f"Endpoint {path} unavailable for API version {version}"
+                        )
+                        continue
+
+                    response_text = await response.text()
+                    last_error = ApiError(
+                        f"Unexpected status {response.status} for {path}: {response_text[:200]}"
+                    )
+            except AuthenticationError:
+                raise
+            except aiohttp.ClientError as err:
+                _LOGGER.warning("HTTP error calling %s: %s", url, err)
+                last_error = ApiError(f"HTTP error contacting Vacasa API: {err}")
+                continue
+
+        if last_error:
+            raise last_error
+
+        raise ApiError(f"No API versions available for path {path}")
 
     def _save_token_to_cache_sync(self) -> None:
         """Save the token to the cache file (synchronous helper)."""
@@ -410,6 +601,12 @@ class VacasaApiClient:
         """
         attributes = reservation.get("attributes", {})
 
+        stay_type_raw = attributes.get("stayType") or attributes.get("stay_type")
+        if isinstance(stay_type_raw, str):
+            mapped = self._stay_type_mapping.get(stay_type_raw.lower())
+            if mapped in STAY_TYPE_TO_CATEGORY:
+                return mapped
+
         # Check for owner hold
         owner_hold = attributes.get("ownerHold")
         if owner_hold:
@@ -468,12 +665,14 @@ class VacasaApiClient:
                 # Step 1: Get the login page to obtain CSRF token
                 _LOGGER.debug("Fetching login page (attempt %s/%s)", retry_count + 1, MAX_RETRIES)
 
+                client_id = await self._ensure_client_id()
+
                 # Try with response_type=token to avoid unsupported_response_type error
                 auth_params = {
                     "next": "/authorize",
                     "directory_hint": "email",
                     "owner_migration_needed": "true",
-                    "client_id": self._client_id,
+                    "client_id": client_id,
                     "response_type": "token",  # Use token instead of token,id_token
                     "redirect_uri": "https://owners.vacasa.com",
                     "scope": "owners:read employees:read",
@@ -525,7 +724,7 @@ class VacasaApiClient:
                     "password": self._password,
                     "next": (
                         f"/authorize?directory_hint=email&owner_migration_needed=true"
-                        f"&client_id={self._client_id}&response_type=token"
+                        f"&client_id={client_id}&response_type=token"
                         f"&redirect_uri=https://owners.vacasa.com"
                         f"&scope=owners:read%20employees:read&audience=owner.vacasa.io"
                         f"&state={auth_params['state']}&nonce={auth_params['nonce']}&mode=owner"
@@ -699,39 +898,25 @@ class VacasaApiClient:
         await self.ensure_token()
 
         try:
-            session = await self.ensure_session()
-
-            # Use POST request to verify-token endpoint
             _LOGGER.debug("Getting owner ID from verify-token endpoint")
-            async with session.post(
-                f"{API_BASE_URL}/verify-token",
-                headers=self._get_headers(),
-                timeout=DEFAULT_TIMEOUT,
-            ) as response:
-                if response.status != 200:
-                    _LOGGER.error(
-                        "Failed to get owner info from verify-token: %s",
-                        response.status,
-                    )
-                    raise ApiError(f"Failed to get owner info from verify-token: {response.status}")
+            data = await self._request("POST", "/verify-token")
+            _LOGGER.debug("Received response from verify-token endpoint: %s", data)
 
-                data = await response.json()
-                _LOGGER.debug("Received response from verify-token endpoint: %s", data)
+            # Extract owner ID from the response
+            if "data" in data and "contactIds" in data["data"] and data["data"]["contactIds"]:
+                contact_ids = data["data"]["contactIds"]
+                if contact_ids and len(contact_ids) > 0:
+                    self._owner_id = str(contact_ids[0])
+                    _LOGGER.debug("Retrieved owner ID from verify-token: %s", self._owner_id)
+                    return self._owner_id
+                _LOGGER.error("No contact IDs found in verify-token response")
+                raise ApiError("No contact IDs found in verify-token response")
 
-                # Extract owner ID from the response
-                if "data" in data and "contactIds" in data["data"] and data["data"]["contactIds"]:
-                    contact_ids = data["data"]["contactIds"]
-                    if contact_ids and len(contact_ids) > 0:
-                        self._owner_id = str(contact_ids[0])
-                        _LOGGER.debug("Retrieved owner ID from verify-token: %s", self._owner_id)
-                        return self._owner_id
-                    else:
-                        _LOGGER.error("No contact IDs found in verify-token response")
-                        raise ApiError("No contact IDs found in verify-token response")
-                else:
-                    _LOGGER.error("Unexpected verify-token response format: %s", data)
-                    raise ApiError(f"Unexpected verify-token response format: {data}")
+            _LOGGER.error("Unexpected verify-token response format: %s", data)
+            raise ApiError(f"Unexpected verify-token response format: {data}")
 
+        except AuthenticationError as err:
+            raise err
         except Exception as e:
             _LOGGER.error("Error getting owner ID: %s", e)
             raise ApiError(f"Error getting owner ID: {e}")
@@ -759,39 +944,23 @@ class VacasaApiClient:
             await self.ensure_token()
             owner_id = await self.get_owner_id()
 
-            session = await self.ensure_session()
-
             _LOGGER.debug("Getting units for owner ID: %s", owner_id)
-            units_url = f"{API_BASE_URL}/owners/{owner_id}/units"
-            _LOGGER.debug("Units URL: %s", units_url)
+            data = await self._request("GET", f"/owners/{owner_id}/units")
+            _LOGGER.debug("Received units response: %s", data)
 
-            async with session.get(
-                units_url,
-                headers=self._get_headers(),
-                timeout=DEFAULT_TIMEOUT,
-            ) as response:
-                if response.status != 200:
-                    _LOGGER.error("Failed to get units: %s", response.status)
-                    response_text = await response.text()
-                    _LOGGER.debug("Response: %s", response_text[:200])
-                    raise ApiError(f"Failed to get units: {response.status}")
+            if "data" not in data:
+                _LOGGER.warning("No data field in units response: %s", data)
+                return []
 
-                data = await response.json()
-                _LOGGER.debug("Received units response with status: %s", response.status)
+            units = data["data"]
+            _LOGGER.debug("Retrieved %s units", len(units))
 
-                if "data" not in data:
-                    _LOGGER.warning("No data field in units response: %s", data)
-                    return []
+            # Log unit IDs for debugging
+            if units:
+                unit_ids = [unit.get("id") for unit in units]
+                _LOGGER.debug("Unit IDs: %s", unit_ids)
 
-                units = data["data"]
-                _LOGGER.debug("Retrieved %s units", len(units))
-
-                # Log unit IDs for debugging
-                if units:
-                    unit_ids = [unit.get("id") for unit in units]
-                    _LOGGER.debug("Unit IDs: %s", unit_ids)
-
-                return units
+            return units
 
         try:
             # Use retry wrapper for the API call
@@ -851,8 +1020,6 @@ class VacasaApiClient:
             params["endDate"] = end_date
 
         try:
-            session = await self.ensure_session()
-
             _LOGGER.debug(
                 "Getting reservations for unit %s from %s to %s",
                 unit_id,
@@ -860,43 +1027,31 @@ class VacasaApiClient:
                 end_date if end_date else "future",
             )
 
-            reservations_url = f"{API_BASE_URL}/owners/{owner_id}/units/{unit_id}/reservations"
-            _LOGGER.debug("Reservations URL: %s with params: %s", reservations_url, params)
-
-            async with session.get(
-                reservations_url,
+            data = await self._request(
+                "GET",
+                f"/owners/{owner_id}/units/{unit_id}/reservations",
                 params=params,
-                headers=self._get_headers(),
-                timeout=DEFAULT_TIMEOUT,
-            ) as response:
-                if response.status != 200:
-                    _LOGGER.error("Failed to get reservations: %s", response.status)
-                    response_text = await response.text()
-                    _LOGGER.debug("Response: %s", response_text[:200])
-                    raise ApiError(f"Failed to get reservations: {response.status}")
+            )
 
-                data = await response.json()
-                _LOGGER.debug("Received reservations response with status: %s", response.status)
+            if "data" not in data:
+                _LOGGER.warning("No data field in reservations response: %s", data)
+                return []
 
-                if "data" not in data:
-                    _LOGGER.warning("No data field in reservations response: %s", data)
-                    return []
+            reservations = data["data"]
+            _LOGGER.debug("Retrieved %s reservations", len(reservations))
 
-                reservations = data["data"]
-                _LOGGER.debug("Retrieved %s reservations", len(reservations))
+            # Log reservation dates for debugging
+            if reservations:
+                dates = [
+                    (
+                        res.get("attributes", {}).get("startDate"),
+                        res.get("attributes", {}).get("endDate"),
+                    )
+                    for res in reservations
+                ]
+                _LOGGER.debug("Reservation dates: %s", dates)
 
-                # Log reservation dates for debugging
-                if reservations:
-                    dates = [
-                        (
-                            res.get("attributes", {}).get("startDate"),
-                            res.get("attributes", {}).get("endDate"),
-                        )
-                        for res in reservations
-                    ]
-                    _LOGGER.debug("Reservation dates: %s", dates)
-
-                return reservations
+            return reservations
         except Exception as e:
             _LOGGER.error("Error getting reservations: %s", e)
             raise ApiError(f"Error getting reservations: {e}")
@@ -927,32 +1082,19 @@ class VacasaApiClient:
             await self.ensure_token()
             owner_id = await self.get_owner_id()
 
-            session = await self.ensure_session()
-
             _LOGGER.debug("Getting details for unit %s", unit_id)
-            unit_details_url = f"{API_BASE_URL}/owners/{owner_id}/units/{unit_id}"
-            _LOGGER.debug("Unit details URL: %s", unit_details_url)
+            data = await self._request(
+                "GET",
+                f"/owners/{owner_id}/units/{unit_id}",
+            )
+            _LOGGER.debug("Received unit details response: %s", data)
 
-            async with session.get(
-                unit_details_url,
-                headers=self._get_headers(),
-                timeout=DEFAULT_TIMEOUT,
-            ) as response:
-                if response.status != 200:
-                    _LOGGER.error("Failed to get unit details: %s", response.status)
-                    response_text = await response.text()
-                    _LOGGER.debug("Response: %s", response_text[:200])
-                    raise ApiError(f"Failed to get unit details: {response.status}")
+            # Log unit name for debugging
+            if "data" in data and "attributes" in data["data"]:
+                unit_name = data["data"]["attributes"].get("name")
+                _LOGGER.debug("Unit name: %s", unit_name)
 
-                data = await response.json()
-                _LOGGER.debug("Received unit details response with status: %s", response.status)
-
-                # Log unit name for debugging
-                if "data" in data and "attributes" in data["data"]:
-                    unit_name = data["data"]["attributes"].get("name")
-                    _LOGGER.debug("Unit name: %s", unit_name)
-
-                return data
+            return data
 
         try:
             # Use retry wrapper for the API call
@@ -968,6 +1110,61 @@ class VacasaApiClient:
         except Exception as e:
             _LOGGER.error("Error getting unit details: %s", e)
             raise ApiError(f"Error getting unit details: {e}")
+
+    async def get_home_info(self, unit_id: str) -> dict[str, Any]:
+        """Return the detailed home-info payload for a unit."""
+
+        await self.ensure_token()
+        owner_id = await self.get_owner_id()
+
+        data = await self._request(
+            "GET",
+            f"/owners/{owner_id}/units/{unit_id}/home-info",
+        )
+
+        return data.get("data", {}) if isinstance(data, dict) else {}
+
+    async def get_statements(
+        self, year: int | None = None, month: int | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch owner statements, optionally scoped to a specific month."""
+
+        await self.ensure_token()
+        owner_id = await self.get_owner_id()
+
+        path = f"/owners/{owner_id}/statements"
+        if year is not None and month is not None:
+            path = f"{path}/{year}/{month:02d}"
+
+        data = await self._request("GET", path)
+
+        if isinstance(data, dict):
+            if "data" in data and isinstance(data["data"], list):
+                return data["data"]
+        elif isinstance(data, list):
+            return data
+
+        return []
+
+    async def get_maintenance(
+        self, unit_id: str, status: str | None = "open"
+    ) -> list[dict[str, Any]]:
+        """Fetch maintenance tickets for a unit."""
+
+        await self.ensure_token()
+        owner_id = await self.get_owner_id()
+
+        params = {"status": status} if status else None
+        data = await self._request(
+            "GET",
+            f"/owners/{owner_id}/units/{unit_id}/maintenance",
+            params=params,
+        )
+
+        if isinstance(data, dict):
+            return data.get("data", [])
+
+        return []
 
     async def clear_property_cache(self) -> None:
         """Clear all cached property data."""
@@ -1018,27 +1215,23 @@ class VacasaApiClient:
         reservations = await self.get_reservations(unit_id, start_date, end_date)
 
         # Initialize categories
-        categorized = {
-            STAY_TYPE_GUEST: [],
-            STAY_TYPE_OWNER: [],
-            STAY_TYPE_MAINTENANCE: [],
-            STAY_TYPE_BLOCK: [],
-            STAY_TYPE_OTHER: [],
+        categorized: dict[str, list[dict[str, Any]]] = {
+            stay_type: [] for stay_type in STAY_TYPE_TO_CATEGORY
         }
 
         # Categorize each reservation
         for reservation in reservations:
             stay_type = self.categorize_reservation(reservation)
-            categorized[stay_type].append(reservation)
+            categorized.setdefault(stay_type, []).append(reservation)
 
         # Log counts for debugging
         _LOGGER.debug(
             "Categorized reservations: Guest: %s, Owner: %s, Maintenance: %s, Block: %s, Other: %s",
-            len(categorized[STAY_TYPE_GUEST]),
-            len(categorized[STAY_TYPE_OWNER]),
-            len(categorized[STAY_TYPE_MAINTENANCE]),
-            len(categorized[STAY_TYPE_BLOCK]),
-            len(categorized[STAY_TYPE_OTHER]),
+            len(categorized.get(STAY_TYPE_GUEST, [])),
+            len(categorized.get(STAY_TYPE_OWNER, [])),
+            len(categorized.get(STAY_TYPE_MAINTENANCE, [])),
+            len(categorized.get(STAY_TYPE_BLOCK, [])),
+            len(categorized.get(STAY_TYPE_OTHER, [])),
         )
 
         return categorized
