@@ -36,182 +36,6 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    config_entry: VacasaConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Set up the Vacasa sensor platform."""
-    data = config_entry.runtime_data
-    client = data.client
-    coordinator = data.coordinator
-
-    # Get all units
-    try:
-        units = await client.get_units()
-        _LOGGER.debug("Found %s Vacasa units for sensors", len(units))
-
-        # Create sensors for each unit
-        entities = []
-        for unit in units:
-            unit_id = unit.get("id")
-            attributes = unit.get("attributes", {})
-            name = attributes.get("name", f"Vacasa Unit {unit_id}")
-
-            # Property Information Sensors
-            entities.append(
-                VacasaRatingSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaLocationSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaTimezoneSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            # Occupancy & Capacity Sensors
-            entities.append(
-                VacasaMaxOccupancySensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaMaxAdultsSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaMaxChildrenSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaMaxPetsSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            # Amenities Sensors
-            entities.append(
-                VacasaBedroomsSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaBathroomsSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaHotTubSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaPetFriendlySensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            # Property Details Sensors
-            entities.append(
-                VacasaParkingSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaAddressSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaHomeInfoSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaMaintenanceSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-        # Add owner-level statements sensor once per config entry
-        entities.append(
-            VacasaStatementSensor(
-                coordinator=coordinator,
-                config_entry=config_entry,
-            )
-        )
-
-        async_add_entities(entities, True)
-    except AuthenticationError as err:
-        _LOGGER.error("Authentication error setting up Vacasa sensors: %s", err)
-    except ApiError as err:
-        _LOGGER.error("API error setting up Vacasa sensors: %s", err)
-
-
 class VacasaBaseSensor(SensorEntity):
     """Base class for Vacasa sensors."""
 
@@ -972,3 +796,80 @@ class VacasaStatementSensor(SensorEntity):
             "net_amount": attributes.get("netAmount"),
             "amount_due": attributes.get("amountDue"),
         }
+
+
+# List of sensor classes instantiated per Vacasa unit. Keeping the mapping in one
+# place makes it easier to understand which entities are created and allows
+# async_setup_entry to remain concise.
+UNIT_SENSOR_CLASSES: tuple[type[VacasaBaseSensor], ...] = (
+    VacasaRatingSensor,
+    VacasaLocationSensor,
+    VacasaTimezoneSensor,
+    VacasaMaxOccupancySensor,
+    VacasaMaxAdultsSensor,
+    VacasaMaxChildrenSensor,
+    VacasaMaxPetsSensor,
+    VacasaBedroomsSensor,
+    VacasaBathroomsSensor,
+    VacasaHotTubSensor,
+    VacasaPetFriendlySensor,
+    VacasaParkingSensor,
+    VacasaAddressSensor,
+    VacasaHomeInfoSensor,
+    VacasaMaintenanceSensor,
+)
+
+
+def _create_unit_sensors(
+    coordinator,
+    unit_id: str,
+    name: str,
+    attributes: dict[str, Any],
+) -> list[VacasaBaseSensor]:
+    """Build the entity list for a single Vacasa unit."""
+    return [
+        sensor_class(
+            coordinator=coordinator,
+            unit_id=unit_id,
+            name=name,
+            unit_attributes=attributes,
+        )
+        for sensor_class in UNIT_SENSOR_CLASSES
+    ]
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: VacasaConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up the Vacasa sensor platform."""
+    data = config_entry.runtime_data
+    client = data.client
+    coordinator = data.coordinator
+
+    try:
+        units = await client.get_units()
+        _LOGGER.debug("Found %s Vacasa units for sensors", len(units))
+    except AuthenticationError as err:
+        _LOGGER.error("Authentication error setting up Vacasa sensors: %s", err)
+        return
+    except ApiError as err:
+        _LOGGER.error("API error setting up Vacasa sensors: %s", err)
+        return
+
+    entities: list[SensorEntity] = []
+    for unit in units:
+        unit_id = unit.get("id")
+        if not unit_id:
+            _LOGGER.debug("Skipping Vacasa unit without an id: %s", unit)
+            continue
+
+        attributes = unit.get("attributes", {})
+        name = attributes.get("name", f"Vacasa Unit {unit_id}")
+        entities.extend(_create_unit_sensors(coordinator, unit_id, name, attributes))
+
+    # Add owner-level statements sensor once per config entry
+    entities.append(VacasaStatementSensor(coordinator=coordinator, config_entry=config_entry))
+
+    async_add_entities(entities, True)
