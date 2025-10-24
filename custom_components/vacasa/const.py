@@ -9,11 +9,17 @@ PLATFORMS = ["calendar", "binary_sensor", "sensor"]
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
 CONF_REFRESH_INTERVAL = "refresh_interval"
+CONF_API_VERSION = "api_version"
+CONF_STAY_TYPE_MAPPING = "stay_type_mapping"
 
 # Defaults
 DEFAULT_REFRESH_INTERVAL = 8  # hours
 DEFAULT_TIMEOUT = 30  # seconds
 TOKEN_REFRESH_MARGIN = 300  # seconds (5 minutes)
+DEFAULT_API_VERSION = "v1"
+API_BASE_TEMPLATE = "https://owner.vacasa.io/api/{version}"
+DEFAULT_CLIENT_ID = "KOIkAJP9XW7ZpTXwRa0B7O4qMuXSQ3p4BKFfTPhr"
+SUPPORTED_API_VERSIONS = ("v3", "v2", "v1")
 
 # Performance optimization settings
 DEFAULT_CACHE_TTL = 3600  # seconds (1 hour) for property data
@@ -26,7 +32,7 @@ PROPERTY_CACHE_FILE = ".vacasa_property_cache.json"
 
 # API
 AUTH_URL = "https://accounts.vacasa.io/login"
-API_BASE_URL = "https://owner.vacasa.io/api/v1"
+API_BASE_URL = API_BASE_TEMPLATE.format(version=DEFAULT_API_VERSION)
 TOKEN_CACHE_FILE = ".vacasa_token.json"
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
@@ -55,6 +61,14 @@ STAY_TYPE_TO_CATEGORY = {
     STAY_TYPE_OTHER: CATEGORY_OTHER,
 }
 
+DEFAULT_STAY_TYPE_MAP = {
+    STAY_TYPE_GUEST: STAY_TYPE_GUEST,
+    STAY_TYPE_OWNER: STAY_TYPE_OWNER,
+    STAY_TYPE_BLOCK: STAY_TYPE_BLOCK,
+    STAY_TYPE_MAINTENANCE: STAY_TYPE_MAINTENANCE,
+    STAY_TYPE_OTHER: STAY_TYPE_OTHER,
+}
+
 STAY_TYPE_TO_NAME = {
     STAY_TYPE_GUEST: "Guest Booking",
     STAY_TYPE_OWNER: "Owner Stay",
@@ -78,6 +92,9 @@ SENSOR_TIMEZONE = "timezone"
 SENSOR_LOCATION = "location"
 SENSOR_PARKING = "parking"
 SENSOR_ADDRESS = "address"
+SENSOR_HOME_STATUS = "home_status"
+SENSOR_MAINTENANCE_OPEN = "maintenance_open"
+SENSOR_STATEMENTS_TOTAL = "statements_total"
 
 # Services
 SERVICE_REFRESH_DATA = "refresh_data"
