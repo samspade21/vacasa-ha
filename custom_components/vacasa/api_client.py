@@ -8,12 +8,14 @@ import os
 import re
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable, TypeVar
 from urllib.parse import urlencode
 
 import aiohttp
 
 from .cached_data import CachedData, RetryWithBackoff
+
+T = TypeVar("T")
 
 
 from .const import (
@@ -286,6 +288,13 @@ class VacasaApiClient:
             self._close_session = True
         return self._session
 
+    async def _run_blocking_io(self, func: Callable[..., T], *args, **kwargs) -> T:
+        """Execute a blocking IO function safely in the event loop."""
+
+        if self._hass:
+            return await self._hass.async_add_executor_job(func, *args, **kwargs)
+        return func(*args, **kwargs)
+
     def _set_api_version(self, version: str) -> None:
         """Persist the API version that successfully responded."""
         if version != self._api_version:
@@ -430,12 +439,7 @@ class VacasaApiClient:
             return
 
         try:
-            if self._hass:
-                # Use Home Assistant's executor for async file operations
-                await self._hass.async_add_executor_job(self._save_token_to_cache_sync)
-            else:
-                # Fallback to synchronous operation if no hass instance
-                self._save_token_to_cache_sync()
+            await self._run_blocking_io(self._save_token_to_cache_sync)
         except Exception as e:
             _LOGGER.warning("Failed to save token to cache file: %s", e)
 
@@ -478,12 +482,7 @@ class VacasaApiClient:
             True if the token was loaded successfully, False otherwise
         """
         try:
-            if self._hass:
-                # Use Home Assistant's executor for async file operations
-                return await self._hass.async_add_executor_job(self._load_token_from_cache_sync)
-            else:
-                # Fallback to synchronous operation if no hass instance
-                return self._load_token_from_cache_sync()
+            return await self._run_blocking_io(self._load_token_from_cache_sync)
         except json.JSONDecodeError:
             _LOGGER.warning("Failed to parse token cache file (invalid JSON)")
             return False
@@ -498,7 +497,7 @@ class VacasaApiClient:
 
         if os.path.exists(self._token_cache_file):
             try:
-                os.remove(self._token_cache_file)
+                await self._run_blocking_io(os.remove, self._token_cache_file)
                 _LOGGER.debug("Token cache file removed: %s", self._token_cache_file)
             except Exception as e:
                 _LOGGER.warning("Failed to remove token cache file: %s", e)
