@@ -77,7 +77,7 @@ class VacasaBaseSensor(SensorEntity):
 
         # Entity properties
         self._attr_unique_id = f"vacasa_{sensor_type}_{unit_id}"
-        self._attr_name = f"Vacasa {name} {sensor_type.replace('_', ' ').title()}"
+        self._attr_name = sensor_type.replace('_', ' ').title()
         self._attr_has_entity_name = True
 
         # Set device info
@@ -137,7 +137,8 @@ class VacasaApiUpdateMixin:
         finally:
             if self._refresh_task is current_task:
                 self._refresh_task = None
-            if self.hass is not None:
+            # Only write state if entity is registered (has entity_id)
+            if self.hass is not None and self.entity_id is not None:
                 self.async_write_ha_state()
 
     @callback
@@ -876,6 +877,7 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
         unit_attributes: dict[str, Any],
     ) -> None:
         """Initialize the next stay sensor."""
+        _LOGGER.debug("Initializing VacasaNextStaySensor for unit %s (%s)", unit_id, name)
         super().__init__(
             coordinator=coordinator,
             unit_id=unit_id,
@@ -885,26 +887,34 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
             icon="mdi:calendar-clock",
         )
         self._reservation: dict[str, Any] | None = None
+        _LOGGER.debug("VacasaNextStaySensor initialized successfully for unit %s", unit_id)
 
     async def _async_update_from_api(self) -> None:
         """Fetch next reservation from API."""
+        _LOGGER.debug("VacasaNextStaySensor._async_update_from_api called for %s", self._name)
         try:
             # Get reservations starting from today
             today = datetime.now().strftime("%Y-%m-%d")
             future_date = (datetime.now() + timedelta(days=365)).strftime("%Y-%m-%d")
 
+            _LOGGER.debug("Fetching reservations for %s from %s to %s", self._unit_id, today, future_date)
             reservations = await self._coordinator.client.get_reservations(
                 self._unit_id,
                 start_date=today,
                 end_date=future_date,
                 limit=10,
             )
+            _LOGGER.debug("Retrieved %s reservations for %s", len(reservations), self._unit_id)
 
             # Find next upcoming or current reservation
             self._reservation = self._find_next_stay(reservations)
+            _LOGGER.debug("Next stay for %s: %s", self._unit_id, "found" if self._reservation else "none")
 
         except (AuthenticationError, ApiError) as err:
             _LOGGER.warning("Unable to update next stay for %s: %s", self._name, err)
+            self._reservation = None
+        except Exception as err:
+            _LOGGER.error("Unexpected error updating next stay for %s: %s", self._name, err, exc_info=True)
             self._reservation = None
 
     def _find_next_stay(self, reservations: list[dict]) -> dict | None:
@@ -1081,15 +1091,22 @@ def _create_unit_sensors(
     attributes: dict[str, Any],
 ) -> list[VacasaBaseSensor]:
     """Build the entity list for a single Vacasa unit."""
-    return [
-        sensor_class(
-            coordinator=coordinator,
-            unit_id=unit_id,
-            name=name,
-            unit_attributes=attributes,
-        )
-        for sensor_class in UNIT_SENSOR_CLASSES
-    ]
+    _LOGGER.debug("Creating sensors for unit %s (%s) - %s sensor classes", unit_id, name, len(UNIT_SENSOR_CLASSES))
+    sensors = []
+    for sensor_class in UNIT_SENSOR_CLASSES:
+        try:
+            _LOGGER.debug("Creating %s for unit %s", sensor_class.__name__, unit_id)
+            sensor = sensor_class(
+                coordinator=coordinator,
+                unit_id=unit_id,
+                name=name,
+                unit_attributes=attributes,
+            )
+            sensors.append(sensor)
+            _LOGGER.debug("Successfully created %s for unit %s", sensor_class.__name__, unit_id)
+        except Exception as err:
+            _LOGGER.error("Failed to create %s for unit %s: %s", sensor_class.__name__, unit_id, err, exc_info=True)
+    return sensors
 
 
 async def async_setup_entry(

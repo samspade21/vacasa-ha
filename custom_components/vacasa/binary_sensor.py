@@ -13,6 +13,7 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.util import dt as dt_util
 
 from . import VacasaConfigEntry
@@ -96,6 +97,8 @@ class VacasaOccupancySensor(BinarySensorEntity):
         self._calendar_entity = None
         self._current_event = None
         self._next_event = None
+        self._unsubscribe_start_timer = None
+        self._unsubscribe_end_timer = None
 
         # Entity properties
         self._attr_unique_id = f"vacasa_occupancy_{unit_id}"
@@ -196,6 +199,7 @@ class VacasaOccupancySensor(BinarySensorEntity):
 
             # Get current events from the calendar
             await self._update_current_and_next_events()
+            self._schedule_event_timers()
 
         except Exception as err:
             _LOGGER.error("Error updating occupancy from calendar for %s: %s", self._name, err)
@@ -322,43 +326,63 @@ class VacasaOccupancySensor(BinarySensorEntity):
 
             _LOGGER.debug("Calendar %s state: %s", self._calendar_entity, calendar_state.state)
 
+            message = calendar_state.attributes.get("message", "")
+            start_attr = calendar_state.attributes.get("start_time")
+            end_attr = calendar_state.attributes.get("end_time")
+
             # Check if there's a current event
             if calendar_state.state == "on":
-                # There's an active event, get it from attributes
-                current_event_summary = calendar_state.attributes.get("message", "")
-                current_event_start = calendar_state.attributes.get("start_time")
-                current_event_end = calendar_state.attributes.get("end_time")
+                current_event = self._create_event_from_attributes(
+                    message, start_attr, end_attr
+                )
 
-                if current_event_summary and current_event_start and current_event_end:
-                    try:
-                        # Create a simple event object
-                        self._current_event = type(
-                            "Event",
-                            (),
-                            {
-                                "summary": current_event_summary,
-                                "start": dt_util.parse_datetime(current_event_start),
-                                "end": dt_util.parse_datetime(current_event_end),
-                            },
-                        )()
-
-                        _LOGGER.debug(
-                            "Current event for %s: %s (%s to %s)",
-                            self._name,
-                            self._current_event.summary,
-                            self._current_event.start,
-                            self._current_event.end,
-                        )
-                    except Exception as event_err:
-                        _LOGGER.error(
-                            "Error creating event object for %s: %s",
-                            self._name,
-                            event_err,
-                        )
+                if current_event:
+                    self._current_event = current_event
+                    _LOGGER.debug(
+                        "Current event for %s: %s (%s to %s)",
+                        self._name,
+                        self._current_event.summary,
+                        self._current_event.start,
+                        self._current_event.end,
+                    )
                 else:
                     _LOGGER.warning(
                         "Calendar is 'on' but missing required event data for %s",
                         self._name,
+                    )
+            else:
+                next_event = self._create_event_from_attributes(
+                    message, start_attr, end_attr
+                )
+
+                if next_event:
+                    self._next_event = next_event
+                    _LOGGER.debug(
+                        "Next event for %s from calendar state: %s (%s to %s)",
+                        self._name,
+                        self._next_event.summary,
+                        self._next_event.start,
+                        self._next_event.end,
+                    )
+
+            next_event_attr = calendar_state.attributes.get("next_event")
+            if isinstance(next_event_attr, dict):
+                alt_next_event = self._create_event_from_attributes(
+                    next_event_attr.get("summary")
+                    or next_event_attr.get("message", ""),
+                    next_event_attr.get("start")
+                    or next_event_attr.get("start_time"),
+                    next_event_attr.get("end") or next_event_attr.get("end_time"),
+                )
+
+                if alt_next_event:
+                    self._next_event = alt_next_event
+                    _LOGGER.debug(
+                        "Updated next event for %s from calendar attributes: %s (%s to %s)",
+                        self._name,
+                        self._next_event.summary,
+                        self._next_event.start,
+                        self._next_event.end,
                     )
 
         except Exception as err:
@@ -559,3 +583,117 @@ class VacasaOccupancySensor(BinarySensorEntity):
 
         except Exception as err:
             _LOGGER.error("Error during recovery update for %s: %s", self._name, err)
+
+    def _create_event_from_attributes(
+        self,
+        summary: str | None,
+        start: str | datetime | None,
+        end: str | datetime | None,
+    ) -> Any | None:
+        """Build a simple event object from calendar attributes."""
+        if not summary or not start or not end:
+            return None
+
+        try:
+            start_dt = (
+                dt_util.parse_datetime(start)
+                if isinstance(start, str)
+                else start
+            )
+            end_dt = (
+                dt_util.parse_datetime(end)
+                if isinstance(end, str)
+                else end
+            )
+
+            if not start_dt or not end_dt:
+                return None
+
+            return type(
+                "Event",
+                (),
+                {
+                    "summary": summary,
+                    "start": start_dt,
+                    "end": end_dt,
+                },
+            )()
+        except Exception as err:  # pragma: no cover - defensive logging
+            _LOGGER.error(
+                "Error parsing calendar event attributes for %s: %s",
+                self._name,
+                err,
+            )
+            return None
+
+    def _cancel_event_timers(self) -> None:
+        """Cancel any scheduled timers for start/end updates."""
+        if self._unsubscribe_start_timer:
+            self._unsubscribe_start_timer()
+            self._unsubscribe_start_timer = None
+
+        if self._unsubscribe_end_timer:
+            self._unsubscribe_end_timer()
+            self._unsubscribe_end_timer = None
+
+    def _schedule_event_timers(self) -> None:
+        """Schedule refresh timers aligned with current and upcoming events."""
+        if not self.hass:
+            return
+
+        self._cancel_event_timers()
+
+        now_utc = dt_util.utcnow()
+
+        if self._current_event and getattr(self._current_event, "end", None):
+            event_end = dt_util.as_utc(self._current_event.end)
+            if event_end and event_end > now_utc:
+                self._unsubscribe_end_timer = async_track_point_in_time(
+                    self.hass,
+                    self._handle_scheduled_refresh,
+                    event_end,
+                )
+                _LOGGER.debug(
+                    "Scheduled occupancy refresh for %s at reservation end %s",
+                    self._name,
+                    event_end,
+                )
+
+        if self._next_event and getattr(self._next_event, "start", None):
+            event_start = dt_util.as_utc(self._next_event.start)
+            if event_start and event_start > now_utc:
+                self._unsubscribe_start_timer = async_track_point_in_time(
+                    self.hass,
+                    self._handle_scheduled_refresh,
+                    event_start,
+                )
+                _LOGGER.debug(
+                    "Scheduled occupancy refresh for %s at next reservation start %s",
+                    self._name,
+                    event_start,
+                )
+
+    def _handle_scheduled_refresh(self, scheduled_time: datetime) -> None:
+        """Trigger a refresh when an event boundary occurs."""
+        _LOGGER.debug(
+            "Executing scheduled occupancy refresh for %s at %s",
+            self._name,
+            scheduled_time,
+        )
+        if self.hass:
+            self.hass.async_create_task(self._scheduled_refresh())
+
+    async def _scheduled_refresh(self) -> None:
+        """Perform a refresh triggered by a scheduled event boundary."""
+        try:
+            await self._coordinator.async_request_refresh()
+        except Exception as err:  # pragma: no cover - coordinator handles its own errors
+            _LOGGER.warning(
+                "Scheduled refresh for %s failed: %s",
+                self._name,
+                err,
+            )
+            return
+
+        await self._update_from_calendar()
+        self.async_write_ha_state()

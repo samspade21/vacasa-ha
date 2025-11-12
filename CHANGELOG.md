@@ -79,7 +79,7 @@ This release addresses GitHub security findings identified by CodeQL code scanni
 
 ### Added
 - **Streamlined Automated Release System**: Complete deployment automation with clean separation of responsibilities
-- **One-Command Deployment**: Simple `./deploy.sh` script creates release PR, GitHub Actions handle the rest automatically
+- **One-Command Deployment**: Simple `./new-prod-release.sh` script creates release PR, GitHub Actions handle the rest automatically
 - **Auto-Tagging Workflow**: Automatic git tag creation when release PRs merge to main branch
 - **Comprehensive Deployment Documentation**: Detailed guides with troubleshooting and workflow architecture
 
@@ -91,7 +91,7 @@ This release addresses GitHub security findings identified by CodeQL code scanni
 
 ### Changed
 - **Release Workflow**: Simplified from 253 to 99 lines by removing redundant validation and update jobs
-- **File Organization**: Renamed original `deploy.sh` to `deploy-to-homeassistant.sh` for clarity
+- **File Organization**: Renamed original `new-prod-release.sh` to `deploy-to-homeassistant.sh` for clarity
 - **Workflow Architecture**: Clean handoff points between manual and automated steps
 
 ### Technical Improvements
@@ -249,13 +249,13 @@ This release represents a major stability milestone, resolving all known timing 
 - **Calendar-Based Occupancy Detection**: Binary sensors now derive occupancy status directly from calendar entities instead of API calls for more real-time updates
 - **Enhanced Debugging Tools**: New `logs.sh` script provides comprehensive log viewing with multiple filtering options (recent, live, debug, errors, calendar-specific)
 - **Environment-Based Configuration**: New `.env` file support for secure server configuration in deployment and logging scripts
-- **Automated Deployment**: Enhanced `deploy.sh` script with automatic Home Assistant restart and improved error handling
+- **Automated Deployment**: Enhanced `new-prod-release.sh` script with automatic Home Assistant restart and improved error handling
 - **Comprehensive Documentation**: Added detailed debugging and troubleshooting section with step-by-step debug logging instructions
 
 ### Improved
 - **Binary Sensor Reliability**: Enhanced entity discovery with retry mechanism and exponential backoff to handle timing issues during startup
 - **Entity Synchronization**: Better coordination between calendar and binary sensor platforms with improved initialization timing
-- **Developer Experience**: New development tools (`logs.sh`, `deploy.sh`) with SSH-based remote access and real-time monitoring
+- **Developer Experience**: New development tools (`logs.sh`, `new-prod-release.sh`) with SSH-based remote access and real-time monitoring
 - **Error Handling**: More robust error handling with clear diagnostic messages and automatic recovery mechanisms
 - **Logging Quality**: Enhanced debug logging with better context and clearer explanations of normal vs. problematic behavior
 

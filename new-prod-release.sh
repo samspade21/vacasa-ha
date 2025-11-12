@@ -5,7 +5,7 @@
 # This script creates a pull request from development to main.
 # GitHub Actions handle the rest of the automation automatically.
 #
-# Usage: ./deploy.sh
+# Usage: ./new-prod-release.sh
 # Prerequisites:
 #   - Must be on development branch
 #   - VERSION file and manifest.json must be updated

@@ -29,7 +29,6 @@ from .const import (
     DEFAULT_MAX_CONNECTIONS,
     DEFAULT_READ_TIMEOUT,
     DEFAULT_CLIENT_ID,
-    DEFAULT_STAY_TYPE_MAP,
     DEFAULT_TIMEOUT,
     MAX_RETRIES,
     SUPPORTED_API_VERSIONS,
@@ -81,7 +80,6 @@ class VacasaApiClient:
         *,
         client_id: str | None = None,
         api_version: str | None = DEFAULT_API_VERSION,
-        stay_type_mapping: dict[str, str] | None = None,
         cache_ttl: int = DEFAULT_CACHE_TTL,
         max_connections: int = DEFAULT_MAX_CONNECTIONS,
         keepalive_timeout: int = DEFAULT_KEEPALIVE_TIMEOUT,
@@ -120,10 +118,6 @@ class VacasaApiClient:
         self._client_id_last_fetch: float | None = None
         self._api_version = api_version or DEFAULT_API_VERSION
         self._api_base_url = API_BASE_TEMPLATE.format(version=self._api_version)
-        self._stay_type_mapping = {
-            key.lower(): value
-            for key, value in {**DEFAULT_STAY_TYPE_MAP, **(stay_type_mapping or {})}.items()
-        }
         self._close_session = False
 
         # Performance optimization settings
@@ -183,6 +177,11 @@ class VacasaApiClient:
     def token(self) -> str | None:
         """Get the current token."""
         return self._token
+
+    @property
+    def token_expiry(self) -> datetime | None:
+        """Return the current token expiry."""
+        return self._token_expiry
 
     @property
     def is_token_valid(self) -> bool:
@@ -355,9 +354,23 @@ class VacasaApiClient:
                         self._set_api_version(version)
                         if not return_json:
                             return await response.text()
-                        if response.content_type == "application/json":
+                        
+                        # Always attempt JSON parsing when return_json=True
+                        # API may include charset in content-type (e.g., "application/json; charset=utf-8")
+                        try:
                             return await response.json()
-                        return await response.text()
+                        except (aiohttp.ContentTypeError, json.JSONDecodeError) as e:
+                            # Log diagnostic info for troubleshooting
+                            response_text = await response.text()
+                            _LOGGER.warning(
+                                "Failed to parse JSON response from %s (content-type: %s): %s. Response: %s",
+                                url,
+                                response.content_type,
+                                e,
+                                response_text[:200],
+                            )
+                            # Return text as fallback, but this will likely cause errors in calling code
+                            return response_text
 
                     if response.status == 401:
                         # Attempt token refresh once when unauthorized
@@ -600,13 +613,7 @@ class VacasaApiClient:
         """
         attributes = reservation.get("attributes", {})
 
-        stay_type_raw = attributes.get("stayType") or attributes.get("stay_type")
-        if isinstance(stay_type_raw, str):
-            mapped = self._stay_type_mapping.get(stay_type_raw.lower())
-            if mapped in STAY_TYPE_TO_CATEGORY:
-                return mapped
-
-        # Check for owner hold
+        # Check for owner hold first
         owner_hold = attributes.get("ownerHold")
         if owner_hold:
             hold_type = owner_hold.get("holdType", "").lower()

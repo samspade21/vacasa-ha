@@ -20,7 +20,7 @@ fi
 # Configuration with environment variable fallbacks
 SERVER_IP="${HA_SERVER_IP:-${SERVER_IP}}"
 SERVER_USER="${HA_SERVER_USER:-${SERVER_USER}}"
-HA_CONFIG_DIR="${HA_CONFIG_DIR:-/homeassistant}"
+HA_CONFIG_DIR="${HA_CONFIG_DIR:-/config}"
 HA_LOG_FILE="${HA_CONFIG_DIR}/home-assistant.log"
 
 # Validate required configuration

@@ -5,7 +5,7 @@
 # Setup Instructions:
 # 1. Copy .env.example to .env: cp .env.example .env
 # 2. Edit .env with your Home Assistant server details
-# 3. Run this script: ./deploy.sh
+# 3. Run this script: ./new-prod-release.sh
 #
 # Alternatively, set environment variables:
 # export HA_SERVER_IP="192.168.1.67"

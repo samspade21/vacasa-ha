@@ -405,7 +405,7 @@ For maintainers, this project includes a fully automated release deployment proc
 # 2. Update CHANGELOG.md with release notes
 # 3. Commit changes to development branch
 # 4. Run automated deployment
-./deploy.sh
+./new-prod-release.sh
 ```
 
 The script automatically:

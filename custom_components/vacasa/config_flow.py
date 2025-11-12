@@ -15,16 +15,11 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api_client import ApiError, AuthenticationError, VacasaApiClient
 from .const import (
-    CONF_API_VERSION,
     CONF_PASSWORD,
     CONF_REFRESH_INTERVAL,
-    CONF_STAY_TYPE_MAPPING,
     CONF_USERNAME,
-    DEFAULT_API_VERSION,
     DEFAULT_REFRESH_INTERVAL,
     DOMAIN,
-    SUPPORTED_API_VERSIONS,
-    STAY_TYPE_TO_CATEGORY,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -84,8 +79,6 @@ async def validate_input(hass: HomeAssistant, data: Dict[str, Any]) -> Dict[str,
         session=session,
         hass_config_dir=hass.config.path(),
         hass=hass,
-        api_version=data.get(CONF_API_VERSION),
-        stay_type_mapping=data.get(CONF_STAY_TYPE_MAPPING),
     )
 
     try:
@@ -212,46 +205,8 @@ class VacasaOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         """Manage the options."""
         errors: Dict[str, str] = {}
-        current_api_version = self.config_entry.options.get(
-            CONF_API_VERSION, DEFAULT_API_VERSION
-        )
-        existing_mapping: dict[str, str] = self.config_entry.options.get(
-            CONF_STAY_TYPE_MAPPING, {}
-        )
 
         if user_input is not None:
-            api_version = user_input.get(CONF_API_VERSION) or DEFAULT_API_VERSION
-            mapping_value: dict[str, str] = {}
-
-            mapping_text = user_input.get(CONF_STAY_TYPE_MAPPING, "")
-            if mapping_text and mapping_text.strip():
-                try:
-                    raw_mapping = json.loads(mapping_text)
-                except json.JSONDecodeError as err:
-                    _LOGGER.debug("Invalid stay type mapping JSON: %s", err)
-                    errors[CONF_STAY_TYPE_MAPPING] = "invalid_stay_type_mapping"
-                    raw_mapping = None
-
-                if isinstance(raw_mapping, dict):
-                    try:
-                        for key, value in raw_mapping.items():
-                            if not isinstance(key, str) or not isinstance(value, str):
-                                raise ValueError("Stay type mapping keys and values must be strings")
-                            normalized_value = value.lower()
-                            if normalized_value not in STAY_TYPE_TO_CATEGORY:
-                                raise ValueError(
-                                    f"Unknown stay type category '{value}'"
-                                )
-                            mapping_value[key.lower()] = normalized_value
-                    except ValueError as err:
-                        _LOGGER.debug("Invalid stay type mapping value: %s", err)
-                        errors[CONF_STAY_TYPE_MAPPING] = "invalid_stay_type_mapping"
-                elif raw_mapping is not None:
-                    errors[CONF_STAY_TYPE_MAPPING] = "invalid_stay_type_mapping"
-
-            if api_version not in SUPPORTED_API_VERSIONS:
-                errors[CONF_API_VERSION] = "invalid_api_version"
-
             # Check if credentials were updated
             current_username = self.config_entry.data.get(CONF_USERNAME)
             current_password = self.config_entry.data.get(CONF_PASSWORD)
@@ -285,8 +240,6 @@ class VacasaOptionsFlowHandler(config_entries.OptionsFlow):
                         CONF_USERNAME: new_username,
                         CONF_PASSWORD: (new_password if new_password else current_password),
                         CONF_REFRESH_INTERVAL: user_input[CONF_REFRESH_INTERVAL],
-                        CONF_API_VERSION: api_version,
-                        CONF_STAY_TYPE_MAPPING: mapping_value,
                     }
                     await validate_input(self.hass, validation_data)
 
@@ -311,38 +264,12 @@ class VacasaOptionsFlowHandler(config_entries.OptionsFlow):
                     errors["base"] = "unknown"
 
             if not errors:
-                # Validate API connectivity when auth not changed but API settings did
-                if not credentials_changed and (
-                    api_version != current_api_version
-                    or mapping_value != existing_mapping
-                ):
-                    try:
-                        validation_data = {
-                            CONF_USERNAME: current_username,
-                            CONF_PASSWORD: current_password,
-                            CONF_REFRESH_INTERVAL: user_input[CONF_REFRESH_INTERVAL],
-                            CONF_API_VERSION: api_version,
-                            CONF_STAY_TYPE_MAPPING: mapping_value,
-                        }
-                        await validate_input(self.hass, validation_data)
-                    except CannotConnect:
-                        errors["base"] = "cannot_connect"
-                    except InvalidAuth:
-                        errors["base"] = "invalid_auth"
-                    except OwnerIdError:
-                        errors["base"] = "owner_id_error"
-                    except UnknownError:
-                        errors["base"] = "unknown"
-
-            if not errors:
-                # Success - create options entry with all options
+                # Success - create options entry
                 # This will trigger async_update_options which does a full reload
                 return self.async_create_entry(
                     title="",
                     data={
                         CONF_REFRESH_INTERVAL: user_input[CONF_REFRESH_INTERVAL],
-                        CONF_API_VERSION: api_version,
-                        CONF_STAY_TYPE_MAPPING: mapping_value,
                     },
                 )
 
@@ -352,8 +279,6 @@ class VacasaOptionsFlowHandler(config_entries.OptionsFlow):
             CONF_REFRESH_INTERVAL,
             self.config_entry.data.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL),
         )
-        default_api_version = current_api_version
-        default_mapping_text = json.dumps(existing_mapping, indent=2) if existing_mapping else ""
 
         schema = vol.Schema(
             {
@@ -362,12 +287,6 @@ class VacasaOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Required(CONF_REFRESH_INTERVAL, default=default_refresh): vol.All(
                     vol.Coerce(int), vol.Range(min=1, max=24)
                 ),
-                vol.Optional(
-                    CONF_API_VERSION, default=default_api_version
-                ): vol.In(SUPPORTED_API_VERSIONS),
-                vol.Optional(
-                    CONF_STAY_TYPE_MAPPING, default=default_mapping_text
-                ): str,
             }
         )
 

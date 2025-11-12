@@ -3,7 +3,7 @@
 ## Overview
 
 The Vacasa Home Assistant Integration uses a clean, streamlined deployment process with clear separation of responsibilities:
-- **`deploy.sh`** - Simple script that creates release pull request
+- **`new-prod-release.sh`** - Simple script that creates release pull request
 - **GitHub Actions** - Handle all automation after PR merge
 
 ## 🚀 Quick Start
@@ -12,7 +12,7 @@ The Vacasa Home Assistant Integration uses a clean, streamlined deployment proce
 # 1. Update version and changelog on development branch
 # 2. Commit all changes
 # 3. Create release pull request
-./deploy.sh
+./new-prod-release.sh
 # 4. Merge the PR when ready
 # 5. GitHub Actions automatically create tag and release!
 ```
@@ -91,7 +91,7 @@ The Vacasa Home Assistant Integration uses a clean, streamlined deployment proce
 ### Step 2: Create Release Pull Request
 
 ```bash
-./deploy.sh
+./new-prod-release.sh
 ```
 
 **What the script does:**
@@ -133,7 +133,7 @@ Once the PR merges to main, GitHub Actions automatically:
 
 ## 🔄 Workflow Responsibilities
 
-### `deploy.sh` Script
+### `new-prod-release.sh` Script
 **Purpose**: Create release pull request only
 - Prerequisites validation
 - Version consistency checks
@@ -217,7 +217,7 @@ gh pr view <pr-number>
 
 ### Customizing the Script
 
-Edit `deploy.sh` variables:
+Edit `new-prod-release.sh` variables:
 ```bash
 REQUIRED_BRANCH="development"  # Source branch
 TARGET_BRANCH="main"           # Target branch
@@ -268,7 +268,7 @@ Modify workflows in `.github/workflows/`:
 graph TD
     A[Developer on development branch] --> B[Update VERSION, manifest.json, CHANGELOG.md]
     B --> C[Commit changes]
-    C --> D[Run ./deploy.sh]
+    C --> D[Run ./new-prod-release.sh]
     D --> E[Script creates PR to main]
     E --> F[Manual PR review and merge]
     F --> G[auto-tag.yml detects merge]

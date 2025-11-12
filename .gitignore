@@ -46,6 +46,7 @@ tts/
 .vacasa_token.json
 .env
 .env.*
+!.env.example
 
 # OS specific files
 .DS_Store
