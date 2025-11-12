@@ -997,15 +997,14 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
 
         if is_current:
             return f"{stay_name} (currently occupied)"
-        else:
-            days_until = (start_date - now).days if start_date else None
-            if days_until is not None:
-                if days_until == 0:
-                    return f"{stay_name} (today)"
-                elif days_until == 1:
-                    return f"{stay_name} (tomorrow)"
-                else:
-                    return f"{stay_name} in {days_until} days"
+
+        days_until = (start_date - now).days if start_date else None
+        if days_until is not None:
+            if days_until == 0:
+                return f"{stay_name} (today)"
+            if days_until == 1:
+                return f"{stay_name} (tomorrow)"
+            return f"{stay_name} in {days_until} days"
 
         return stay_name
 
