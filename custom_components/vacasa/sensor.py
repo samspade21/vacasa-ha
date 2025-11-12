@@ -1,10 +1,12 @@
 """Sensor platform for Vacasa integration."""
 
+import asyncio
 import logging
+from contextlib import suppress
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import VacasaConfigEntry
@@ -80,6 +82,65 @@ class VacasaBaseSensor(SensorEntity):
             "model": "Vacation Rental",
             "sw_version": "1.0",
         }
+
+
+class VacasaApiUpdateMixin:
+    """Mixin to throttle API-backed sensors to the coordinator refresh."""
+
+    _refresh_task: asyncio.Task[None] | None
+
+    def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002,ANN003 - pass through
+        self._update_lock = asyncio.Lock()
+        self._refresh_task = None
+        super().__init__(*args, **kwargs)
+        self._attr_should_poll = False
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self._coordinator.async_add_listener(self._handle_coordinator_refresh)
+        )
+        await self.async_update()
+
+    async def async_update(self) -> None:
+        task = self._ensure_refresh_task()
+        if task is not None:
+            await task
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._refresh_task and not self._refresh_task.done():
+            self._refresh_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._refresh_task
+        await super().async_will_remove_from_hass()
+
+    def _ensure_refresh_task(self) -> asyncio.Task[None] | None:
+        if self.hass is None:
+            return None
+        if self._refresh_task is None or self._refresh_task.done():
+            self._refresh_task = self.hass.async_create_task(
+                self._async_refresh_from_api()
+            )
+        return self._refresh_task
+
+    async def _async_refresh_from_api(self) -> None:
+        current_task = asyncio.current_task()
+        try:
+            async with self._update_lock:
+                await self._async_update_from_api()
+        finally:
+            if self._refresh_task is current_task:
+                self._refresh_task = None
+            if self.hass is not None:
+                self.async_write_ha_state()
+
+    @callback
+    def _handle_coordinator_refresh(self) -> None:
+        self._ensure_refresh_task()
+
+    async def _async_update_from_api(self) -> None:
+        """Fetch data from the Vacasa API."""
+        raise NotImplementedError
 
 
 class VacasaRatingSensor(VacasaBaseSensor):
@@ -576,7 +637,7 @@ class VacasaAddressSensor(VacasaBaseSensor):
         return attributes
 
 
-class VacasaHomeInfoSensor(VacasaBaseSensor):
+class VacasaHomeInfoSensor(VacasaApiUpdateMixin, VacasaBaseSensor):
     """Sensor exposing home inspection and cleanliness information."""
 
     def __init__(
@@ -596,7 +657,7 @@ class VacasaHomeInfoSensor(VacasaBaseSensor):
         )
         self._home_info: dict[str, Any] = {}
 
-    async def async_update(self) -> None:
+    async def _async_update_from_api(self) -> None:
         """Refresh the home info payload."""
         try:
             self._home_info = await self._coordinator.client.get_home_info(self._unit_id)
@@ -638,7 +699,7 @@ class VacasaHomeInfoSensor(VacasaBaseSensor):
         }
 
 
-class VacasaMaintenanceSensor(VacasaBaseSensor):
+class VacasaMaintenanceSensor(VacasaApiUpdateMixin, VacasaBaseSensor):
     """Sensor representing open maintenance tickets for a unit."""
 
     def __init__(
@@ -662,7 +723,7 @@ class VacasaMaintenanceSensor(VacasaBaseSensor):
         self._tickets: list[dict[str, Any]] = []
         self._attr_native_unit_of_measurement = "tickets"
 
-    async def async_update(self) -> None:
+    async def _async_update_from_api(self) -> None:
         """Refresh the maintenance ticket list."""
         try:
             self._tickets = await self._coordinator.client.get_maintenance(
