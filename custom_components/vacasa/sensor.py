@@ -77,7 +77,7 @@ class VacasaBaseSensor(SensorEntity):
 
         # Entity properties
         self._attr_unique_id = f"vacasa_{sensor_type}_{unit_id}"
-        self._attr_name = f"Vacasa {name} {sensor_type.replace('_', ' ').title()}"
+        self._attr_name = sensor_type.replace('_', ' ').title()
         self._attr_has_entity_name = True
 
         # Set device info
@@ -137,7 +137,8 @@ class VacasaApiUpdateMixin:
         finally:
             if self._refresh_task is current_task:
                 self._refresh_task = None
-            if self.hass is not None:
+            # Only write state if entity is registered (has entity_id)
+            if self.hass is not None and self.entity_id is not None:
                 self.async_write_ha_state()
 
     @callback
