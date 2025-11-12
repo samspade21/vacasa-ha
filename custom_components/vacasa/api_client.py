@@ -185,6 +185,11 @@ class VacasaApiClient:
         return self._token
 
     @property
+    def token_expiry(self) -> datetime | None:
+        """Return the current token expiry."""
+        return self._token_expiry
+
+    @property
     def is_token_valid(self) -> bool:
         """Check if the current token is valid."""
         if not self._token or not self._token_expiry:
