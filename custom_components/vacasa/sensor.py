@@ -906,12 +906,7 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
                 "%Y-%m-%d"
             )
 
-            _LOGGER.debug(
-                "Fetching reservations for %s from %s to %s",
-                self._unit_id,
-                today,
-                future_date,
-            )
+            _LOGGER.debug("Fetching reservations for %s from %s to %s", self._unit_id, today, future_date)
             reservations = await self._coordinator.client.get_reservations(
                 self._unit_id,
                 start_date=today,
@@ -922,11 +917,7 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
 
             # Find next upcoming or current reservation
             self._reservation = self._find_next_stay(reservations)
-            _LOGGER.debug(
-                "Next stay for %s: %s",
-                self._unit_id,
-                "found" if self._reservation else "none",
-            )
+            _LOGGER.debug("Next stay for %s: %s", self._unit_id, "found" if self._reservation else "none")
 
         except (AuthenticationError, ApiError) as err:
             _LOGGER.warning(
@@ -1116,18 +1107,11 @@ def _create_unit_sensors(
     attributes: dict[str, Any],
 ) -> list[VacasaBaseSensor]:
     """Build the entity list for a single Vacasa unit."""
-    _LOGGER.debug(
-        "Creating sensors for unit %s (%s) - %s sensor classes",
-        unit_id,
-        name,
-        len(UNIT_SENSOR_CLASSES),
-    )
+    _LOGGER.debug("Creating sensors for unit %s (%s) - %s sensor classes", unit_id, name, len(UNIT_SENSOR_CLASSES))
     sensors = []
     for sensor_class in UNIT_SENSOR_CLASSES:
         try:
-            _LOGGER.debug(
-                "Creating %s for unit %s", sensor_class.__name__, unit_id
-            )
+            _LOGGER.debug("Creating %s for unit %s", sensor_class.__name__, unit_id)
             sensor = sensor_class(
                 coordinator=coordinator,
                 unit_id=unit_id,
@@ -1135,19 +1119,9 @@ def _create_unit_sensors(
                 unit_attributes=attributes,
             )
             sensors.append(sensor)
-            _LOGGER.debug(
-                "Successfully created %s for unit %s",
-                sensor_class.__name__,
-                unit_id,
-            )
+            _LOGGER.debug("Successfully created %s for unit %s", sensor_class.__name__, unit_id)
         except Exception as err:
-            _LOGGER.error(
-                "Failed to create %s for unit %s: %s",
-                sensor_class.__name__,
-                unit_id,
-                err,
-                exc_info=True,
-            )
+            _LOGGER.error("Failed to create %s for unit %s: %s", sensor_class.__name__, unit_id, err, exc_info=True)
     return sensors
 
 

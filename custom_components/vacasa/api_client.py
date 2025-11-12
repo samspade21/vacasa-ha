@@ -352,27 +352,21 @@ class VacasaApiClient:
                         self._set_api_version(version)
                         if not return_json:
                             return await response.text()
-
                         # Always attempt JSON parsing when return_json=True
-                        # API may include charset in content-type
-                        # (e.g., "application/json; charset=utf-8")
+                        # API may include charset in content-type (e.g., "application/json; charset=utf-8")
                         try:
                             return await response.json()
-                        except (
-                            aiohttp.ContentTypeError,
-                            json.JSONDecodeError,
-                        ) as e:
+                        except (aiohttp.ContentTypeError, json.JSONDecodeError) as e:
                             # Log diagnostic info for troubleshooting
                             response_text = await response.text()
                             _LOGGER.warning(
-                                "Failed to parse JSON from %s "
-                                "(content-type: %s): %s. Response: %s",
+                                "Failed to parse JSON response from %s (content-type: %s): %s. Response: %s",
                                 url,
                                 response.content_type,
                                 e,
                                 response_text[:200],
                             )
-                            # Return text as fallback, will cause errors
+                            # Return text as fallback, but this will likely cause errors in calling code
                             return response_text
 
                     if response.status == 401:
