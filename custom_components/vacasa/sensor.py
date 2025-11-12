@@ -772,7 +772,7 @@ class VacasaMaintenanceSensor(VacasaApiUpdateMixin, VacasaBaseSensor):
         }
 
 
-class VacasaStatementSensor(SensorEntity):
+class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
     """Sensor exposing the latest owner statement totals."""
 
     def __init__(self, coordinator, config_entry: VacasaConfigEntry) -> None:
@@ -793,7 +793,7 @@ class VacasaStatementSensor(SensorEntity):
             "manufacturer": "Vacasa",
         }
 
-    async def async_update(self) -> None:
+    async def _async_update_from_api(self) -> None:
         """Refresh statement totals."""
         try:
             self._statements = await self._coordinator.client.get_statements()
