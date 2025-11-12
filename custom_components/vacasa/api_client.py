@@ -19,15 +19,14 @@ from .const import (
     AUTH_URL,
     DEFAULT_API_VERSION,
     DEFAULT_CACHE_TTL,
+    DEFAULT_CLIENT_ID,
     DEFAULT_CONN_TIMEOUT,
     DEFAULT_JITTER_MAX,
     DEFAULT_KEEPALIVE_TIMEOUT,
     DEFAULT_MAX_CONNECTIONS,
     DEFAULT_READ_TIMEOUT,
-    DEFAULT_CLIENT_ID,
     DEFAULT_TIMEOUT,
     MAX_RETRIES,
-    SUPPORTED_API_VERSIONS,
     PROPERTY_CACHE_FILE,
     RETRY_BACKOFF_MULTIPLIER,
     RETRY_DELAY,
@@ -37,6 +36,7 @@ from .const import (
     STAY_TYPE_OTHER,
     STAY_TYPE_OWNER,
     STAY_TYPE_TO_CATEGORY,
+    SUPPORTED_API_VERSIONS,
     TOKEN_CACHE_FILE,
     TOKEN_REFRESH_MARGIN,
 )
@@ -199,9 +199,7 @@ class VacasaApiClient:
         try:
             async with session.get(AUTH_URL, timeout=DEFAULT_TIMEOUT) as response:
                 if response.status != 200:
-                    _LOGGER.warning(
-                        "Failed to fetch login page for client ID: %s", response.status
-                    )
+                    _LOGGER.warning("Failed to fetch login page for client ID: %s", response.status)
                     return None
 
                 html = await response.text()
@@ -211,7 +209,7 @@ class VacasaApiClient:
 
         patterns = [
             r'data-client-id="([A-Za-z0-9_-]+)"',
-            r'client_id=([A-Za-z0-9_-]+)',
+            r"client_id=([A-Za-z0-9_-]+)",
         ]
 
         for pattern in patterns:
@@ -226,8 +224,7 @@ class VacasaApiClient:
         """Ensure the OAuth client ID is up to date."""
         now = time.time()
         cache_valid = (
-            self._client_id_last_fetch is not None
-            and now - self._client_id_last_fetch < 3600
+            self._client_id_last_fetch is not None and now - self._client_id_last_fetch < 3600
         )
 
         if cache_valid and self._client_id:
@@ -287,7 +284,6 @@ class VacasaApiClient:
 
     async def _run_blocking_io(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Execute a blocking IO function safely in the event loop."""
-
         if self._hass:
             return await self._hass.async_add_executor_job(func, *args, **kwargs)
         return func(*args, **kwargs)
@@ -333,7 +329,6 @@ class VacasaApiClient:
         retry_on_unauthorized: bool = True,
     ) -> Any:
         """Perform an HTTP request with API version fallback and error handling."""
-
         session = await self.ensure_session()
         last_error: Exception | None = None
 
@@ -353,27 +348,27 @@ class VacasaApiClient:
                         if not return_json:
                             return await response.text()
                         # Always attempt JSON parsing when return_json=True
-                        # API may include charset in content-type (e.g., "application/json; charset=utf-8")
+                        # API may include charset in content-type
+                        # (e.g., "application/json; charset=utf-8")
                         try:
                             return await response.json()
                         except (aiohttp.ContentTypeError, json.JSONDecodeError) as e:
                             # Log diagnostic info for troubleshooting
                             response_text = await response.text()
                             _LOGGER.warning(
-                                "Failed to parse JSON response from %s (content-type: %s): %s. Response: %s",
+                                "Failed to parse JSON from %s (content-type: %s): %s. Response: %s",
                                 url,
                                 response.content_type,
                                 e,
                                 response_text[:200],
                             )
-                            # Return text as fallback, but this will likely cause errors in calling code
+                            # Return text as fallback, but this will likely
+                            # cause errors in calling code
                             return response_text
 
                     if response.status == 401:
                         # Attempt token refresh once when unauthorized
-                        _LOGGER.warning(
-                            "API request unauthorized for %s, refreshing token", url
-                        )
+                        _LOGGER.warning("API request unauthorized for %s, refreshing token", url)
                         if retry_on_unauthorized:
                             await self.authenticate()
                             await self._save_token_to_cache()
@@ -1116,7 +1111,6 @@ class VacasaApiClient:
 
     async def get_home_info(self, unit_id: str) -> dict[str, Any]:
         """Return the detailed home-info payload for a unit."""
-
         await self.ensure_token()
         owner_id = await self.get_owner_id()
 
@@ -1131,7 +1125,6 @@ class VacasaApiClient:
         self, year: int | None = None, month: int | None = None
     ) -> list[dict[str, Any]]:
         """Fetch owner statements, optionally scoped to a specific month."""
-
         await self.ensure_token()
         owner_id = await self.get_owner_id()
 
@@ -1153,7 +1146,6 @@ class VacasaApiClient:
         self, unit_id: str, status: str | None = "open"
     ) -> list[dict[str, Any]]:
         """Fetch maintenance tickets for a unit."""
-
         await self.ensure_token()
         owner_id = await self.get_owner_id()
 

@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2025-11-12
+
+### Added
+- **Next Stay Sensor**: New [`VacasaNextStaySensor`](custom_components/vacasa/sensor.py) for tracking upcoming and current reservations
+  - Displays next upcoming or current reservation with human-readable state messages
+  - Comprehensive attributes: check-in/check-out dates, stay type, guest information
+  - Computed values: days until check-in/check-out, stay duration nights
+  - Supports guest, owner, maintenance, and block stay classifications
+  - PR #32, #33, #34
+- **API Throttling**: Implemented sensor update throttling to respect coordinator refresh interval
+  - Prevents excessive API calls for multiple sensors
+  - All API-backed sensors now coordinate updates efficiently
+
+### Fixed
+- **Critical Entity Registration Fix**: Added entity_id validation before state writes to prevent AttributeError during initialization (PR #38)
+- **JSON Parsing Enhancement**: Handle charset in API content-type headers (`application/json; charset=utf-8`) with fallback parsing and diagnostic logging
+- **Missing Import Fix**: Added missing `random` import in [`cached_data.py`](custom_components/vacasa/cached_data.py) required for retry jitter calculations
+- **Occupancy Sensor Alignment**: Fixed occupancy sensor to stay properly aligned with reservation data (PR #37)
+- **Token Handling**: Resolved token access issues and cleaned up cache imports (PR #35)
+
+### Improved
+- **API Resilience**: Enhanced API client with better error handling, retry logic, and rich sensor support (PR #25)
+- **Blocking I/O Performance**: Refactored blocking I/O helpers for improved performance (PR #28)
+- **Sensor Setup Efficiency**: Streamlined sensor platform setup, reducing code by 99 lines (PR #27)
+- **Configuration Simplification**: Removed unused stay_type_mapping and API version configuration options
+
+### Changed
+- **Dependency Updates**: Updated project dependencies to latest versions (PR #26, #30)
+- **Code Quality**: Fixed linting errors for improved CI/CD compliance
+- **Coordinator Integration**: Statement sensor now uses coordinator updates for better consistency
+- **Diagnostic Logging**: Enhanced logging for VacasaNextStaySensor troubleshooting
+
+### Technical Improvements
+- All sensors now properly coordinate with data update coordinator
+- Enhanced error recovery and diagnostic capabilities
+- Improved code maintainability and reduced technical debt
+- Better separation of concerns in sensor architecture
+
+This release introduces the highly-requested next stay sensor feature while delivering critical bug fixes for production stability and enhanced API resilience.
+
 ## [1.4.2] - 2025-08-19
 
 ### Testing

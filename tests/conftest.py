@@ -128,9 +128,7 @@ entity_registry.async_get = lambda hass: types.SimpleNamespace(entities={})
 dt_util.parse_datetime = lambda s: datetime.fromisoformat(s)
 dt_util.utcnow = lambda: datetime.now(timezone.utc)
 dt_util.as_utc = (
-    lambda dt: dt.astimezone(timezone.utc)
-    if dt.tzinfo
-    else dt.replace(tzinfo=timezone.utc)
+    lambda dt: dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 )
 util.dt = dt_util
 

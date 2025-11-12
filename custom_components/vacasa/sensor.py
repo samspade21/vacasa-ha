@@ -77,7 +77,7 @@ class VacasaBaseSensor(SensorEntity):
 
         # Entity properties
         self._attr_unique_id = f"vacasa_{sensor_type}_{unit_id}"
-        self._attr_name = sensor_type.replace('_', ' ').title()
+        self._attr_name = sensor_type.replace("_", " ").title()
         self._attr_has_entity_name = True
 
         # Set device info
@@ -105,9 +105,7 @@ class VacasaApiUpdateMixin:
     async def async_added_to_hass(self) -> None:
         """Register coordinator listener when added to hass."""
         await super().async_added_to_hass()
-        self.async_on_remove(
-            self._coordinator.async_add_listener(self._handle_coordinator_refresh)
-        )
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_refresh))
         await self.async_update()
 
     async def async_update(self) -> None:
@@ -128,9 +126,7 @@ class VacasaApiUpdateMixin:
         if self.hass is None:
             return None
         if self._refresh_task is None or self._refresh_task.done():
-            self._refresh_task = self.hass.async_create_task(
-                self._async_refresh_from_api()
-            )
+            self._refresh_task = self.hass.async_create_task(self._async_refresh_from_api())
         return self._refresh_task
 
     async def _async_refresh_from_api(self) -> None:
@@ -679,9 +675,7 @@ class VacasaHomeInfoSensor(VacasaApiUpdateMixin, VacasaBaseSensor):
 
     def _home_attributes(self) -> dict[str, Any]:
         if isinstance(self._home_info, dict):
-            if "attributes" in self._home_info and isinstance(
-                self._home_info["attributes"], dict
-            ):
+            if "attributes" in self._home_info and isinstance(self._home_info["attributes"], dict):
                 return self._home_info["attributes"]
             return self._home_info
         return {}
@@ -743,9 +737,7 @@ class VacasaMaintenanceSensor(VacasaApiUpdateMixin, VacasaBaseSensor):
                 self._unit_id, status=self._status
             )
         except (AuthenticationError, ApiError) as err:
-            _LOGGER.warning(
-                "Unable to update maintenance tickets for %s: %s", self._name, err
-            )
+            _LOGGER.warning("Unable to update maintenance tickets for %s: %s", self._name, err)
             self._tickets = []
 
     @property
@@ -906,7 +898,12 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
                 "%Y-%m-%d"
             )
 
-            _LOGGER.debug("Fetching reservations for %s from %s to %s", self._unit_id, today, future_date)
+            _LOGGER.debug(
+                "Fetching reservations for %s from %s to %s",
+                self._unit_id,
+                today,
+                future_date,
+            )
             reservations = await self._coordinator.client.get_reservations(
                 self._unit_id,
                 start_date=today,
@@ -917,7 +914,11 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
 
             # Find next upcoming or current reservation
             self._reservation = self._find_next_stay(reservations)
-            _LOGGER.debug("Next stay for %s: %s", self._unit_id, "found" if self._reservation else "none")
+            _LOGGER.debug(
+                "Next stay for %s: %s",
+                self._unit_id,
+                "found" if self._reservation else "none",
+            )
 
         except (AuthenticationError, ApiError) as err:
             _LOGGER.warning(
@@ -1000,15 +1001,14 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
 
         if is_current:
             return f"{stay_name} (currently occupied)"
-        else:
-            days_until = (start_date - now).days if start_date else None
-            if days_until is not None:
-                if days_until == 0:
-                    return f"{stay_name} (today)"
-                elif days_until == 1:
-                    return f"{stay_name} (tomorrow)"
-                else:
-                    return f"{stay_name} in {days_until} days"
+
+        days_until = (start_date - now).days if start_date else None
+        if days_until is not None:
+            if days_until == 0:
+                return f"{stay_name} (today)"
+            if days_until == 1:
+                return f"{stay_name} (tomorrow)"
+            return f"{stay_name} in {days_until} days"
 
         return stay_name
 
@@ -1028,9 +1028,7 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
 
         # Compute time values
         is_current = start_date and end_date and start_date <= now < end_date
-        days_until_checkin = (
-            (start_date - now).days if start_date and start_date > now else None
-        )
+        days_until_checkin = (start_date - now).days if start_date and start_date > now else None
         days_until_checkout = (end_date - now).days if end_date else None
         stay_duration = (end_date - start_date).days if start_date and end_date else None
 
@@ -1052,12 +1050,8 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
             # Dates
             "checkin_date": start_date.isoformat() if start_date else None,
             "checkout_date": end_date.isoformat() if end_date else None,
-            "checkin_time": attrs.get(
-                "checkinTime", self._unit_attributes.get("checkInTime")
-            ),
-            "checkout_time": attrs.get(
-                "checkoutTime", self._unit_attributes.get("checkOutTime")
-            ),
+            "checkin_time": attrs.get("checkinTime", self._unit_attributes.get("checkInTime")),
+            "checkout_time": attrs.get("checkoutTime", self._unit_attributes.get("checkOutTime")),
             # Classification
             "stay_type": stay_type,
             "stay_category": STAY_TYPE_TO_CATEGORY.get(stay_type),
@@ -1107,7 +1101,12 @@ def _create_unit_sensors(
     attributes: dict[str, Any],
 ) -> list[VacasaBaseSensor]:
     """Build the entity list for a single Vacasa unit."""
-    _LOGGER.debug("Creating sensors for unit %s (%s) - %s sensor classes", unit_id, name, len(UNIT_SENSOR_CLASSES))
+    _LOGGER.debug(
+        "Creating sensors for unit %s (%s) - %s sensor classes",
+        unit_id,
+        name,
+        len(UNIT_SENSOR_CLASSES),
+    )
     sensors = []
     for sensor_class in UNIT_SENSOR_CLASSES:
         try:
@@ -1121,7 +1120,13 @@ def _create_unit_sensors(
             sensors.append(sensor)
             _LOGGER.debug("Successfully created %s for unit %s", sensor_class.__name__, unit_id)
         except Exception as err:
-            _LOGGER.error("Failed to create %s for unit %s: %s", sensor_class.__name__, unit_id, err, exc_info=True)
+            _LOGGER.error(
+                "Failed to create %s for unit %s: %s",
+                sensor_class.__name__,
+                unit_id,
+                err,
+                exc_info=True,
+            )
     return sensors
 
 
