@@ -52,8 +52,14 @@ class ServiceCall:
     pass
 
 
+class Event:
+    def __init__(self, data=None):
+        self.data = data or {}
+
+
 core.HomeAssistant = HomeAssistant
 core.ServiceCall = ServiceCall
+core.Event = Event
 
 exceptions = types.ModuleType("homeassistant.exceptions")
 
@@ -74,11 +80,19 @@ aiohttp_client = types.ModuleType("homeassistant.helpers.aiohttp_client")
 update_coordinator = types.ModuleType("homeassistant.helpers.update_coordinator")
 entity_platform = types.ModuleType("homeassistant.helpers.entity_platform")
 entity_registry = types.ModuleType("homeassistant.helpers.entity_registry")
+event_helper = types.ModuleType("homeassistant.helpers.event")
 util = types.ModuleType("homeassistant.util")
 dt_util = types.ModuleType("homeassistant.util.dt")
 components = types.ModuleType("homeassistant.components")
 components_binary_sensor = types.ModuleType("homeassistant.components.binary_sensor")
 components_calendar = types.ModuleType("homeassistant.components.calendar")
+
+
+def _async_track_point_in_time(hass, action, point_in_time):
+    return None
+
+
+event_helper.async_track_point_in_time = _async_track_point_in_time
 
 
 class BinarySensorEntity:
@@ -112,6 +126,12 @@ components_calendar.CalendarEvent = CalendarEvent
 entity_platform.AddEntitiesCallback = None
 entity_registry.async_get = lambda hass: types.SimpleNamespace(entities={})
 dt_util.parse_datetime = lambda s: datetime.fromisoformat(s)
+dt_util.utcnow = lambda: datetime.now(timezone.utc)
+dt_util.as_utc = (
+    lambda dt: dt.astimezone(timezone.utc)
+    if dt.tzinfo
+    else dt.replace(tzinfo=timezone.utc)
+)
 util.dt = dt_util
 
 
@@ -154,6 +174,7 @@ update_coordinator.CoordinatorEntity = CoordinatorEntity
 
 helpers.aiohttp_client = aiohttp_client
 helpers.update_coordinator = update_coordinator
+helpers.event = event_helper
 
 data_entry_flow = types.ModuleType("homeassistant.data_entry_flow")
 
@@ -174,6 +195,7 @@ modules = {
     "homeassistant.helpers.update_coordinator": update_coordinator,
     "homeassistant.helpers.entity_platform": entity_platform,
     "homeassistant.helpers.entity_registry": entity_registry,
+    "homeassistant.helpers.event": event_helper,
     "homeassistant.util": util,
     "homeassistant.util.dt": dt_util,
     "homeassistant.components": components,
