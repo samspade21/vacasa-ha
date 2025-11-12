@@ -151,7 +151,6 @@ class CachedData:
 
     async def _run_io_task(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Execute a blocking IO task safely when hass is available."""
-
         if self._hass:
             return await self._hass.async_add_executor_job(func, *args, **kwargs)
         return func(*args, **kwargs)

@@ -336,9 +336,7 @@ class VacasaOccupancySensor(BinarySensorEntity):
 
             # Check if there's a current event
             if calendar_state.state == "on":
-                current_event = self._create_event_from_attributes(
-                    message, start_attr, end_attr
-                )
+                current_event = self._create_event_from_attributes(message, start_attr, end_attr)
 
                 if current_event:
                     self._current_event = current_event
@@ -355,9 +353,7 @@ class VacasaOccupancySensor(BinarySensorEntity):
                         self._name,
                     )
             else:
-                next_event = self._create_event_from_attributes(
-                    message, start_attr, end_attr
-                )
+                next_event = self._create_event_from_attributes(message, start_attr, end_attr)
 
                 if next_event:
                     self._next_event = next_event
@@ -372,10 +368,8 @@ class VacasaOccupancySensor(BinarySensorEntity):
             next_event_attr = calendar_state.attributes.get("next_event")
             if isinstance(next_event_attr, dict):
                 alt_next_event = self._create_event_from_attributes(
-                    next_event_attr.get("summary")
-                    or next_event_attr.get("message", ""),
-                    next_event_attr.get("start")
-                    or next_event_attr.get("start_time"),
+                    next_event_attr.get("summary") or next_event_attr.get("message", ""),
+                    next_event_attr.get("start") or next_event_attr.get("start_time"),
                     next_event_attr.get("end") or next_event_attr.get("end_time"),
                 )
 
@@ -598,16 +592,8 @@ class VacasaOccupancySensor(BinarySensorEntity):
             return None
 
         try:
-            start_dt = (
-                dt_util.parse_datetime(start)
-                if isinstance(start, str)
-                else start
-            )
-            end_dt = (
-                dt_util.parse_datetime(end)
-                if isinstance(end, str)
-                else end
-            )
+            start_dt = dt_util.parse_datetime(start) if isinstance(start, str) else start
+            end_dt = dt_util.parse_datetime(end) if isinstance(end, str) else end
 
             if not start_dt or not end_dt:
                 return None
