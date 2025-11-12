@@ -14,6 +14,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -26,7 +29,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run pre-commit (ruff, mypy)
+      - name: Run pre-commit (ruff, mypy) and auto-fix
+        run: |
+          pre-commit run --all-files --config .pre-commit-config-ci.yaml || true
+
+      - name: Commit formatting fixes
+        if: github.event_name == 'pull_request'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git diff --quiet || (git add -A && git commit -m "style: Auto-fix formatting issues" && git push)
+
+      - name: Re-run pre-commit checks
         run: pre-commit run --all-files --config .pre-commit-config-ci.yaml
 
       - name: Install test dependencies
