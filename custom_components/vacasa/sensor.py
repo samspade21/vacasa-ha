@@ -3,11 +3,13 @@
 import asyncio
 import logging
 from contextlib import suppress
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from . import VacasaConfigEntry
 from .api_client import ApiError, AuthenticationError
@@ -25,11 +27,15 @@ from .const import (
     SENSOR_MAX_CHILDREN,
     SENSOR_MAX_OCCUPANCY,
     SENSOR_MAX_PETS,
+    SENSOR_NEXT_STAY,
     SENSOR_PARKING,
     SENSOR_PET_FRIENDLY,
     SENSOR_RATING,
     SENSOR_STATEMENTS_TOTAL,
     SENSOR_TIMEZONE,
+    STAY_TYPE_GUEST,
+    STAY_TYPE_TO_CATEGORY,
+    STAY_TYPE_TO_NAME,
 )
 
 # Removed CoordinatorEntity import - these sensors contain static property data
@@ -859,6 +865,192 @@ class VacasaStatementSensor(SensorEntity):
         }
 
 
+class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
+    """Sensor representing the next upcoming stay/reservation."""
+
+    def __init__(
+        self,
+        coordinator,
+        unit_id: str,
+        name: str,
+        unit_attributes: dict[str, Any],
+    ) -> None:
+        """Initialize the next stay sensor."""
+        super().__init__(
+            coordinator=coordinator,
+            unit_id=unit_id,
+            name=name,
+            unit_attributes=unit_attributes,
+            sensor_type=SENSOR_NEXT_STAY,
+            icon="mdi:calendar-clock",
+        )
+        self._reservation: dict[str, Any] | None = None
+
+    async def _async_update_from_api(self) -> None:
+        """Fetch next reservation from API."""
+        try:
+            # Get reservations starting from today
+            today = datetime.now().strftime("%Y-%m-%d")
+            future_date = (datetime.now() + timedelta(days=365)).strftime("%Y-%m-%d")
+
+            reservations = await self._coordinator.client.get_reservations(
+                self._unit_id,
+                start_date=today,
+                end_date=future_date,
+                limit=10,
+            )
+
+            # Find next upcoming or current reservation
+            self._reservation = self._find_next_stay(reservations)
+
+        except (AuthenticationError, ApiError) as err:
+            _LOGGER.warning("Unable to update next stay for %s: %s", self._name, err)
+            self._reservation = None
+
+    def _find_next_stay(self, reservations: list[dict]) -> dict | None:
+        """Find the next relevant reservation (current or upcoming)."""
+        now = dt_util.now()
+
+        for reservation in sorted(
+            reservations,
+            key=lambda r: r.get("attributes", {}).get("startDate", ""),
+        ):
+            attrs = reservation.get("attributes", {})
+            end_date = self._parse_date(attrs.get("endDate"))
+
+            # Include if checkout is in the future (current or upcoming)
+            if end_date and end_date > now:
+                return reservation
+
+        return None
+
+    def _parse_date(self, date_str: str | None) -> datetime | None:
+        """Parse date string to datetime object."""
+        if not date_str:
+            return None
+
+        try:
+            # Try parsing as date only first
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+
+            # Get timezone from property or use local
+            if self._unit_attributes.get("timezone"):
+                try:
+                    from zoneinfo import ZoneInfo
+
+                    tz = ZoneInfo(self._unit_attributes["timezone"])
+                    return date_obj.replace(tzinfo=tz)
+                except Exception:
+                    pass
+
+            # Fall back to local timezone
+            return dt_util.as_local(date_obj)
+
+        except ValueError:
+            # Try parsing as full datetime
+            try:
+                return dt_util.parse_datetime(date_str)
+            except Exception:
+                _LOGGER.warning("Could not parse date: %s", date_str)
+                return None
+
+    @property
+    def native_value(self) -> str:
+        """Return human-readable state."""
+        if not self._reservation:
+            return "No upcoming reservations"
+
+        attrs = self._reservation.get("attributes", {})
+        start_date = self._parse_date(attrs.get("startDate"))
+        end_date = self._parse_date(attrs.get("endDate"))
+        now = dt_util.now()
+
+        # Determine if current or upcoming
+        is_current = start_date and end_date and start_date <= now < end_date
+
+        # Get stay type
+        stay_type = self._coordinator.client.categorize_reservation(self._reservation)
+        stay_name = STAY_TYPE_TO_NAME.get(stay_type, "Reservation")
+
+        if is_current:
+            return f"{stay_name} (currently occupied)"
+        else:
+            days_until = (start_date - now).days if start_date else None
+            if days_until is not None:
+                if days_until == 0:
+                    return f"{stay_name} (today)"
+                elif days_until == 1:
+                    return f"{stay_name} (tomorrow)"
+                else:
+                    return f"{stay_name} in {days_until} days"
+
+        return stay_name
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return detailed reservation attributes."""
+        if not self._reservation:
+            return {
+                "is_current": False,
+                "is_upcoming": False,
+            }
+
+        attrs = self._reservation.get("attributes", {})
+        start_date = self._parse_date(attrs.get("startDate"))
+        end_date = self._parse_date(attrs.get("endDate"))
+        now = dt_util.now()
+
+        # Compute time values
+        is_current = start_date and end_date and start_date <= now < end_date
+        days_until_checkin = (
+            (start_date - now).days if start_date and start_date > now else None
+        )
+        days_until_checkout = (end_date - now).days if end_date else None
+        stay_duration = (end_date - start_date).days if start_date and end_date else None
+
+        # Get stay classification
+        stay_type = self._coordinator.client.categorize_reservation(self._reservation)
+
+        # Extract guest info
+        guest_name = None
+        if stay_type == STAY_TYPE_GUEST:
+            first = attrs.get("firstName", "")
+            last = attrs.get("lastName", "")
+            if first and last:
+                guest_name = f"{first} {last}"
+
+        return {
+            # Core data
+            "reservation_id": self._reservation.get("id"),
+            "status": "confirmed",  # MVP: Assume confirmed
+            # Dates
+            "checkin_date": start_date.isoformat() if start_date else None,
+            "checkout_date": end_date.isoformat() if end_date else None,
+            "checkin_time": attrs.get(
+                "checkinTime", self._unit_attributes.get("checkInTime")
+            ),
+            "checkout_time": attrs.get(
+                "checkoutTime", self._unit_attributes.get("checkOutTime")
+            ),
+            # Classification
+            "stay_type": stay_type,
+            "stay_category": STAY_TYPE_TO_CATEGORY.get(stay_type),
+            # Guest info
+            "guest_count": attrs.get("guestCount"),
+            "guest_name": guest_name,
+            # Booking (MVP: limited data)
+            "booking_source": "vacasa_direct",
+            "special_notes": None,
+            # Computed values
+            "days_until_checkin": days_until_checkin,
+            "days_until_checkout": days_until_checkout,
+            "stay_duration_nights": stay_duration,
+            # Flags
+            "is_current": is_current,
+            "is_upcoming": not is_current and days_until_checkin is not None,
+        }
+
+
 # List of sensor classes instantiated per Vacasa unit. Keeping the mapping in one
 # place makes it easier to understand which entities are created and allows
 # async_setup_entry to remain concise.
@@ -878,6 +1070,7 @@ UNIT_SENSOR_CLASSES: tuple[type[VacasaBaseSensor], ...] = (
     VacasaAddressSensor,
     VacasaHomeInfoSensor,
     VacasaMaintenanceSensor,
+    VacasaNextStaySensor,
 )
 
 
