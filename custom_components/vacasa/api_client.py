@@ -14,10 +14,6 @@ from urllib.parse import urlencode
 import aiohttp
 
 from .cached_data import CachedData, RetryWithBackoff
-
-T = TypeVar("T")
-
-
 from .const import (
     API_BASE_TEMPLATE,
     AUTH_URL,
@@ -44,6 +40,8 @@ from .const import (
     TOKEN_CACHE_FILE,
     TOKEN_REFRESH_MARGIN,
 )
+
+T = TypeVar("T")
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -354,7 +352,6 @@ class VacasaApiClient:
                         self._set_api_version(version)
                         if not return_json:
                             return await response.text()
-                        
                         # Always attempt JSON parsing when return_json=True
                         # API may include charset in content-type (e.g., "application/json; charset=utf-8")
                         try:

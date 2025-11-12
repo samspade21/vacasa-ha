@@ -95,13 +95,15 @@ class VacasaApiUpdateMixin:
 
     _refresh_task: asyncio.Task[None] | None
 
-    def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002,ANN003 - pass through
+    def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002,ANN003
+        """Initialize API update mixin."""
         self._update_lock = asyncio.Lock()
         self._refresh_task = None
         super().__init__(*args, **kwargs)
         self._attr_should_poll = False
 
     async def async_added_to_hass(self) -> None:
+        """Register coordinator listener when added to hass."""
         await super().async_added_to_hass()
         self.async_on_remove(
             self._coordinator.async_add_listener(self._handle_coordinator_refresh)
@@ -109,11 +111,13 @@ class VacasaApiUpdateMixin:
         await self.async_update()
 
     async def async_update(self) -> None:
+        """Update entity state from API."""
         task = self._ensure_refresh_task()
         if task is not None:
             await task
 
     async def async_will_remove_from_hass(self) -> None:
+        """Clean up refresh task when removed from hass."""
         if self._refresh_task and not self._refresh_task.done():
             self._refresh_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -654,6 +658,7 @@ class VacasaHomeInfoSensor(VacasaApiUpdateMixin, VacasaBaseSensor):
         name: str,
         unit_attributes: dict[str, Any],
     ) -> None:
+        """Initialize home info sensor."""
         super().__init__(
             coordinator=coordinator,
             unit_id=unit_id,
@@ -717,6 +722,7 @@ class VacasaMaintenanceSensor(VacasaApiUpdateMixin, VacasaBaseSensor):
         unit_attributes: dict[str, Any],
         status: str = "open",
     ) -> None:
+        """Initialize maintenance sensor."""
         super().__init__(
             coordinator=coordinator,
             unit_id=unit_id,
@@ -777,6 +783,7 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
     """Sensor exposing the latest owner statement totals."""
 
     def __init__(self, coordinator, config_entry: VacasaConfigEntry) -> None:
+        """Initialize statement sensor."""
         super().__init__()
         self._coordinator = coordinator
         self._config_entry = config_entry
@@ -895,7 +902,9 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
         try:
             # Get reservations starting from today
             today = datetime.now().strftime("%Y-%m-%d")
-            future_date = (datetime.now() + timedelta(days=365)).strftime("%Y-%m-%d")
+            future_date = (datetime.now() + timedelta(days=365)).strftime(
+                "%Y-%m-%d"
+            )
 
             _LOGGER.debug("Fetching reservations for %s from %s to %s", self._unit_id, today, future_date)
             reservations = await self._coordinator.client.get_reservations(
@@ -911,10 +920,17 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
             _LOGGER.debug("Next stay for %s: %s", self._unit_id, "found" if self._reservation else "none")
 
         except (AuthenticationError, ApiError) as err:
-            _LOGGER.warning("Unable to update next stay for %s: %s", self._name, err)
+            _LOGGER.warning(
+                "Unable to update next stay for %s: %s", self._name, err
+            )
             self._reservation = None
         except Exception as err:
-            _LOGGER.error("Unexpected error updating next stay for %s: %s", self._name, err, exc_info=True)
+            _LOGGER.error(
+                "Unexpected error updating next stay for %s: %s",
+                self._name,
+                err,
+                exc_info=True,
+            )
             self._reservation = None
 
     def _find_next_stay(self, reservations: list[dict]) -> dict | None:

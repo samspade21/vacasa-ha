@@ -232,17 +232,21 @@ class VacasaOccupancySensor(BinarySensorEntity):
         )
         return None
 
+    def _candidate_calendar_entity_ids(self) -> list[str]:
+        """Return all possible calendar entity IDs for this unit."""
+        sanitized_name = self._sanitize_entity_name(self._name)
+        return [
+            f"calendar.vacasa_{sanitized_name}",
+            f"calendar.vacasa_calendar_{self._unit_id}",
+            f"calendar.vacasa_{self._unit_id}",
+        ]
+
     async def _find_calendar_entity(self) -> str | None:
         """Find the corresponding calendar entity ID for this unit."""
         _LOGGER.debug("Searching for calendar entity for unit %s (%s)", self._unit_id, self._name)
 
         # Generate possible entity IDs to try
-        sanitized_name = self._sanitize_entity_name(self._name)
-        possible_entity_ids = [
-            f"calendar.vacasa_{sanitized_name}",
-            f"calendar.vacasa_calendar_{self._unit_id}",
-            f"calendar.vacasa_{self._unit_id}",
-        ]
+        possible_entity_ids = self._candidate_calendar_entity_ids()
 
         # First try: Check state registry (faster)
         for entity_id in possible_entity_ids:
@@ -536,13 +540,12 @@ class VacasaOccupancySensor(BinarySensorEntity):
         event_data = event.data
         entity_id = event_data.get("entity_id", "")
 
-        # Only respond to calendar entity state changes
-        if not entity_id.startswith("calendar.vacasa_"):
-            return
+        # Only respond to calendar entity state changes we expect
+        expected_entities: set[str] = set(self._candidate_calendar_entity_ids())
+        if self._calendar_entity:
+            expected_entities.add(self._calendar_entity)
 
-        # Check if this is our expected calendar entity
-        expected_calendar_entity = f"calendar.vacasa_{self._sanitize_entity_name(self._name)}"
-        if entity_id != expected_calendar_entity:
+        if entity_id not in expected_entities:
             return
 
         new_state = event_data.get("new_state")
