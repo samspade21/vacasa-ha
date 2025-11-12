@@ -18,14 +18,10 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api_client import ApiError, AuthenticationError, VacasaApiClient
 from .const import (
-    CONF_API_VERSION,
     CONF_PASSWORD,
     CONF_REFRESH_INTERVAL,
-    CONF_STAY_TYPE_MAPPING,
     CONF_USERNAME,
-    DEFAULT_API_VERSION,
     DEFAULT_REFRESH_INTERVAL,
-    DEFAULT_STAY_TYPE_MAP,
     DOMAIN,
     PLATFORMS,
     SERVICE_CLEAR_CACHE,
@@ -96,10 +92,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: VacasaConfigEntry) -> bo
         CONF_REFRESH_INTERVAL,
         entry.data.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL),
     )
-    api_version = entry.options.get(CONF_API_VERSION, DEFAULT_API_VERSION)
-    stay_type_mapping = entry.options.get(CONF_STAY_TYPE_MAPPING, DEFAULT_STAY_TYPE_MAP)
-    if not isinstance(stay_type_mapping, dict):
-        stay_type_mapping = DEFAULT_STAY_TYPE_MAP
 
     # Create API client with modern session injection
     session = async_get_clientsession(hass)
@@ -109,8 +101,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: VacasaConfigEntry) -> bo
         session=session,
         hass_config_dir=hass.config.path(),
         hass=hass,
-        api_version=api_version,
-        stay_type_mapping=stay_type_mapping,
     )
 
     # Verify we can authenticate
