@@ -72,7 +72,7 @@ class VacasaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # ensure the client is authenticated.
             async with async_timeout.timeout(30):
                 await self.client.ensure_token()
-            return {"last_update": self.client._token_expiry}
+            return {"last_update": self.client.token_expiry}
         except AuthenticationError as err:
             _LOGGER.error("Authentication error during update: %s", err)
             raise UpdateFailed(f"Authentication failed: {err}") from err
