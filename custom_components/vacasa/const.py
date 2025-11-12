@@ -95,6 +95,7 @@ SENSOR_ADDRESS = "address"
 SENSOR_HOME_STATUS = "home_status"
 SENSOR_MAINTENANCE_OPEN = "maintenance_open"
 SENSOR_STATEMENTS_TOTAL = "statements_total"
+SENSOR_NEXT_STAY = "next_stay"
 
 # Services
 SERVICE_REFRESH_DATA = "refresh_data"
