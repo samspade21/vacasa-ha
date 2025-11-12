@@ -10,12 +10,15 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import VacasaConfigEntry
 from .api_client import ApiError, AuthenticationError
 from .const import (
+    CONF_USERNAME,
     DOMAIN,
     SENSOR_ADDRESS,
     SENSOR_BATHROOMS,
     SENSOR_BEDROOMS,
+    SENSOR_HOME_STATUS,
     SENSOR_HOT_TUB,
     SENSOR_LOCATION,
+    SENSOR_MAINTENANCE_OPEN,
     SENSOR_MAX_ADULTS,
     SENSOR_MAX_CHILDREN,
     SENSOR_MAX_OCCUPANCY,
@@ -23,6 +26,7 @@ from .const import (
     SENSOR_PARKING,
     SENSOR_PET_FRIENDLY,
     SENSOR_RATING,
+    SENSOR_STATEMENTS_TOTAL,
     SENSOR_TIMEZONE,
 )
 
@@ -30,156 +34,6 @@ from .const import (
 
 
 _LOGGER = logging.getLogger(__name__)
-
-
-async def async_setup_entry(
-    hass: HomeAssistant,
-    config_entry: VacasaConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Set up the Vacasa sensor platform."""
-    data = config_entry.runtime_data
-    client = data.client
-    coordinator = data.coordinator
-
-    # Get all units
-    try:
-        units = await client.get_units()
-        _LOGGER.debug("Found %s Vacasa units for sensors", len(units))
-
-        # Create sensors for each unit
-        entities = []
-        for unit in units:
-            unit_id = unit.get("id")
-            attributes = unit.get("attributes", {})
-            name = attributes.get("name", f"Vacasa Unit {unit_id}")
-
-            # Property Information Sensors
-            entities.append(
-                VacasaRatingSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaLocationSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaTimezoneSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            # Occupancy & Capacity Sensors
-            entities.append(
-                VacasaMaxOccupancySensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaMaxAdultsSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaMaxChildrenSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaMaxPetsSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            # Amenities Sensors
-            entities.append(
-                VacasaBedroomsSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaBathroomsSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaHotTubSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaPetFriendlySensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            # Property Details Sensors
-            entities.append(
-                VacasaParkingSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-            entities.append(
-                VacasaAddressSensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    unit_attributes=attributes,
-                )
-            )
-
-        async_add_entities(entities, True)
-    except AuthenticationError as err:
-        _LOGGER.error("Authentication error setting up Vacasa sensors: %s", err)
-    except ApiError as err:
-        _LOGGER.error("API error setting up Vacasa sensors: %s", err)
 
 
 class VacasaBaseSensor(SensorEntity):
@@ -720,3 +574,302 @@ class VacasaAddressSensor(VacasaBaseSensor):
                     attributes["country_code"] = country["code"]
 
         return attributes
+
+
+class VacasaHomeInfoSensor(VacasaBaseSensor):
+    """Sensor exposing home inspection and cleanliness information."""
+
+    def __init__(
+        self,
+        coordinator,
+        unit_id: str,
+        name: str,
+        unit_attributes: dict[str, Any],
+    ) -> None:
+        super().__init__(
+            coordinator=coordinator,
+            unit_id=unit_id,
+            name=name,
+            unit_attributes=unit_attributes,
+            sensor_type=SENSOR_HOME_STATUS,
+            icon="mdi:home-analytics",
+        )
+        self._home_info: dict[str, Any] = {}
+
+    async def async_update(self) -> None:
+        """Refresh the home info payload."""
+        try:
+            self._home_info = await self._coordinator.client.get_home_info(self._unit_id)
+        except (AuthenticationError, ApiError) as err:
+            _LOGGER.warning("Unable to update home info for %s: %s", self._name, err)
+            self._home_info = {}
+
+    def _home_attributes(self) -> dict[str, Any]:
+        if isinstance(self._home_info, dict):
+            if "attributes" in self._home_info and isinstance(
+                self._home_info["attributes"], dict
+            ):
+                return self._home_info["attributes"]
+            return self._home_info
+        return {}
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the current home status if available."""
+        attributes = self._home_attributes()
+        for key in ("homeStatus", "cleanStatus", "propertyStatus", "status"):
+            value = attributes.get(key)
+            if isinstance(value, str):
+                return value
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose additional inspection metadata."""
+        attributes = self._home_attributes()
+        return {
+            "last_inspection_date": attributes.get("lastInspectionDate")
+            or attributes.get("inspectionDate"),
+            "last_clean_date": attributes.get("lastCleanDate"),
+            "next_clean_date": attributes.get("nextCleanDate"),
+            "clean_score": attributes.get("cleanScore") or attributes.get("score"),
+            "inspection_score": attributes.get("inspectionScore"),
+            "upcoming_tasks": attributes.get("upcomingTasks"),
+        }
+
+
+class VacasaMaintenanceSensor(VacasaBaseSensor):
+    """Sensor representing open maintenance tickets for a unit."""
+
+    def __init__(
+        self,
+        coordinator,
+        unit_id: str,
+        name: str,
+        unit_attributes: dict[str, Any],
+        status: str = "open",
+    ) -> None:
+        super().__init__(
+            coordinator=coordinator,
+            unit_id=unit_id,
+            name=name,
+            unit_attributes=unit_attributes,
+            sensor_type=SENSOR_MAINTENANCE_OPEN,
+            icon="mdi:tools",
+            state_class=SensorStateClass.MEASUREMENT,
+        )
+        self._status = status
+        self._tickets: list[dict[str, Any]] = []
+        self._attr_native_unit_of_measurement = "tickets"
+
+    async def async_update(self) -> None:
+        """Refresh the maintenance ticket list."""
+        try:
+            self._tickets = await self._coordinator.client.get_maintenance(
+                self._unit_id, status=self._status
+            )
+        except (AuthenticationError, ApiError) as err:
+            _LOGGER.warning(
+                "Unable to update maintenance tickets for %s: %s", self._name, err
+            )
+            self._tickets = []
+
+    @property
+    def native_value(self) -> int:
+        """Return the number of tickets."""
+        return len(self._tickets)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return metadata about open tickets."""
+        summaries = []
+        ticket_ids = []
+        for ticket in self._tickets:
+            if not isinstance(ticket, dict):
+                continue
+            ticket_ids.append(ticket.get("id"))
+            attributes = ticket.get("attributes", {}) if isinstance(ticket, dict) else {}
+            summaries.append(
+                {
+                    "id": ticket.get("id"),
+                    "status": attributes.get("status"),
+                    "title": attributes.get("title") or attributes.get("summary"),
+                    "updated_at": attributes.get("updatedAt"),
+                }
+            )
+
+        return {
+            "status_filter": self._status,
+            "open_ticket_ids": ticket_ids,
+            "tickets": summaries,
+        }
+
+
+class VacasaStatementSensor(SensorEntity):
+    """Sensor exposing the latest owner statement totals."""
+
+    def __init__(self, coordinator, config_entry: VacasaConfigEntry) -> None:
+        super().__init__()
+        self._coordinator = coordinator
+        self._config_entry = config_entry
+        self._statements: list[dict[str, Any]] = []
+        self._attr_name = "Vacasa Statements"
+        self._attr_has_entity_name = True
+        self._attr_unique_id = f"vacasa_{SENSOR_STATEMENTS_TOTAL}_{config_entry.entry_id}"
+        self._attr_icon = "mdi:cash-check"
+        self._attr_native_unit_of_measurement = "$"
+
+        username = config_entry.data.get(CONF_USERNAME, "Vacasa Account")
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"owner_{config_entry.entry_id}")},
+            "name": f"Vacasa {username}",
+            "manufacturer": "Vacasa",
+        }
+
+    async def async_update(self) -> None:
+        """Refresh statement totals."""
+        try:
+            self._statements = await self._coordinator.client.get_statements()
+        except (AuthenticationError, ApiError) as err:
+            _LOGGER.warning("Unable to update statements: %s", err)
+            self._statements = []
+
+    def _latest_statement(self) -> dict[str, Any] | None:
+        if not self._statements:
+            return None
+
+        def _sort_key(statement: dict[str, Any]) -> str:
+            if not isinstance(statement, dict):
+                return ""
+            attributes = statement.get("attributes", {})
+            if isinstance(attributes, dict):
+                return attributes.get("updatedAt") or attributes.get("periodEndDate") or ""
+            return ""
+
+        return max(self._statements, key=_sort_key)
+
+    @staticmethod
+    def _coerce_amount(value: Any) -> float | None:
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            cleaned = value.replace("$", "").replace(",", "").strip()
+            try:
+                return float(cleaned)
+            except ValueError:
+                return None
+        return None
+
+    @property
+    def native_value(self) -> float | int:
+        """Return the latest statement total."""
+        latest = self._latest_statement()
+        if not latest:
+            return 0
+
+        attributes = latest.get("attributes", {}) if isinstance(latest, dict) else {}
+        if not isinstance(attributes, dict):
+            attributes = {}
+
+        for field in ("totalAmount", "netAmount", "balance", "amountDue"):
+            amount = self._coerce_amount(attributes.get(field))
+            if amount is not None:
+                return amount
+
+        return len(self._statements)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose detailed statement attributes."""
+        latest = self._latest_statement()
+        attributes = latest.get("attributes", {}) if isinstance(latest, dict) else {}
+        if not isinstance(attributes, dict):
+            attributes = {}
+
+        return {
+            "statement_count": len(self._statements),
+            "latest_statement_id": latest.get("id") if isinstance(latest, dict) else None,
+            "period_start": attributes.get("periodStartDate"),
+            "period_end": attributes.get("periodEndDate"),
+            "status": attributes.get("status"),
+            "total_amount": attributes.get("totalAmount"),
+            "net_amount": attributes.get("netAmount"),
+            "amount_due": attributes.get("amountDue"),
+        }
+
+
+# List of sensor classes instantiated per Vacasa unit. Keeping the mapping in one
+# place makes it easier to understand which entities are created and allows
+# async_setup_entry to remain concise.
+UNIT_SENSOR_CLASSES: tuple[type[VacasaBaseSensor], ...] = (
+    VacasaRatingSensor,
+    VacasaLocationSensor,
+    VacasaTimezoneSensor,
+    VacasaMaxOccupancySensor,
+    VacasaMaxAdultsSensor,
+    VacasaMaxChildrenSensor,
+    VacasaMaxPetsSensor,
+    VacasaBedroomsSensor,
+    VacasaBathroomsSensor,
+    VacasaHotTubSensor,
+    VacasaPetFriendlySensor,
+    VacasaParkingSensor,
+    VacasaAddressSensor,
+    VacasaHomeInfoSensor,
+    VacasaMaintenanceSensor,
+)
+
+
+def _create_unit_sensors(
+    coordinator,
+    unit_id: str,
+    name: str,
+    attributes: dict[str, Any],
+) -> list[VacasaBaseSensor]:
+    """Build the entity list for a single Vacasa unit."""
+    return [
+        sensor_class(
+            coordinator=coordinator,
+            unit_id=unit_id,
+            name=name,
+            unit_attributes=attributes,
+        )
+        for sensor_class in UNIT_SENSOR_CLASSES
+    ]
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: VacasaConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up the Vacasa sensor platform."""
+    data = config_entry.runtime_data
+    client = data.client
+    coordinator = data.coordinator
+
+    try:
+        units = await client.get_units()
+        _LOGGER.debug("Found %s Vacasa units for sensors", len(units))
+    except AuthenticationError as err:
+        _LOGGER.error("Authentication error setting up Vacasa sensors: %s", err)
+        return
+    except ApiError as err:
+        _LOGGER.error("API error setting up Vacasa sensors: %s", err)
+        return
+
+    entities: list[SensorEntity] = []
+    for unit in units:
+        unit_id = unit.get("id")
+        if not unit_id:
+            _LOGGER.debug("Skipping Vacasa unit without an id: %s", unit)
+            continue
+
+        attributes = unit.get("attributes", {})
+        name = attributes.get("name", f"Vacasa Unit {unit_id}")
+        entities.extend(_create_unit_sensors(coordinator, unit_id, name, attributes))
+
+    # Add owner-level statements sensor once per config entry
+    entities.append(VacasaStatementSensor(coordinator=coordinator, config_entry=config_entry))
+
+    async_add_entities(entities, True)

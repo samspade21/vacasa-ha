@@ -6,6 +6,7 @@ import logging
 import os
 import random
 import time
+from collections.abc import Callable
 from typing import Any, TypeVar
 
 from .const import DEFAULT_CACHE_TTL, PROPERTY_CACHE_FILE
@@ -109,21 +110,26 @@ class CachedData:
             True if key existed, False otherwise
         """
         async with self._lock:
-            if key in self._cache:
+            existed = key in self._cache
+            if existed:
                 del self._cache[key]
                 _LOGGER.debug("Deleted cache key: %s", key)
-                await self._save_to_disk()
-                return True
-            return False
+
+        if existed:
+            await self._save_to_disk()
+
+        return existed
 
     async def clear(self) -> None:
         """Clear all cached data."""
         async with self._lock:
+            had_entries = bool(self._cache)
             self._cache.clear()
             _LOGGER.debug("Cleared all cache data")
 
-        # Remove cache file
-        await self._clear_disk_cache()
+        if had_entries or os.path.exists(self._cache_file):
+            # Remove cache file
+            await self._clear_disk_cache()
 
     async def cleanup_expired(self) -> int:
         """Remove expired entries from cache.
@@ -137,11 +143,18 @@ class CachedData:
             for key in expired_keys:
                 del self._cache[key]
 
-            if expired_keys:
-                _LOGGER.debug("Cleaned up %s expired cache entries", len(expired_keys))
-                await self._save_to_disk()
+        if expired_keys:
+            _LOGGER.debug("Cleaned up %s expired cache entries", len(expired_keys))
+            await self._save_to_disk()
 
-            return len(expired_keys)
+        return len(expired_keys)
+
+    async def _run_io_task(self, func: Callable[..., T], *args, **kwargs) -> T:
+        """Execute a blocking IO task safely when hass is available."""
+
+        if self._hass:
+            return await self._hass.async_add_executor_job(func, *args, **kwargs)
+        return func(*args, **kwargs)
 
     def _save_to_disk_sync(self) -> None:
         """Save cache to disk (synchronous helper)."""
@@ -159,12 +172,7 @@ class CachedData:
     async def _save_to_disk(self) -> None:
         """Save cache to disk."""
         try:
-            if self._hass:
-                # Use Home Assistant's executor for async file operations
-                await self._hass.async_add_executor_job(self._save_to_disk_sync)
-            else:
-                # Fallback to synchronous operation
-                self._save_to_disk_sync()
+            await self._run_io_task(self._save_to_disk_sync)
         except Exception as e:
             _LOGGER.warning("Failed to save cache to disk: %s", e)
 
@@ -204,12 +212,7 @@ class CachedData:
             True if loaded successfully, False otherwise
         """
         try:
-            if self._hass:
-                # Use Home Assistant's executor for async file operations
-                return await self._hass.async_add_executor_job(self._load_from_disk_sync)
-            else:
-                # Fallback to synchronous operation
-                return self._load_from_disk_sync()
+            return await self._run_io_task(self._load_from_disk_sync)
         except Exception as e:
             _LOGGER.warning("Failed to load cache from disk: %s", e)
             return False
@@ -218,10 +221,7 @@ class CachedData:
         """Clear the disk cache file."""
         if os.path.exists(self._cache_file):
             try:
-                if self._hass:
-                    await self._hass.async_add_executor_job(os.remove, self._cache_file)
-                else:
-                    os.remove(self._cache_file)
+                await self._run_io_task(os.remove, self._cache_file)
                 _LOGGER.debug("Cache file removed: %s", self._cache_file)
             except Exception as e:
                 _LOGGER.warning("Failed to remove cache file: %s", e)
