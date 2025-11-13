@@ -709,20 +709,38 @@ class VacasaHomeInfoSensor(VacasaApiUpdateMixin, VacasaBaseSensor):
             value = attributes.get(key)
             if isinstance(value, str):
                 return value
+        active = attributes.get("active")
+        if isinstance(active, bool):
+            return "Active" if active else "Inactive"
         return None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Expose additional inspection metadata."""
         attributes = self._home_attributes()
+        last_inspection = (
+            attributes.get("lastInspectionDate")
+            or attributes.get("inspectionDate")
+            or attributes.get("date")
+        )
+        next_clean = attributes.get("nextCleanDate") or attributes.get("nextCleanScheduled")
+        clean_score = (
+            attributes.get("cleanScore")
+            or attributes.get("score")
+            or attributes.get("averageGuestCleanScore")
+        )
+
         return {
-            "last_inspection_date": attributes.get("lastInspectionDate")
-            or attributes.get("inspectionDate"),
+            "last_inspection_date": last_inspection,
             "last_clean_date": attributes.get("lastCleanDate"),
-            "next_clean_date": attributes.get("nextCleanDate"),
-            "clean_score": attributes.get("cleanScore") or attributes.get("score"),
+            "next_clean_date": next_clean,
+            "clean_score": clean_score,
             "inspection_score": attributes.get("inspectionScore"),
             "upcoming_tasks": attributes.get("upcomingTasks"),
+            "inspections_last_6_months": attributes.get("inspectionsLast6Months"),
+            "latest_inspection_id": attributes.get("inspectionId"),
+            "total_items_inspected": attributes.get("totalItemsInspected"),
+            "spaces": attributes.get("spaces"),
         }
 
 

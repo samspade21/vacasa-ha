@@ -1108,16 +1108,145 @@ class VacasaApiClient:
             raise ApiError(f"Error getting unit details: {e}")
 
     async def get_home_info(self, unit_id: str) -> dict[str, Any]:
-        """Return the detailed home-info payload for a unit."""
+        """Return a consolidated home-info payload for a unit."""
         await self.ensure_token()
-        owner_id = await self.get_owner_id()
 
-        data = await self._request(
-            "GET",
-            f"/owners/{owner_id}/units/{unit_id}/home-info",
+        async def _safe_fetch(path: str) -> dict[str, Any]:
+            """Fetch JSON data for a home-info endpoint, handling API errors."""
+            try:
+                data = await self._request("GET", path)
+            except AuthenticationError:
+                raise
+            except ApiError as err:
+                _LOGGER.debug("Home info endpoint %s unavailable: %s", path, err)
+                return {}
+
+            if isinstance(data, dict):
+                return data
+
+            if data is None:
+                return {}
+
+            _LOGGER.debug("Unexpected payload type %s for %s, ignoring", type(data), path)
+            return {}
+
+        summary_task = asyncio.create_task(_safe_fetch(f"/homes/{unit_id}"))
+        activity_task = asyncio.create_task(_safe_fetch(f"/homes/{unit_id}/activity"))
+        latest_inspection_task = asyncio.create_task(
+            _safe_fetch(f"/homes/{unit_id}/inspections/latest")
         )
 
-        return data.get("data", {}) if isinstance(data, dict) else {}
+        summary = await summary_task
+        activity = await activity_task
+        latest_inspection = await latest_inspection_task
+
+        attributes: dict[str, Any] = {}
+
+        def _merge(source: dict[str, Any], *, overwrite: bool = True) -> None:
+            """Merge source data into the aggregated attributes."""
+            for key, value in source.items():
+                if value is None:
+                    continue
+                if overwrite or key not in attributes:
+                    attributes[key] = value
+
+        if summary:
+            _merge(summary)
+
+        if activity:
+            _merge(activity)
+            next_clean = activity.get("nextCleanScheduled")
+            if next_clean and "nextCleanDate" not in attributes:
+                attributes["nextCleanDate"] = next_clean
+
+            clean_score = activity.get("averageGuestCleanScore")
+            if clean_score is not None and "cleanScore" not in attributes:
+                attributes["cleanScore"] = clean_score
+
+        if latest_inspection:
+            _merge(latest_inspection)
+            inspection_date = latest_inspection.get("date")
+            if inspection_date and "lastInspectionDate" not in attributes:
+                attributes["lastInspectionDate"] = inspection_date
+
+        legacy_payload: dict[str, Any] = {}
+
+        owner_id = self._owner_id
+        if owner_id is None:
+            try:
+                owner_id = await self.get_owner_id()
+            except ApiError as err:
+                _LOGGER.debug(
+                    "Unable to determine owner id for legacy home info lookup: %s",
+                    err,
+                )
+
+        if owner_id:
+            legacy_raw = await _safe_fetch(f"/owners/{owner_id}/units/{unit_id}/home-info")
+            if legacy_raw:
+                if "data" in legacy_raw and isinstance(legacy_raw["data"], dict):
+                    legacy_payload = legacy_raw["data"]
+                else:
+                    legacy_payload = legacy_raw
+
+        def _extract_attributes(payload: Any) -> dict[str, Any]:
+            """Recursively locate an attributes dictionary within payloads."""
+            if isinstance(payload, dict):
+                attrs = payload.get("attributes")
+                if isinstance(attrs, dict):
+                    return attrs
+
+                data = payload.get("data")
+                if data is not None:
+                    extracted = _extract_attributes(data)
+                    if extracted:
+                        return extracted
+
+                return payload if payload else {}
+
+            if isinstance(payload, list):
+                for item in payload:
+                    extracted = _extract_attributes(item)
+                    if extracted:
+                        return extracted
+
+            return {}
+
+        legacy_attributes = _extract_attributes(legacy_payload)
+        if legacy_attributes:
+            _merge(legacy_attributes, overwrite=False)
+
+        def _select_status(source: dict[str, Any]) -> str | None:
+            """Pick the first string status value from a payload."""
+            if not isinstance(source, dict):
+                return None
+
+            for key in ("homeStatus", "cleanStatus", "propertyStatus", "status"):
+                value = source.get(key)
+                if isinstance(value, str) and value:
+                    return value
+            return None
+
+        status_value = (
+            _select_status(summary)
+            or _select_status(activity)
+            or _select_status(latest_inspection)
+            or _select_status(legacy_attributes)
+        )
+        if status_value:
+            attributes["homeStatus"] = status_value
+
+        result: dict[str, Any] = {
+            "summary": summary,
+            "activity": activity,
+            "latestInspection": latest_inspection,
+            "attributes": attributes,
+        }
+
+        if legacy_payload:
+            result["legacy"] = legacy_payload
+
+        return result
 
     async def get_statements(
         self, year: int | None = None, month: int | None = None
