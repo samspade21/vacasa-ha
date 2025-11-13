@@ -24,8 +24,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.head_ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -44,7 +45,7 @@ jobs:
           pre-commit run --all-files --config .pre-commit-config.yaml || true
 
       - name: Commit formatting fixes
-        if: ${{ matrix.primary && github.event_name == 'pull_request' }}
+        if: ${{ matrix.primary && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
