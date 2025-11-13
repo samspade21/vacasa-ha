@@ -67,7 +67,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: ${{ matrix.primary }}
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
         with:
           file: ./coverage.xml
           flags: unittests
