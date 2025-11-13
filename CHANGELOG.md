@@ -405,7 +405,6 @@ This release represents a major stability milestone, resolving all known timing 
 - Simplified token handling
 - Reduced technical debt
 - Streamlined authentication process
-- Added SSH log access documentation to memory bank
 
 ## [1.0.0] - 2025-05-19
 
