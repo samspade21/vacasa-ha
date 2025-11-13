@@ -15,7 +15,6 @@ from custom_components.vacasa.cached_data import CachedData, RetryWithBackoff
 @pytest.mark.asyncio
 async def test_set_and_get_cached_value(tmp_path: Path) -> None:
     """Values written to the cache should be retrievable and persisted to disk."""
-
     cache_file = tmp_path / "cache.json"
     cached_data = CachedData(cache_file_path=str(cache_file), default_ttl=60)
 
@@ -33,9 +32,10 @@ async def test_set_and_get_cached_value(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_expired_entry_returns_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_get_expired_entry_returns_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Expired entries should be treated as a cache miss and removed."""
-
     cache_file = tmp_path / "cache.json"
     cached_data = CachedData(cache_file_path=str(cache_file), default_ttl=10)
 
@@ -52,7 +52,6 @@ async def test_get_expired_entry_returns_default(tmp_path: Path, monkeypatch: py
 @pytest.mark.asyncio
 async def test_cleanup_expired_entries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Only expired entries should be removed during cleanup."""
-
     cache_file = tmp_path / "cache.json"
     cached_data = CachedData(cache_file_path=str(cache_file), default_ttl=50)
 
@@ -71,7 +70,6 @@ async def test_cleanup_expired_entries(tmp_path: Path, monkeypatch: pytest.Monke
 @pytest.mark.asyncio
 async def test_clear_removes_cache_file(tmp_path: Path) -> None:
     """Clearing the cache should empty in-memory data and delete the cache file."""
-
     cache_file = tmp_path / "cache.json"
     cached_data = CachedData(cache_file_path=str(cache_file))
 
@@ -87,7 +85,6 @@ async def test_clear_removes_cache_file(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_delete_handles_missing_key(tmp_path: Path) -> None:
     """Deleting an unknown key should return False and leave the cache untouched."""
-
     cache_file = tmp_path / "cache.json"
     cached_data = CachedData(cache_file_path=str(cache_file))
 
@@ -100,7 +97,6 @@ async def test_delete_handles_missing_key(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_delete_existing_key(tmp_path: Path) -> None:
     """Deleting an existing key should return True and persist changes."""
-
     cache_file = tmp_path / "cache.json"
     cached_data = CachedData(cache_file_path=str(cache_file))
 
@@ -121,7 +117,6 @@ async def test_delete_existing_key(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_load_from_disk_invalid_json(tmp_path: Path) -> None:
     """Invalid JSON on disk should be handled gracefully."""
-
     cache_file = tmp_path / "cache.json"
     cache_file.write_text("{invalid json")
 
@@ -136,7 +131,6 @@ async def test_load_from_disk_invalid_json(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_load_from_disk_valid_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Valid cache data on disk should be loaded into memory."""
-
     cache_file = tmp_path / "cache.json"
     cache_contents = {
         "answer": {"data": 42, "timestamp": 100.0, "ttl": 500.0},
@@ -155,7 +149,6 @@ async def test_load_from_disk_valid_data(tmp_path: Path, monkeypatch: pytest.Mon
 @pytest.mark.asyncio
 async def test_run_io_task_uses_hass_executor(tmp_path: Path) -> None:
     """When a hass instance is available the executor should be used for IO tasks."""
-
     hass = SimpleNamespace(async_add_executor_job=AsyncMock())
     hass.async_add_executor_job.return_value = "executed"
 
@@ -169,11 +162,8 @@ async def test_run_io_task_uses_hass_executor(tmp_path: Path) -> None:
 
 def test_calculate_delay_with_jitter(monkeypatch: pytest.MonkeyPatch) -> None:
     """The backoff delay should include jitter from the RNG."""
-
     retry = RetryWithBackoff(base_delay=1.0, backoff_multiplier=2.0, max_jitter=1.0)
-    monkeypatch.setattr(
-        "custom_components.vacasa.cached_data.random.uniform", lambda _a, _b: 0.5
-    )
+    monkeypatch.setattr("custom_components.vacasa.cached_data.random.uniform", lambda _a, _b: 0.5)
 
     assert retry.calculate_delay(2) == pytest.approx(4.5)
 
@@ -181,7 +171,6 @@ def test_calculate_delay_with_jitter(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.asyncio
 async def test_retry_with_backoff_eventually_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
     """Retry logic should sleep between attempts and return the eventual value."""
-
     retry = RetryWithBackoff(max_retries=2, base_delay=1.0, backoff_multiplier=2.0, max_jitter=0.0)
     sleep_calls: list[float] = []
 
@@ -207,7 +196,6 @@ async def test_retry_with_backoff_eventually_succeeds(monkeypatch: pytest.Monkey
 @pytest.mark.asyncio
 async def test_retry_with_backoff_raises_after_exhaustion(monkeypatch: pytest.MonkeyPatch) -> None:
     """After the allowed attempts the last error should be propagated."""
-
     retry = RetryWithBackoff(max_retries=1, base_delay=0.1, backoff_multiplier=2.0, max_jitter=0.0)
 
     async def fake_sleep(_delay: float) -> None:  # pragma: no cover - defined for clarity
@@ -220,4 +208,3 @@ async def test_retry_with_backoff_raises_after_exhaustion(monkeypatch: pytest.Mo
 
     with pytest.raises(ValueError):
         await retry.retry(always_fail)
-
