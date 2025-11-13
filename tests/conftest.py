@@ -3,6 +3,7 @@
 # flake8: noqa
 
 # Provide minimal stubs for the Home Assistant modules used during import.
+import asyncio
 import sys
 import types
 
@@ -86,6 +87,7 @@ dt_util = types.ModuleType("homeassistant.util.dt")
 components = types.ModuleType("homeassistant.components")
 components_binary_sensor = types.ModuleType("homeassistant.components.binary_sensor")
 components_calendar = types.ModuleType("homeassistant.components.calendar")
+components_sensor = types.ModuleType("homeassistant.components.sensor")
 
 
 def _async_track_point_in_time(hass, action, point_in_time):
@@ -122,6 +124,42 @@ class CalendarEvent:
 
 
 components_calendar.CalendarEvent = CalendarEvent
+
+
+class SensorEntity:
+    """Minimal SensorEntity stub."""
+
+    def __init__(self):
+        self.hass = None
+        self.entity_id = None
+        self._attr_should_poll = False
+        self._attr_available = True
+        self._attr_has_entity_name = False
+        self._on_remove_callbacks = []
+
+    async def async_added_to_hass(self):  # pragma: no cover - stub
+        return None
+
+    async def async_will_remove_from_hass(self):  # pragma: no cover - stub
+        for callback in self._on_remove_callbacks:
+            callback()
+        self._on_remove_callbacks.clear()
+        return None
+
+    def async_on_remove(self, func):  # pragma: no cover - stub
+        self._on_remove_callbacks.append(func)
+        return func
+
+    def async_write_ha_state(self):  # pragma: no cover - stub
+        return None
+
+
+class SensorStateClass:
+    MEASUREMENT = "measurement"
+
+
+components_sensor.SensorEntity = SensorEntity
+components_sensor.SensorStateClass = SensorStateClass
 
 entity_platform.AddEntitiesCallback = None
 entity_registry.async_get = lambda hass: types.SimpleNamespace(entities={})
@@ -199,6 +237,7 @@ modules = {
     "homeassistant.components": components,
     "homeassistant.components.binary_sensor": components_binary_sensor,
     "homeassistant.components.calendar": components_calendar,
+    "homeassistant.components.sensor": components_sensor,
     "homeassistant.data_entry_flow": data_entry_flow,
 }
 
@@ -223,7 +262,22 @@ def mock_hass():
     """Mock Home Assistant instance."""
     hass = Mock()
     hass.async_add_executor_job = AsyncMock()
+
+    async def _async_add_executor_job(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    hass.async_add_executor_job.side_effect = _async_add_executor_job
     return hass
+
+
+@pytest.fixture(autouse=True)
+def fast_asyncio_sleep(monkeypatch):
+    """Prevent actual delays from asyncio.sleep during tests."""
+
+    async def _fast_sleep(delay, *args, **kwargs):  # noqa: ANN001,ANN002,ANN003
+        return None
+
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock(side_effect=_fast_sleep))
 
 
 @pytest.fixture

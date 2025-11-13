@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock, mock_open, patch
 import aiohttp
 import pytest
 
-from custom_components.vacasa.api_client import ApiError, VacasaApiClient
+from custom_components.vacasa.api_client import ApiError, AuthenticationError, VacasaApiClient
 from custom_components.vacasa.const import (
     STAY_TYPE_BLOCK,
     STAY_TYPE_GUEST,
@@ -433,6 +433,11 @@ class TestErrorHandling:
             patch.object(api_client, "ensure_token"),
             patch.object(api_client, "get_owner_id", return_value="owner123"),
             patch.object(api_client, "ensure_session") as mock_session_method,
+            patch.object(
+                api_client,
+                "authenticate",
+                new=AsyncMock(side_effect=AuthenticationError("Unauthorized")),
+            ),
         ):
             mock_response = Mock()
             mock_response.status = 401
@@ -442,10 +447,10 @@ class TestErrorHandling:
             mock_context_manager = AsyncMock()
             mock_context_manager.__aenter__.return_value = mock_response
             mock_context_manager.__aexit__.return_value = None
-            mock_session.get.return_value = mock_context_manager
+            mock_session.request.return_value = mock_context_manager
             mock_session_method.return_value = mock_session
 
-            with pytest.raises(ApiError, match="Failed to get units: 401"):
+            with pytest.raises(ApiError, match="Error getting units: Unauthorized"):
                 await api_client.get_units()
 
     @pytest.mark.asyncio
@@ -457,10 +462,13 @@ class TestErrorHandling:
             patch.object(api_client, "ensure_session") as mock_session_method,
         ):
             mock_session = Mock()
-            mock_session.get.side_effect = aiohttp.ClientError("Network error")
+            mock_session.request.side_effect = aiohttp.ClientError("Network error")
             mock_session_method.return_value = mock_session
 
-            with pytest.raises(ApiError, match="Error getting units: Network error"):
+            with pytest.raises(
+                ApiError,
+                match="Error getting units: HTTP error contacting Vacasa API: Network error",
+            ):
                 await api_client.get_units()
 
     @pytest.mark.asyncio
@@ -479,10 +487,13 @@ class TestErrorHandling:
             mock_context_manager = AsyncMock()
             mock_context_manager.__aenter__.return_value = mock_response
             mock_context_manager.__aexit__.return_value = None
-            mock_session.get.return_value = mock_context_manager
+            mock_session.request.return_value = mock_context_manager
             mock_session_method.return_value = mock_session
 
-            with pytest.raises(ApiError, match="Failed to get reservations: 404"):
+            with pytest.raises(
+                ApiError,
+                match="Error getting reservations: Endpoint /owners/owner123/units/unit123/reservations unavailable",
+            ):
                 await api_client.get_reservations("unit123", "2024-01-01")
 
     @pytest.mark.asyncio
@@ -500,10 +511,13 @@ class TestErrorHandling:
             mock_context_manager = AsyncMock()
             mock_context_manager.__aenter__.return_value = mock_response
             mock_context_manager.__aexit__.return_value = None
-            mock_session.post.return_value = mock_context_manager
+            mock_session.request.return_value = mock_context_manager
             mock_session_method.return_value = mock_session
 
-            with pytest.raises(ApiError, match="Failed to get owner info from verify-token: 403"):
+            with pytest.raises(
+                AuthenticationError,
+                match="Forbidden request to /verify-token: 403",
+            ):
                 await api_client.get_owner_id()
 
     @pytest.mark.asyncio
@@ -521,7 +535,7 @@ class TestErrorHandling:
             mock_context_manager = AsyncMock()
             mock_context_manager.__aenter__.return_value = mock_response
             mock_context_manager.__aexit__.return_value = None
-            mock_session.post.return_value = mock_context_manager
+            mock_session.request.return_value = mock_context_manager
             mock_session_method.return_value = mock_session
 
             with pytest.raises(ApiError, match="Unexpected verify-token response format"):
@@ -547,7 +561,7 @@ class TestApiResponseParsing:
             mock_context_manager = AsyncMock()
             mock_context_manager.__aenter__.return_value = mock_response
             mock_context_manager.__aexit__.return_value = None
-            mock_session.get.return_value = mock_context_manager
+            mock_session.request.return_value = mock_context_manager
             mock_session_method.return_value = mock_session
 
             result = await api_client.get_units()
@@ -572,7 +586,7 @@ class TestApiResponseParsing:
             mock_context_manager = AsyncMock()
             mock_context_manager.__aenter__.return_value = mock_response
             mock_context_manager.__aexit__.return_value = None
-            mock_session.get.return_value = mock_context_manager
+            mock_session.request.return_value = mock_context_manager
             mock_session_method.return_value = mock_session
 
             result = await api_client.get_units()
@@ -595,7 +609,7 @@ class TestApiResponseParsing:
             mock_context_manager = AsyncMock()
             mock_context_manager.__aenter__.return_value = mock_response
             mock_context_manager.__aexit__.return_value = None
-            mock_session.get.return_value = mock_context_manager
+            mock_session.request.return_value = mock_context_manager
             mock_session_method.return_value = mock_session
 
             result = await api_client.get_units()
@@ -618,7 +632,7 @@ class TestApiResponseParsing:
             mock_context_manager = AsyncMock()
             mock_context_manager.__aenter__.return_value = mock_response
             mock_context_manager.__aexit__.return_value = None
-            mock_session.get.return_value = mock_context_manager
+            mock_session.request.return_value = mock_context_manager
             mock_session_method.return_value = mock_session
 
             result = await api_client.get_reservations("unit123", "2024-01-01")
@@ -642,7 +656,7 @@ class TestApiResponseParsing:
             mock_context_manager = AsyncMock()
             mock_context_manager.__aenter__.return_value = mock_response
             mock_context_manager.__aexit__.return_value = None
-            mock_session.post.return_value = mock_context_manager
+            mock_session.request.return_value = mock_context_manager
             mock_session_method.return_value = mock_session
 
             result = await api_client.get_owner_id()
