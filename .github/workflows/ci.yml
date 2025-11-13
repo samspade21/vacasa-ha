@@ -38,10 +38,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run pre-commit (ruff, mypy) and auto-fix
+      - name: Run pre-commit auto-fixes
         if: ${{ matrix.primary }}
         run: |
-          pre-commit run --all-files --config .pre-commit-config-ci.yaml || true
+          pre-commit run --all-files --config .pre-commit-config.yaml || true
 
       - name: Commit formatting fixes
         if: ${{ matrix.primary && github.event_name == 'pull_request' }}
