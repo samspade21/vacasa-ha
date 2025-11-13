@@ -1,7 +1,5 @@
 """Constants for the Vacasa integration."""
 
-from datetime import timedelta
-
 DOMAIN = "vacasa"
 PLATFORMS = ["calendar", "binary_sensor", "sensor"]
 
@@ -30,7 +28,6 @@ PROPERTY_CACHE_FILE = ".vacasa_property_cache.json"
 
 # API
 AUTH_URL = "https://accounts.vacasa.io/login"
-API_BASE_URL = API_BASE_TEMPLATE.format(version=DEFAULT_API_VERSION)
 TOKEN_CACHE_FILE = ".vacasa_token.json"
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
@@ -90,10 +87,3 @@ SENSOR_NEXT_STAY = "next_stay"
 # Services
 SERVICE_REFRESH_DATA = "refresh_data"
 SERVICE_CLEAR_CACHE = "clear_cache"
-
-# Scan interval
-SCAN_INTERVAL = timedelta(hours=DEFAULT_REFRESH_INTERVAL)
-
-# Data storage keys
-DATA_CLIENT = "client"
-DATA_COORDINATOR = "coordinator"
