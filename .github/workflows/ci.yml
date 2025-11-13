@@ -48,6 +48,14 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
+          disallowed_files=$(git diff --name-only -- .github/workflows)
+          if [ -n "$disallowed_files" ]; then
+            echo "Reverting changes to workflow files:"
+            echo "$disallowed_files"
+            while IFS= read -r file; do
+              git checkout -- "$file"
+            done <<< "$disallowed_files"
+          fi
           git diff --quiet || (git add -A && git commit -m "style: Auto-fix formatting issues" && git push)
 
       - name: Re-run pre-commit checks
