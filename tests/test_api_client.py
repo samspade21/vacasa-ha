@@ -492,7 +492,10 @@ class TestErrorHandling:
 
             with pytest.raises(
                 ApiError,
-                match="Error getting reservations: Endpoint /owners/owner123/units/unit123/reservations unavailable",
+                match=(
+                    "Error getting reservations: Endpoint "
+                    "/owners/owner123/units/unit123/reservations unavailable"
+                ),
             ):
                 await api_client.get_reservations("unit123", "2024-01-01")
 

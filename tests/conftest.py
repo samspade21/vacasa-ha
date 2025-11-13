@@ -23,9 +23,9 @@ class ConfigEntry:
 class OptionsFlow:
     """Simplified OptionsFlow stub."""
 
-    def __init__(self, config_entry):
-        self.hass = config_entry.hass
+    def __init__(self, config_entry=None):
         self.config_entry = config_entry
+        self.hass = getattr(config_entry, "hass", None)
 
 
 config_entries.ConfigEntry = ConfigEntry
@@ -58,9 +58,16 @@ class Event:
         self.data = data or {}
 
 
+def callback(func):
+    """Return the function unchanged, mimicking Home Assistant's decorator."""
+
+    return func
+
+
 core.HomeAssistant = HomeAssistant
 core.ServiceCall = ServiceCall
 core.Event = Event
+core.callback = callback
 
 exceptions = types.ModuleType("homeassistant.exceptions")
 
@@ -165,7 +172,11 @@ entity_platform.AddEntitiesCallback = None
 entity_registry.async_get = lambda hass: types.SimpleNamespace(entities={})
 dt_util.parse_datetime = lambda s: datetime.fromisoformat(s)
 dt_util.utcnow = lambda: datetime.now(timezone.utc)
+dt_util.now = lambda: datetime.now(timezone.utc)
 dt_util.as_utc = (
+    lambda dt: dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+)
+dt_util.as_local = (
     lambda dt: dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 )
 util.dt = dt_util
