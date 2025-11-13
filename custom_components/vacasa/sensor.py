@@ -894,9 +894,7 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
         try:
             # Get reservations starting from today
             today = datetime.now().strftime("%Y-%m-%d")
-            future_date = (datetime.now() + timedelta(days=365)).strftime(
-                "%Y-%m-%d"
-            )
+            future_date = (datetime.now() + timedelta(days=365)).strftime("%Y-%m-%d")
 
             _LOGGER.debug(
                 "Fetching reservations for %s from %s to %s",
@@ -921,9 +919,7 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
             )
 
         except (AuthenticationError, ApiError) as err:
-            _LOGGER.warning(
-                "Unable to update next stay for %s: %s", self._name, err
-            )
+            _LOGGER.warning("Unable to update next stay for %s: %s", self._name, err)
             self._reservation = None
         except Exception as err:
             _LOGGER.error(
