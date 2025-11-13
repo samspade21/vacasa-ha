@@ -1,5 +1,13 @@
 # Progress Tracker: Vacasa Home Assistant Integration
 
+## Recent Updates (v1.5.0+)
+
+### Security Fixes
+- ✅ **CodeQL Alert #5**: Fixed false positive "Statement has no effect" by explicitly assigning await result to unused variable
+  - Maintains proper async behavior while satisfying static analysis requirements
+  - Ensures coordinator-triggered refreshes complete correctly
+  - Prevents potential race conditions in sensor state updates
+
 ## Completed Features
 
 ### API Client

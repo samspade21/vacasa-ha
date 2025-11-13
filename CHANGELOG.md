@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Occupancy Sensor Alignment**: Fixed occupancy sensor to stay properly aligned with reservation data (PR #37)
 - **Token Handling**: Resolved token access issues and cleaned up cache imports (PR #35)
 
+### Security
+- **CodeQL Alert #5 Fix**: Resolved false positive "Statement has no effect" alert by explicitly assigning await result to unused variable, maintaining proper async behavior while satisfying static analysis
+
 ### Improved
 - **API Resilience**: Enhanced API client with better error handling, retry logic, and rich sensor support (PR #25)
 - **Blocking I/O Performance**: Refactored blocking I/O helpers for improved performance (PR #28)

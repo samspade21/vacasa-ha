@@ -112,7 +112,7 @@ class VacasaApiUpdateMixin:
         """Update entity state from API."""
         task = self._ensure_refresh_task()
         if task is not None:
-            await task
+            _ = await task  # Wait for refresh task completion (returns None)
 
     async def async_will_remove_from_hass(self) -> None:
         """Clean up refresh task when removed from hass."""
