@@ -399,9 +399,7 @@ class VacasaApiClient:
                             response.status,
                             path,
                         )
-                        last_error = ApiError(
-                            f"Endpoint {path} unavailable for API version {version}"
-                        )
+                        last_error = ApiError(f"Endpoint {path} unavailable")
                         continue
 
                     response_text = await response.text()
