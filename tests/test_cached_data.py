@@ -59,7 +59,8 @@ async def test_cleanup_expired_entries(tmp_path: Path, monkeypatch: pytest.Monke
     await cached_data.set("fresh", 1, ttl=200)
     await cached_data.set("old", 2, ttl=10)
 
-    monkeypatch.setattr("custom_components.vacasa.cached_data.time.time", lambda: 400.0)
+    # Advance time to within the TTL for the "fresh" entry so it remains valid.
+    monkeypatch.setattr("custom_components.vacasa.cached_data.time.time", lambda: 250.0)
     removed = await cached_data.cleanup_expired()
 
     assert removed == 1
