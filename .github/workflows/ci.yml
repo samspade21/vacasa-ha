@@ -38,16 +38,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run pre-commit (ruff, mypy) and auto-fix
+      - name: Run pre-commit auto-fixes
         if: ${{ matrix.primary }}
         run: |
-          pre-commit run --all-files --config .pre-commit-config-ci.yaml || true
+          pre-commit run --all-files --config .pre-commit-config.yaml || true
 
       - name: Commit formatting fixes
         if: ${{ matrix.primary && github.event_name == 'pull_request' }}
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
+          disallowed_files=$(git diff --name-only -- .github/workflows)
+          if [ -n "$disallowed_files" ]; then
+            echo "Reverting changes to workflow files:"
+            echo "$disallowed_files"
+            while IFS= read -r file; do
+              git checkout -- "$file"
+            done <<< "$disallowed_files"
+          fi
           git diff --quiet || (git add -A && git commit -m "style: Auto-fix formatting issues" && git push)
 
       - name: Re-run pre-commit checks
