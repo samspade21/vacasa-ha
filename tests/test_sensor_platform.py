@@ -225,3 +225,69 @@ def test_home_info_sensor_handles_list_payloads():
 
     assert sensor.native_value == "Ready"
     assert sensor.extra_state_attributes["clean_score"] == 95
+
+
+def test_home_info_sensor_combines_new_api_payloads():
+    """Aggregated API payloads expose the expected attributes."""
+    sensor = VacasaHomeInfoSensor(
+        coordinator=Mock(),
+        unit_id="7",
+        name="Seaside Haven",
+        unit_attributes={},
+    )
+
+    sensor._home_info = {
+        "summary": {
+            "homeId": "7",
+            "name": "Seaside Haven",
+            "active": True,
+        },
+        "activity": {
+            "lastInspectionDate": "2025-11-09T17:00:00Z",
+            "nextCleanScheduled": "2025-11-17",
+            "averageGuestCleanScore": 4.9,
+        },
+        "latestInspection": {
+            "inspectionId": "abcd-1234",
+            "date": "2025-11-09T17:22:00Z",
+            "totalItemsInspected": 35,
+            "spaces": ["Kitchen", "Bedroom"],
+        },
+        "attributes": {
+            "homeStatus": "Clean",
+            "lastInspectionDate": "2025-11-09T17:00:00Z",
+            "nextCleanScheduled": "2025-11-17",
+            "averageGuestCleanScore": 4.9,
+            "inspectionId": "abcd-1234",
+            "totalItemsInspected": 35,
+            "spaces": ["Kitchen", "Bedroom"],
+        },
+    }
+
+    assert sensor.native_value == "Clean"
+    attrs = sensor.extra_state_attributes
+    assert attrs["last_inspection_date"] == "2025-11-09T17:00:00Z"
+    assert attrs["next_clean_date"] == "2025-11-17"
+    assert attrs["clean_score"] == 4.9
+    assert attrs["total_items_inspected"] == 35
+    assert attrs["spaces"] == ["Kitchen", "Bedroom"]
+
+
+def test_home_info_sensor_uses_active_flag_when_no_status():
+    """Boolean active flag provides a fallback home status."""
+    sensor = VacasaHomeInfoSensor(
+        coordinator=Mock(),
+        unit_id="8",
+        name="Woodland Escape",
+        unit_attributes={},
+    )
+
+    sensor._home_info = {
+        "attributes": {
+            "active": False,
+            "lastCleanDate": "2025-11-01",
+        }
+    }
+
+    assert sensor.native_value == "Inactive"
+    assert sensor.extra_state_attributes["last_clean_date"] == "2025-11-01"
