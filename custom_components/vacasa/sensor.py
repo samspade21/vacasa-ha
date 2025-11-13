@@ -674,11 +674,32 @@ class VacasaHomeInfoSensor(VacasaApiUpdateMixin, VacasaBaseSensor):
             self._home_info = {}
 
     def _home_attributes(self) -> dict[str, Any]:
-        if isinstance(self._home_info, dict):
-            if "attributes" in self._home_info and isinstance(self._home_info["attributes"], dict):
-                return self._home_info["attributes"]
-            return self._home_info
-        return {}
+        """Return the attribute payload from the home info response."""
+
+        def extract_attributes(payload: Any) -> dict[str, Any]:
+            """Recursively walk home-info payloads to locate attributes."""
+            if isinstance(payload, dict):
+                attributes = payload.get("attributes")
+                if isinstance(attributes, dict):
+                    return attributes
+
+                data = payload.get("data")
+                if data is not None:
+                    extracted = extract_attributes(data)
+                    if extracted:
+                        return extracted
+
+                return payload if payload else {}
+
+            if isinstance(payload, list):
+                for item in payload:
+                    extracted = extract_attributes(item)
+                    if extracted:
+                        return extracted
+
+            return {}
+
+        return extract_attributes(self._home_info)
 
     @property
     def native_value(self) -> str | None:

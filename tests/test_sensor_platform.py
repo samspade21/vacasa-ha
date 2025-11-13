@@ -9,6 +9,7 @@ from custom_components.vacasa import sensor as sensor_module
 from custom_components.vacasa.const import STAY_TYPE_GUEST
 from custom_components.vacasa.sensor import (
     VacasaBathroomsSensor,
+    VacasaHomeInfoSensor,
     VacasaLocationSensor,
     VacasaNextStaySensor,
     VacasaRatingSensor,
@@ -142,3 +143,48 @@ def test_next_stay_sensor_current_reservation(monkeypatch):
     assert attrs["stay_duration_nights"] == 3
     assert attrs["is_current"] is True
     assert attrs["is_upcoming"] is False
+
+
+def test_home_info_sensor_handles_nested_attributes():
+    """Home info sensor extracts status from nested API payloads."""
+    sensor = VacasaHomeInfoSensor(
+        coordinator=Mock(),
+        unit_id="5",
+        name="Forest Cabin",
+        unit_attributes={},
+    )
+
+    sensor._home_info = {
+        "data": {
+            "id": "5",
+            "attributes": {
+                "homeStatus": "Clean",
+                "lastInspectionDate": "2024-01-15",
+            },
+        }
+    }
+
+    assert sensor.native_value == "Clean"
+    assert sensor.extra_state_attributes["last_inspection_date"] == "2024-01-15"
+
+
+def test_home_info_sensor_handles_list_payloads():
+    """Home info sensor supports list responses from the API."""
+    sensor = VacasaHomeInfoSensor(
+        coordinator=Mock(),
+        unit_id="6",
+        name="Lakeside Retreat",
+        unit_attributes={},
+    )
+
+    sensor._home_info = [
+        {
+            "attributes": {
+                "status": "Ready",
+                "cleanScore": 95,
+            }
+        }
+    ]
+
+    assert sensor.native_value == "Ready"
+    assert sensor.extra_state_attributes["clean_score"] == 95
