@@ -145,6 +145,43 @@ def test_next_stay_sensor_current_reservation(monkeypatch):
     assert attrs["is_upcoming"] is False
 
 
+def test_next_stay_sensor_upcoming_reservation(monkeypatch):
+    """Next stay sensor reports calendar days for upcoming stays."""
+    fixed_now = datetime(2024, 1, 1, 7, 30, tzinfo=timezone.utc)
+    monkeypatch.setattr(sensor_module.dt_util, "now", lambda: fixed_now)
+
+    coordinator = Mock()
+    coordinator.client = Mock()
+    coordinator.client.categorize_reservation.return_value = STAY_TYPE_GUEST
+
+    unit_attributes = {
+        "timezone": "UTC",
+        "checkInTime": "16:00",
+        "checkOutTime": "10:00",
+    }
+    sensor = VacasaNextStaySensor(
+        coordinator=coordinator,
+        unit_id="5",
+        name="Cozy Cottage",
+        unit_attributes=unit_attributes,
+    )
+
+    sensor._reservation = {
+        "id": "upcoming",
+        "attributes": {
+            "startDate": "2024-01-03",
+            "endDate": "2024-01-05",
+        },
+    }
+
+    assert sensor.native_value == "Guest Booking in 2 days"
+
+    attrs = sensor.extra_state_attributes
+    assert attrs["days_until_checkin"] == 2
+    assert attrs["is_current"] is False
+    assert attrs["is_upcoming"] is True
+
+
 def test_home_info_sensor_handles_nested_attributes():
     """Home info sensor extracts status from nested API payloads."""
     sensor = VacasaHomeInfoSensor(
