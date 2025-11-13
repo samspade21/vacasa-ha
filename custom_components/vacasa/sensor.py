@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from contextlib import suppress
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
@@ -939,7 +939,10 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
             key=lambda r: r.get("attributes", {}).get("startDate", ""),
         ):
             attrs = reservation.get("attributes", {})
-            end_date = self._parse_date(attrs.get("endDate"))
+            end_date = self._parse_date(
+                attrs.get("endDate"),
+                time_str=attrs.get("checkoutTime") or self._unit_attributes.get("checkOutTime"),
+            )
 
             # Include if checkout is in the future (current or upcoming)
             if end_date and end_date > now:
@@ -947,8 +950,8 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
 
         return None
 
-    def _parse_date(self, date_str: str | None) -> datetime | None:
-        """Parse date string to datetime object."""
+    def _parse_date(self, date_str: str | None, time_str: str | None = None) -> datetime | None:
+        """Parse date string to datetime object, applying optional time."""
         if not date_str:
             return None
 
@@ -956,26 +959,68 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
             # Try parsing as date only first
             date_obj = datetime.strptime(date_str, "%Y-%m-%d")
 
-            # Get timezone from property or use local
-            if self._unit_attributes.get("timezone"):
-                try:
-                    from zoneinfo import ZoneInfo
-
-                    tz = ZoneInfo(self._unit_attributes["timezone"])
-                    return date_obj.replace(tzinfo=tz)
-                except Exception:
-                    pass
-
-            # Fall back to local timezone
-            return dt_util.as_local(date_obj)
+            parsed_datetime = date_obj
 
         except ValueError:
             # Try parsing as full datetime
             try:
-                return dt_util.parse_datetime(date_str)
+                parsed_datetime = dt_util.parse_datetime(date_str)
             except Exception:
                 _LOGGER.warning("Could not parse date: %s", date_str)
                 return None
+
+        if parsed_datetime is None:
+            return None
+
+        # Apply optional time if provided
+        if time_str:
+            parsed_time = self._parse_time_string(time_str)
+            if parsed_time:
+                parsed_datetime = parsed_datetime.replace(
+                    hour=parsed_time.hour,
+                    minute=parsed_time.minute,
+                    second=parsed_time.second,
+                    microsecond=0,
+                )
+
+        # Ensure timezone awareness
+        tz = None
+        if self._unit_attributes.get("timezone"):
+            try:
+                from zoneinfo import ZoneInfo
+
+                tz = ZoneInfo(self._unit_attributes["timezone"])
+            except Exception:
+                tz = None
+
+        if parsed_datetime.tzinfo is None:
+            if tz is not None:
+                parsed_datetime = parsed_datetime.replace(tzinfo=tz)
+            else:
+                parsed_datetime = dt_util.as_local(parsed_datetime)
+        elif tz is not None:
+            parsed_datetime = parsed_datetime.astimezone(tz)
+
+        return parsed_datetime
+
+    def _parse_time_string(self, time_str: str | None) -> time | None:
+        """Parse a time string into a time object."""
+        if not time_str:
+            return None
+
+        cleaned = time_str.strip()
+        for fmt in ("%H:%M:%S", "%H:%M", "%I:%M %p", "%I %p", "%I:%M%p", "%H%M"):
+            with suppress(ValueError):
+                return datetime.strptime(cleaned, fmt).time()
+
+        # Handle whole hour without delimiters (e.g., "16")
+        with suppress(ValueError):
+            hour = int(cleaned)
+            if 0 <= hour <= 23:
+                return datetime.strptime(f"{hour:02d}:00", "%H:%M").time()
+
+        _LOGGER.debug("Could not parse time string '%s'", time_str)
+        return None
 
     @property
     def native_value(self) -> str:
@@ -984,8 +1029,14 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
             return "No upcoming reservations"
 
         attrs = self._reservation.get("attributes", {})
-        start_date = self._parse_date(attrs.get("startDate"))
-        end_date = self._parse_date(attrs.get("endDate"))
+        start_date = self._parse_date(
+            attrs.get("startDate"),
+            time_str=attrs.get("checkinTime") or self._unit_attributes.get("checkInTime"),
+        )
+        end_date = self._parse_date(
+            attrs.get("endDate"),
+            time_str=attrs.get("checkoutTime") or self._unit_attributes.get("checkOutTime"),
+        )
         now = dt_util.now()
 
         # Determine if current or upcoming
@@ -998,7 +1049,10 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
         if is_current:
             return f"{stay_name} (currently occupied)"
 
-        days_until = (start_date - now).days if start_date else None
+        days_until = None
+        if start_date:
+            compare_now = now.astimezone(start_date.tzinfo) if start_date.tzinfo else now
+            days_until = (start_date.date() - compare_now.date()).days
         if days_until is not None:
             if days_until == 0:
                 return f"{stay_name} (today)"
@@ -1018,15 +1072,35 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
             }
 
         attrs = self._reservation.get("attributes", {})
-        start_date = self._parse_date(attrs.get("startDate"))
-        end_date = self._parse_date(attrs.get("endDate"))
+        start_date = self._parse_date(
+            attrs.get("startDate"),
+            time_str=attrs.get("checkinTime") or self._unit_attributes.get("checkInTime"),
+        )
+        end_date = self._parse_date(
+            attrs.get("endDate"),
+            time_str=attrs.get("checkoutTime") or self._unit_attributes.get("checkOutTime"),
+        )
         now = dt_util.now()
 
         # Compute time values
         is_current = start_date and end_date and start_date <= now < end_date
-        days_until_checkin = (start_date - now).days if start_date and start_date > now else None
-        days_until_checkout = (end_date - now).days if end_date else None
-        stay_duration = (end_date - start_date).days if start_date and end_date else None
+        if start_date:
+            compare_now = now.astimezone(start_date.tzinfo) if start_date.tzinfo else now
+            days_until_checkin = (
+                (start_date.date() - compare_now.date()).days if start_date > now else None
+            )
+        else:
+            days_until_checkin = None
+
+        if end_date:
+            compare_now_end = now.astimezone(end_date.tzinfo) if end_date.tzinfo else now
+            days_until_checkout = (end_date.date() - compare_now_end.date()).days
+        else:
+            days_until_checkout = None
+
+        stay_duration = (
+            (end_date.date() - start_date.date()).days if start_date and end_date else None
+        )
 
         # Get stay classification
         stay_type = self._coordinator.client.categorize_reservation(self._reservation)
