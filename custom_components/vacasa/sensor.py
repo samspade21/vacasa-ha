@@ -19,7 +19,6 @@ from .const import (
     SENSOR_ADDRESS,
     SENSOR_BATHROOMS,
     SENSOR_BEDROOMS,
-    SENSOR_HOME_STATUS,
     SENSOR_HOT_TUB,
     SENSOR_LOCATION,
     SENSOR_MAINTENANCE_OPEN,
@@ -644,106 +643,6 @@ class VacasaAddressSensor(VacasaBaseSensor):
         return attributes
 
 
-class VacasaHomeInfoSensor(VacasaApiUpdateMixin, VacasaBaseSensor):
-    """Sensor exposing home inspection and cleanliness information."""
-
-    def __init__(
-        self,
-        coordinator,
-        unit_id: str,
-        name: str,
-        unit_attributes: dict[str, Any],
-    ) -> None:
-        """Initialize home info sensor."""
-        super().__init__(
-            coordinator=coordinator,
-            unit_id=unit_id,
-            name=name,
-            unit_attributes=unit_attributes,
-            sensor_type=SENSOR_HOME_STATUS,
-            icon="mdi:home-analytics",
-        )
-        self._home_info: dict[str, Any] = {}
-
-    async def _async_update_from_api(self) -> None:
-        """Refresh the home info payload."""
-        try:
-            self._home_info = await self._coordinator.client.get_home_info(self._unit_id)
-        except (AuthenticationError, ApiError) as err:
-            _LOGGER.warning("Unable to update home info for %s: %s", self._name, err)
-            self._home_info = {}
-
-    def _home_attributes(self) -> dict[str, Any]:
-        """Return the attribute payload from the home info response."""
-
-        def extract_attributes(payload: Any) -> dict[str, Any]:
-            """Recursively walk home-info payloads to locate attributes."""
-            if isinstance(payload, dict):
-                attributes = payload.get("attributes")
-                if isinstance(attributes, dict):
-                    return attributes
-
-                data = payload.get("data")
-                if data is not None:
-                    extracted = extract_attributes(data)
-                    if extracted:
-                        return extracted
-
-                return payload if payload else {}
-
-            if isinstance(payload, list):
-                for item in payload:
-                    extracted = extract_attributes(item)
-                    if extracted:
-                        return extracted
-
-            return {}
-
-        return extract_attributes(self._home_info)
-
-    @property
-    def native_value(self) -> str | None:
-        """Return the current home status if available."""
-        attributes = self._home_attributes()
-        for key in ("homeStatus", "cleanStatus", "propertyStatus", "status"):
-            value = attributes.get(key)
-            if isinstance(value, str):
-                return value
-        active = attributes.get("active")
-        if isinstance(active, bool):
-            return "Active" if active else "Inactive"
-        return None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Expose additional inspection metadata."""
-        attributes = self._home_attributes()
-        last_inspection = (
-            attributes.get("lastInspectionDate")
-            or attributes.get("inspectionDate")
-            or attributes.get("date")
-        )
-        next_clean = attributes.get("nextCleanDate") or attributes.get("nextCleanScheduled")
-        clean_score = (
-            attributes.get("cleanScore")
-            or attributes.get("score")
-            or attributes.get("averageGuestCleanScore")
-        )
-
-        return {
-            "last_inspection_date": last_inspection,
-            "last_clean_date": attributes.get("lastCleanDate"),
-            "next_clean_date": next_clean,
-            "clean_score": clean_score,
-            "inspection_score": attributes.get("inspectionScore"),
-            "upcoming_tasks": attributes.get("upcomingTasks"),
-            "inspections_last_6_months": attributes.get("inspectionsLast6Months"),
-            "latest_inspection_id": attributes.get("inspectionId"),
-            "total_items_inspected": attributes.get("totalItemsInspected"),
-            "spaces": attributes.get("spaces"),
-        }
-
-
 class VacasaMaintenanceSensor(VacasaApiUpdateMixin, VacasaBaseSensor):
     """Sensor representing open maintenance tickets for a unit."""
 
@@ -1197,7 +1096,6 @@ UNIT_SENSOR_CLASSES: tuple[type[VacasaBaseSensor], ...] = (
     VacasaPetFriendlySensor,
     VacasaParkingSensor,
     VacasaAddressSensor,
-    VacasaHomeInfoSensor,
     VacasaMaintenanceSensor,
     VacasaNextStaySensor,
 )

@@ -572,46 +572,6 @@ Thank you for contributing to the Vacasa Home Assistant integration! 🎉
 
 ## For Developers
 
-This project uses Cline Memory Bank for comprehensive documentation and context management. The memory bank provides a structured way to maintain project knowledge and ensure consistent development across time.
-
-### Memory Bank Overview
-
-The memory bank is a collection of markdown files that document different aspects of the project. It serves as a knowledge repository that helps developers understand the project's architecture, design decisions, and implementation details.
-
-- **Documentation**: [Cline Memory Bank Documentation](https://docs.cline.bot/prompting/cline-memory-bank)
-- **Purpose**: Maintains project context across development sessions
-- **Benefits**: Easier onboarding, consistent development, and better knowledge retention
-
-### Memory Bank Structure
-
-The project's memory bank contains the following files:
-
-- [Project Brief](memory-bank/projectbrief.md) - Core requirements and goals
-- [Product Context](memory-bank/productContext.md) - Why this project exists and how it should work
-- [Active Context](memory-bank/activeContext.md) - Current work focus and recent changes
-- [System Patterns](memory-bank/systemPatterns.md) - Architecture and design patterns
-- [Tech Context](memory-bank/techContext.md) - Technologies, dependencies, and technical details
-- [Progress](memory-bank/progress.md) - Current status, completed features, and next steps
-
-### Working with Cline
-
-[Cline](https://docs.cline.bot/) is an AI assistant designed to work with codebases and maintain context across development sessions. To use Cline with this project:
-
-1. **Setup Cline**: Follow the [installation instructions](https://docs.cline.bot/getting-started/installation)
-2. **Read the Memory Bank**: Cline will automatically read the memory bank files to understand the project
-3. **Update Documentation**: When making significant changes, update the relevant memory bank files
-
-### Development Workflow
-
-When working on this project with Cline:
-
-1. **Start with Context**: Begin by reviewing the memory bank files to understand the current state
-2. **Implement Changes**: Make your code changes with Cline's assistance
-3. **Update Documentation**: Update the memory bank files to reflect your changes
-4. **Commit Changes**: Include both code and documentation changes in your commits
-
-This approach ensures that project knowledge is maintained and accessible to all contributors.
-
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
