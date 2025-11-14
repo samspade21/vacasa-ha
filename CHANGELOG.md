@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2025-11-14
+
+### Added
+- **Upcoming Stay Coverage**: Enhanced [`sensor.py`](custom_components/vacasa/sensor.py) to include coverage for upcoming Vacasa stays with improved visibility into future reservations (PR #65)
+- **Test Coverage Expansion**: Added comprehensive tests for cached data utilities in [`test_cached_data.py`](tests/test_cached_data.py) to improve code reliability and maintainability (PR #58)
+
+### Fixed
+- **Home Status Sensor Removal**: Removed Home Status sensor due to inaccessible API endpoints that prevented reliable data retrieval (PR #67)
+- **Payload Parsing**: Fixed home status sensor payload parsing issues that caused data processing errors (PR #64)
+- **Next Stay Calculations**: Corrected next stay sensor day calculation logic and added time information for more accurate stay tracking in [`sensor.py`](custom_components/vacasa/sensor.py) (PR #63)
+- **CI Forked PR Checkout**: Resolved GitHub Actions checkout issues for forked pull requests to enable proper CI testing (PR #59)
+- **Test Failures**: Fixed GitHub Actions test execution failures to restore CI/CD pipeline reliability (PR #54)
+
+### Changed
+- **API Modernization**: Refactored home info aggregation to support new inspection APIs in [`api_client.py`](custom_components/vacasa/api_client.py) (PR #66)
+- **Code Cleanup**: Removed unused legacy constants from [`const.py`](custom_components/vacasa/const.py) to reduce technical debt (PR #62)
+- **Test Infrastructure**: Restored sensor imports and extended Home Assistant stubs for improved test compatibility (PR #61)
+- **Workflow Protection**: Prevented workflow autofixes from modifying CI workflow files to maintain deployment integrity (PR #56)
+- **Error Messaging**: Adjusted Vacasa API fallback error message for clearer user communication (PR #55)
+
+### Technical Improvements
+- **Dependency Updates**: Updated multiple GitHub Actions and Python dependencies for improved security and compatibility:
+  - actions/checkout: 4 → 5 (PR #46)
+  - actions/setup-python: 5 → 6 (PR #47)
+  - github/codeql-action: 3 → 4 (PR #48)
+  - codecov/codecov-action: 3 → 5 (PR #50)
+  - actions/stale: 7 → 10 (PR #52)
+  - colorlog: 6.8.2 → 6.10.1 (PR #51)
+  - mypy: 1.3.0 → 1.18.2 (PR #53)
+  - pre-commit: 3.0.0 → 4.4.0 (PR #49)
+
+This release focuses on API modernization, improved test coverage, and critical bug fixes while maintaining compatibility with the latest Home Assistant platform updates.
+
 ## [1.5.0] - 2025-11-12
 
 ### Added
