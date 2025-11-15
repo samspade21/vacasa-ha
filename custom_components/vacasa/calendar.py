@@ -2,11 +2,14 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any
+from functools import partial
+from typing import Any, Callable
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
@@ -14,6 +17,7 @@ from . import VacasaConfigEntry, VacasaDataUpdateCoordinator
 from .api_client import ApiError, AuthenticationError, VacasaApiClient
 from .const import (
     DOMAIN,
+    SIGNAL_RESERVATION_BOUNDARY,
     STAY_TYPE_BLOCK,
     STAY_TYPE_GUEST,
     STAY_TYPE_MAINTENANCE,
@@ -89,6 +93,9 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         self._timezone = unit_attributes.get("timezone")
         self._event_cache: dict[str, list[CalendarEvent]] = {}
         self._current_event: CalendarEvent | None = None
+        self._next_event: CalendarEvent | None = None
+        self._unsubscribe_start_timer: Callable[[], None] | None = None
+        self._unsubscribe_end_timer: Callable[[], None] | None = None
 
         # Entity properties
         self._attr_unique_id = f"vacasa_calendar_{unit_id}"
@@ -175,86 +182,36 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         await self._update_current_event()
 
     async def _update_current_event(self) -> None:
-        """Update the current event - only sets current event if it's actually happening now."""
-        self._current_event = await self.async_get_current_event()
+        """Update cached current and next events."""
+        self._current_event, self._next_event = await self._determine_current_and_next_events()
+        self._schedule_boundary_timers()
 
     async def async_get_current_event(self) -> CalendarEvent | None:
         """Get the current event if active right now, otherwise None."""
-        now = dt_util.now()
-        events = await self.async_get_events(self.hass, now, now + timedelta(days=365))
-
-        _LOGGER.debug(
-            "Checking events for %s at %s - found %d total events",
-            self._name,
-            now.isoformat(),
-            len(events),
-        )
-
-        # Check for current events (happening right now)
-        for event in events:
-            event_start = event.start
-            event_end = event.end
-            if event_start and event_end:
-                _LOGGER.debug(
-                    "Checking event %s: start=%s, end=%s, now=%s, is_current=%s",
-                    event.summary,
-                    event_start.isoformat(),
-                    event_end.isoformat(),
-                    now.isoformat(),
-                    event_start <= now < event_end,
-                )
-                if event_start <= now < event_end:
-                    # This event is currently active
-                    _LOGGER.debug(
-                        "Found current event for %s: %s (start: %s, end: %s)",
-                        self._name,
-                        event.summary,
-                        event_start.isoformat(),
-                        event_end.isoformat(),
-                    )
-                    return event
-
-        _LOGGER.debug("No current event found for %s", self._name)
-        return None
+        if self._current_event is None and self._next_event is None:
+            self._current_event, self._next_event = await self._determine_current_and_next_events()
+            self._schedule_boundary_timers()
+        return self._current_event
 
     async def async_get_next_event(self) -> CalendarEvent | None:
         """Get the next upcoming event (for display purposes)."""
-        now = dt_util.now()
-        events = await self.async_get_events(self.hass, now, now + timedelta(days=365))
-
-        # First check if there's a current event
-        current_event = await self.async_get_current_event()
-        if current_event:
-            return current_event
-
-        # No current event, find the next future event
-        next_event = None
-        for event in events:
-            event_start = event.start
-            if event_start and event_start >= now:
-                if next_event is None:
-                    next_event = event
-                else:
-                    if event_start < next_event.start:
-                        next_event = event
-
-        if next_event:
-            _LOGGER.debug(
-                "Found next event for %s: %s (starts: %s)",
-                self._name,
-                next_event.summary,
-                next_event.start.isoformat(),
-            )
-        else:
-            _LOGGER.debug("No next event found for %s", self._name)
-
-        return next_event
+        if self._current_event is None and self._next_event is None:
+            self._current_event, self._next_event = await self._determine_current_and_next_events()
+            self._schedule_boundary_timers()
+        if self._current_event:
+            return self._current_event
+        return self._next_event
 
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
         # Update current event when entity is added to hass
         await self._update_current_event()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Clean up when entity is removed from hass."""
+        self._cancel_boundary_timers()
+        await super().async_will_remove_from_hass()
 
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
@@ -267,7 +224,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             # Clear event cache to ensure fresh data
             self._event_cache.clear()
 
-            # Update current event based on fresh data
+            # Update current and next events based on fresh data
             await self._update_current_event()
 
             # Write the state to Home Assistant
@@ -281,6 +238,164 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             )
         except Exception as err:
             _LOGGER.error("Error during coordinator update for calendar %s: %s", self._name, err)
+
+    async def _determine_current_and_next_events(
+        self,
+    ) -> tuple[CalendarEvent | None, CalendarEvent | None]:
+        """Determine the current and next events for the property."""
+        now_local = dt_util.now()
+        now_utc = dt_util.utcnow()
+        events = await self.async_get_events(self.hass, now_local, now_local + timedelta(days=365))
+
+        _LOGGER.debug(
+            "Evaluating %d events for %s at %s",
+            len(events),
+            self._name,
+            now_utc.isoformat(),
+        )
+
+        current_event: CalendarEvent | None = None
+        next_event: CalendarEvent | None = None
+
+        def _as_utc(value: datetime | None) -> datetime | None:
+            if value is None:
+                return None
+            return dt_util.as_utc(value)
+
+        for event in sorted(events, key=lambda evt: _as_utc(evt.start) or now_utc):
+            start_utc = _as_utc(event.start)
+            end_utc = _as_utc(event.end)
+
+            if start_utc is None or end_utc is None:
+                continue
+
+            in_progress = start_utc <= now_utc < end_utc
+            upcoming = start_utc > now_utc
+
+            _LOGGER.debug(
+                "Event %s: start=%s, end=%s, now=%s, in_progress=%s, upcoming=%s",
+                event.summary,
+                start_utc.isoformat(),
+                end_utc.isoformat(),
+                now_utc.isoformat(),
+                in_progress,
+                upcoming,
+            )
+
+            if in_progress:
+                current_event = event
+                continue
+
+            if upcoming and next_event is None:
+                next_event = event
+                if current_event:
+                    break
+
+        if current_event:
+            _LOGGER.debug(
+                "Current event for %s set to %s (start=%s, end=%s)",
+                self._name,
+                current_event.summary,
+                current_event.start.isoformat() if current_event.start else "unknown",
+                current_event.end.isoformat() if current_event.end else "unknown",
+            )
+        else:
+            _LOGGER.debug("No current event identified for %s", self._name)
+
+        if next_event:
+            _LOGGER.debug(
+                "Next event for %s set to %s (start=%s)",
+                self._name,
+                next_event.summary,
+                next_event.start.isoformat() if next_event.start else "unknown",
+            )
+        else:
+            _LOGGER.debug("No upcoming event identified for %s", self._name)
+
+        return current_event, next_event
+
+    def _cancel_boundary_timers(self) -> None:
+        """Cancel any scheduled boundary refresh timers."""
+        if self._unsubscribe_start_timer:
+            self._unsubscribe_start_timer()
+            self._unsubscribe_start_timer = None
+        if self._unsubscribe_end_timer:
+            self._unsubscribe_end_timer()
+            self._unsubscribe_end_timer = None
+
+    def _schedule_boundary_timers(self) -> None:
+        """Schedule refresh timers aligned with reservation boundaries."""
+        if not self.hass:
+            return
+
+        self._cancel_boundary_timers()
+
+        now_utc = dt_util.utcnow()
+
+        if self._current_event and getattr(self._current_event, "end", None):
+            end_utc = dt_util.as_utc(self._current_event.end)
+            if end_utc and end_utc > now_utc:
+                self._unsubscribe_end_timer = async_track_point_in_time(
+                    self.hass,
+                    partial(self._handle_boundary_timer, boundary="checkout"),
+                    end_utc,
+                )
+                _LOGGER.debug(
+                    "Scheduled checkout refresh for %s at %s",
+                    self._name,
+                    end_utc.isoformat(),
+                )
+
+        if self._next_event and getattr(self._next_event, "start", None):
+            start_utc = dt_util.as_utc(self._next_event.start)
+            if start_utc and start_utc > now_utc:
+                self._unsubscribe_start_timer = async_track_point_in_time(
+                    self.hass,
+                    partial(self._handle_boundary_timer, boundary="checkin"),
+                    start_utc,
+                )
+                _LOGGER.debug(
+                    "Scheduled check-in refresh for %s at %s",
+                    self._name,
+                    start_utc.isoformat(),
+                )
+
+    def _handle_boundary_timer(self, scheduled_time: datetime, *, boundary: str) -> None:
+        """Handle a scheduled reservation boundary timer."""
+        if not self.hass:
+            return
+
+        _LOGGER.debug(
+            "Boundary timer (%s) fired for %s at %s",
+            boundary,
+            self._name,
+            scheduled_time.isoformat(),
+        )
+
+        async_dispatcher_send(
+            self.hass,
+            SIGNAL_RESERVATION_BOUNDARY,
+            self._unit_id,
+            boundary,
+        )
+
+        self.hass.async_create_task(self._boundary_refresh(boundary))
+
+    async def _boundary_refresh(self, boundary: str) -> None:
+        """Refresh coordinator and calendar state at reservation boundaries."""
+        _LOGGER.debug("Starting boundary refresh (%s) for %s", boundary, self._name)
+        try:
+            await self.coordinator.async_request_refresh()
+        except Exception as err:  # pragma: no cover - coordinator handles its own errors
+            _LOGGER.warning(
+                "Boundary refresh (%s) for %s failed: %s",
+                boundary,
+                self._name,
+                err,
+            )
+
+        await self._update_current_event()
+        self.async_write_ha_state()
 
     def _reservation_to_event(  # noqa: C901
         self, reservation: dict[str, Any], stay_type: str

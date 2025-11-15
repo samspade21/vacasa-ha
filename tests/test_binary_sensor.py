@@ -167,6 +167,44 @@ class TestBinarySensorScheduling:
         mock_update.assert_awaited_once()
         sensor.async_write_ha_state.assert_called_once()
 
+    def test_boundary_signal_triggers_refresh(self):
+        """Reservation boundary signal schedules a refresh task."""
+        sensor = VacasaOccupancySensor(
+            coordinator=Mock(),
+            client=Mock(),
+            unit_id="unit123",
+            name="Test Unit",
+            code="TU",
+            unit_attributes={},
+        )
+        sensor.hass = Mock()
+
+        with patch.object(sensor, "_scheduled_refresh", new=AsyncMock()) as mock_refresh:
+            sensor._handle_reservation_boundary_signal("unit123", "checkin")
+
+        sensor.hass.async_create_task.assert_called_once()
+        created_coro = sensor.hass.async_create_task.call_args.args[0]
+        assert mock_refresh.await_count == 0
+        created_coro.close()
+
+    def test_boundary_signal_ignores_other_units(self):
+        """Signal for different unit does not trigger refresh."""
+        sensor = VacasaOccupancySensor(
+            coordinator=Mock(),
+            client=Mock(),
+            unit_id="unit123",
+            name="Test Unit",
+            code="TU",
+            unit_attributes={},
+        )
+        sensor.hass = Mock()
+
+        with patch.object(sensor, "_scheduled_refresh", new=AsyncMock()) as mock_refresh:
+            sensor._handle_reservation_boundary_signal("other", "checkin")
+
+        sensor.hass.async_create_task.assert_not_called()
+        mock_refresh.assert_not_called()
+
     @pytest.mark.asyncio
     async def test_find_calendar_entity_with_retry_failure(self):
         """Calendar entity not found after max retries."""
