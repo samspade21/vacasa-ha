@@ -1,7 +1,7 @@
 """Tests for Vacasa property sensors."""
 
 from datetime import datetime, timezone
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -179,3 +179,24 @@ def test_next_stay_sensor_upcoming_reservation(monkeypatch):
     assert attrs["days_until_checkin"] == 2
     assert attrs["is_current"] is False
     assert attrs["is_upcoming"] is True
+
+
+def test_next_stay_boundary_signal_refresh(monkeypatch):
+    """Boundary signals trigger a refresh for the next stay sensor."""
+    coordinator = Mock()
+    coordinator.client = Mock()
+    coordinator.client.categorize_reservation.return_value = STAY_TYPE_GUEST
+
+    sensor = VacasaNextStaySensor(
+        coordinator=coordinator,
+        unit_id="42",
+        name="Signal Test",
+        unit_attributes={"timezone": "UTC"},
+    )
+
+    with patch.object(sensor, "_ensure_refresh_task") as mock_refresh:
+        sensor._handle_reservation_boundary_signal("42", "checkin")
+        mock_refresh.assert_called_once()
+
+        sensor._handle_reservation_boundary_signal("other", "checkout")
+        mock_refresh.assert_called_once()  # unchanged

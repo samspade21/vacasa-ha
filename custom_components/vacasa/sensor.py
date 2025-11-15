@@ -8,6 +8,7 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
@@ -32,6 +33,7 @@ from .const import (
     SENSOR_RATING,
     SENSOR_STATEMENTS_TOTAL,
     SENSOR_TIMEZONE,
+    SIGNAL_RESERVATION_BOUNDARY,
     STAY_TYPE_GUEST,
     STAY_TYPE_TO_CATEGORY,
     STAY_TYPE_TO_NAME,
@@ -826,6 +828,17 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
         self._reservation: dict[str, Any] | None = None
         _LOGGER.debug("VacasaNextStaySensor initialized successfully for unit %s", unit_id)
 
+    async def async_added_to_hass(self) -> None:
+        """Register listeners when added to Home Assistant."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_RESERVATION_BOUNDARY,
+                self._handle_reservation_boundary_signal,
+            )
+        )
+
     async def _async_update_from_api(self) -> None:
         """Fetch next reservation from API."""
         _LOGGER.debug("VacasaNextStaySensor._async_update_from_api called for %s", self._name)
@@ -867,6 +880,19 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
                 exc_info=True,
             )
             self._reservation = None
+
+    def _handle_reservation_boundary_signal(self, unit_id: str, boundary: str) -> None:
+        """Refresh reservation data at check-in/check-out boundaries."""
+        if unit_id != self._unit_id:
+            return
+
+        _LOGGER.debug(
+            "Received reservation boundary signal (%s) for %s - requesting refresh",
+            boundary,
+            self._name,
+        )
+
+        self._ensure_refresh_task()
 
     def _find_next_stay(self, reservations: list[dict]) -> dict | None:
         """Find the next relevant reservation (current or upcoming)."""

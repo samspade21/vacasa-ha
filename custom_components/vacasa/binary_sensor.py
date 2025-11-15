@@ -12,12 +12,13 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.util import dt as dt_util
 
 from . import VacasaConfigEntry
-from .const import DOMAIN, SENSOR_OCCUPANCY
+from .const import DOMAIN, SENSOR_OCCUPANCY, SIGNAL_RESERVATION_BOUNDARY
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -94,6 +95,7 @@ class VacasaOccupancySensor(BinarySensorEntity):
         self._coordinator = coordinator
         self._unsub_coordinator = None
         self._unsub_state_listener = None
+        self._unsub_boundary_listener = None
         self._calendar_entity = None
         self._current_event = None
         self._next_event = None
@@ -401,6 +403,14 @@ class VacasaOccupancySensor(BinarySensorEntity):
             "state_changed", self._handle_calendar_state_change
         )
 
+        # Listen for reservation boundary signals from the calendar platform
+        self._unsub_boundary_listener = async_dispatcher_connect(
+            self.hass,
+            SIGNAL_RESERVATION_BOUNDARY,
+            self._handle_reservation_boundary_signal,
+        )
+        self.async_on_remove(self._unsub_boundary_listener)
+
         # Schedule initial calendar update with enhanced delay and readiness check
         self.hass.async_create_task(self._delayed_initial_update())
 
@@ -686,3 +696,17 @@ class VacasaOccupancySensor(BinarySensorEntity):
 
         await self._update_from_calendar()
         self.async_write_ha_state()
+
+    def _handle_reservation_boundary_signal(self, unit_id: str, boundary: str) -> None:
+        """Refresh occupancy when a reservation boundary is reached."""
+        if unit_id != self._unit_id:
+            return
+
+        _LOGGER.debug(
+            "Received reservation boundary signal (%s) for %s - refreshing",
+            boundary,
+            self._name,
+        )
+
+        if self.hass:
+            self.hass.async_create_task(self._scheduled_refresh())

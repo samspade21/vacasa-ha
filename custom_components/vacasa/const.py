@@ -86,3 +86,6 @@ SENSOR_NEXT_STAY = "next_stay"
 # Services
 SERVICE_REFRESH_DATA = "refresh_data"
 SERVICE_CLEAR_CACHE = "clear_cache"
+
+# Dispatcher signals
+SIGNAL_RESERVATION_BOUNDARY = "vacasa_reservation_boundary"
