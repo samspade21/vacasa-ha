@@ -416,25 +416,25 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             checkout_time = attributes.get("checkoutTime")
 
             # Create datetime objects based on available information
-            if checkin_time and checkin_time not in ["00:00:00", "12:00:00"]:
+            if checkin_time and checkin_time != "00:00:00":
                 # Use time from reservation
                 start_dt_str = f"{start_date}T{checkin_time}"
             elif self._checkin_time:
                 # Use property-specific time
                 start_dt_str = f"{start_date}T{self._checkin_time}"
             else:
-                # No time available, use date only
-                start_dt_str = f"{start_date}T00:00:00"
+                # No time available, default to 4:00 PM (16:00)
+                start_dt_str = f"{start_date}T16:00:00"
 
-            if checkout_time and checkout_time not in ["00:00:00", "12:00:00"]:
+            if checkout_time and checkout_time != "00:00:00":
                 # Use time from reservation
                 end_dt_str = f"{end_date}T{checkout_time}"
             elif self._checkout_time:
                 # Use property-specific time
                 end_dt_str = f"{end_date}T{self._checkout_time}"
             else:
-                # No time available, use date only
-                end_dt_str = f"{end_date}T00:00:00"
+                # No time available, default to 10:00 AM (10:00)
+                end_dt_str = f"{end_date}T10:00:00"
 
             # Parse datetime strings
             start_dt = dt_util.parse_datetime(start_dt_str)
@@ -524,19 +524,19 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             description_parts = []
 
             # Add check-in and check-out information
-            if checkin_time and checkin_time not in ["00:00:00", "12:00:00"]:
+            if checkin_time and checkin_time != "00:00:00":
                 description_parts.append(f"Check-in: {start_date} {checkin_time[:5]}")
             elif self._checkin_time:
                 description_parts.append(f"Check-in: {start_date} {self._checkin_time[:5]}")
             else:
-                description_parts.append(f"Check-in: {start_date}")
+                description_parts.append(f"Check-in: {start_date} 16:00")
 
-            if checkout_time and checkout_time not in ["00:00:00", "12:00:00"]:
+            if checkout_time and checkout_time != "00:00:00":
                 description_parts.append(f"Check-out: {end_date} {checkout_time[:5]}")
             elif self._checkout_time:
                 description_parts.append(f"Check-out: {end_date} {self._checkout_time[:5]}")
             else:
-                description_parts.append(f"Check-out: {end_date}")
+                description_parts.append(f"Check-out: {end_date} 10:00")
 
             description_parts.append("")
 
