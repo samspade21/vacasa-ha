@@ -17,7 +17,6 @@ from custom_components.vacasa import sensor as sensor_platform
 @pytest.mark.asyncio
 async def test_platforms_use_cached_units() -> None:
     """Platform setup reuses coordinator data without extra API calls."""
-
     hass = Mock()
     hass.loop = Mock()
 
@@ -36,9 +35,7 @@ async def test_platforms_use_cached_units() -> None:
 
     assert client.get_units.await_count == 1
 
-    config_entry = SimpleNamespace(
-        runtime_data=VacasaData(client=client, coordinator=coordinator)
-    )
+    config_entry = SimpleNamespace(runtime_data=VacasaData(client=client, coordinator=coordinator))
 
     async_add_entities = Mock()
 
@@ -51,14 +48,8 @@ async def test_platforms_use_cached_units() -> None:
             return_value=Mock(),
         ),
     ):
-        await calendar_platform.async_setup_entry(
-            hass, config_entry, async_add_entities
-        )
-        await binary_sensor_platform.async_setup_entry(
-            hass, config_entry, async_add_entities
-        )
-        await sensor_platform.async_setup_entry(
-            hass, config_entry, async_add_entities
-        )
+        await calendar_platform.async_setup_entry(hass, config_entry, async_add_entities)
+        await binary_sensor_platform.async_setup_entry(hass, config_entry, async_add_entities)
+        await sensor_platform.async_setup_entry(hass, config_entry, async_add_entities)
 
     assert client.get_units.await_count == 1
