@@ -63,12 +63,12 @@ class VacasaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via API."""
         try:
-            # We don't actually need to fetch any data here, as the calendar
-            # entities will fetch their own data when needed. This is just to
-            # ensure the client is authenticated.
+            # Fetch and cache the list of units so all platforms can reuse it
+            # without hammering the Vacasa API on every setup or refresh.
             async with async_timeout.timeout(30):
                 await self.client.ensure_token()
-            return {"last_update": self.client.token_expiry}
+                units = await self.client.get_units()
+            return {"last_update": self.client.token_expiry, "units": units}
         except AuthenticationError as err:
             _LOGGER.error("Authentication error during update: %s", err)
             raise UpdateFailed(f"Authentication failed: {err}") from err
