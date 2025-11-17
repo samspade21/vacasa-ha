@@ -89,3 +89,4 @@ SERVICE_CLEAR_CACHE = "clear_cache"
 
 # Dispatcher signals
 SIGNAL_RESERVATION_BOUNDARY = "vacasa_reservation_boundary"
+SIGNAL_RESERVATION_STATE = "vacasa_reservation_state"
