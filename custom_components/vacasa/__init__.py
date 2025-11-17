@@ -27,6 +27,7 @@ from .const import (
     SERVICE_CLEAR_CACHE,
     SERVICE_REFRESH_DATA,
 )
+from .models import ReservationState
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -59,6 +60,7 @@ class VacasaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=timedelta(hours=DEFAULT_REFRESH_INTERVAL),
         )
         self.client = client
+        self.reservation_states: dict[str, ReservationState] = {}
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via API."""

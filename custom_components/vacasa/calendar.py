@@ -18,6 +18,7 @@ from .api_client import ApiError, AuthenticationError, VacasaApiClient
 from .const import (
     DOMAIN,
     SIGNAL_RESERVATION_BOUNDARY,
+    SIGNAL_RESERVATION_STATE,
     STAY_TYPE_BLOCK,
     STAY_TYPE_GUEST,
     STAY_TYPE_MAINTENANCE,
@@ -25,6 +26,7 @@ from .const import (
     STAY_TYPE_TO_CATEGORY,
     STAY_TYPE_TO_NAME,
 )
+from .models import ReservationState, ReservationWindow
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -185,12 +187,14 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         """Update cached current and next events."""
         self._current_event, self._next_event = await self._determine_current_and_next_events()
         self._schedule_boundary_timers()
+        self._broadcast_reservation_state()
 
     async def async_get_current_event(self) -> CalendarEvent | None:
         """Get the current event if active right now, otherwise None."""
         if self._current_event is None and self._next_event is None:
             self._current_event, self._next_event = await self._determine_current_and_next_events()
             self._schedule_boundary_timers()
+            self._broadcast_reservation_state()
         return self._current_event
 
     async def async_get_next_event(self) -> CalendarEvent | None:
@@ -198,6 +202,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         if self._current_event is None and self._next_event is None:
             self._current_event, self._next_event = await self._determine_current_and_next_events()
             self._schedule_boundary_timers()
+            self._broadcast_reservation_state()
         if self._current_event:
             return self._current_event
         return self._next_event
@@ -211,6 +216,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
     async def async_will_remove_from_hass(self) -> None:
         """Clean up when entity is removed from hass."""
         self._cancel_boundary_timers()
+        self.coordinator.reservation_states.pop(self._unit_id, None)
         await super().async_will_remove_from_hass()
 
     def _handle_coordinator_update(self) -> None:
@@ -396,6 +402,36 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
 
         await self._update_current_event()
         self.async_write_ha_state()
+
+    def _broadcast_reservation_state(self) -> None:
+        """Store the latest reservation state and notify listeners."""
+        if not self.hass:
+            return
+
+        state = ReservationState(
+            current=self._event_to_window(self._current_event),
+            upcoming=self._event_to_window(self._next_event),
+        )
+
+        self.coordinator.reservation_states[self._unit_id] = state
+
+        async_dispatcher_send(
+            self.hass,
+            SIGNAL_RESERVATION_STATE,
+            self._unit_id,
+            state,
+        )
+
+    def _event_to_window(self, event: CalendarEvent | None) -> ReservationWindow | None:
+        """Convert a CalendarEvent into a ReservationWindow."""
+        if not event:
+            return None
+
+        return ReservationWindow(
+            summary=event.summary,
+            start=event.start,
+            end=event.end,
+        )
 
     def _reservation_to_event(  # noqa: C901
         self, reservation: dict[str, Any], stay_type: str
