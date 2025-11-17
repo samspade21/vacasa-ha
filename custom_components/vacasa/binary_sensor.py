@@ -36,9 +36,12 @@ async def async_setup_entry(
     client = data.client
     coordinator = data.coordinator
 
-    # Get all units
+    # Get all units from the coordinator cache
+    units = coordinator.data.get("units") if coordinator.data else None
+    if units is None:
+        _LOGGER.warning("Vacasa unit data unavailable while setting up binary sensors")
+        return
     try:
-        units = await client.get_units()
         _LOGGER.info("Found %d Vacasa units for binary sensors", len(units))
 
         # Create an occupancy sensor for each unit

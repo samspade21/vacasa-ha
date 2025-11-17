@@ -1170,18 +1170,14 @@ async def async_setup_entry(
 ) -> None:
     """Set up the Vacasa sensor platform."""
     data = config_entry.runtime_data
-    client = data.client
     coordinator = data.coordinator
 
-    try:
-        units = await client.get_units()
-        _LOGGER.debug("Found %s Vacasa units for sensors", len(units))
-    except AuthenticationError as err:
-        _LOGGER.error("Authentication error setting up Vacasa sensors: %s", err)
+    units = coordinator.data.get("units") if coordinator.data else None
+    if units is None:
+        _LOGGER.warning("Vacasa unit data unavailable while setting up sensors")
         return
-    except ApiError as err:
-        _LOGGER.error("API error setting up Vacasa sensors: %s", err)
-        return
+
+    _LOGGER.debug("Found %s Vacasa units for sensors", len(units))
 
     entities: list[SensorEntity] = []
     for unit in units:
