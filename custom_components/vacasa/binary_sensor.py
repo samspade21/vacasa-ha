@@ -41,7 +41,6 @@ async def async_setup_entry(
     coordinator = data.coordinator
 
     try:
-        units = await client.get_units()
         _LOGGER.info("Found %d Vacasa units for binary sensors", len(units))
 
         entities: list[VacasaOccupancySensor] = []

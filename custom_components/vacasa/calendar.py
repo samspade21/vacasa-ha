@@ -14,7 +14,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from . import VacasaConfigEntry, VacasaDataUpdateCoordinator
-from .api_client import ApiError, AuthenticationError, VacasaApiClient
+from .api_client import VacasaApiClient
 from .const import (
     DOMAIN,
     SIGNAL_RESERVATION_BOUNDARY,
@@ -41,34 +41,33 @@ async def async_setup_entry(
     client = data.client
     coordinator = data.coordinator
 
-    # Get all units
-    try:
-        units = await client.get_units()
-        _LOGGER.info("Found %d Vacasa units for calendars", len(units))
+    # Get all units from the coordinator cache
+    units = coordinator.data.get("units") if coordinator.data else None
+    if units is None:
+        _LOGGER.warning("Vacasa unit data unavailable while setting up calendars")
+        return
 
-        # Create a calendar entity for each unit
-        entities = []
-        for unit in units:
-            unit_id = unit.get("id")
-            attributes = unit.get("attributes", {})
-            name = attributes.get("name", f"Vacasa Unit {unit_id}")
-            code = attributes.get("code", "")
+    _LOGGER.info("Found %d Vacasa units for calendars", len(units))
 
-            entity = VacasaCalendar(
-                coordinator=coordinator,
-                client=client,
-                unit_id=unit_id,
-                name=name,
-                code=code,
-                unit_attributes=attributes,
-            )
-            entities.append(entity)
+    # Create a calendar entity for each unit
+    entities = []
+    for unit in units:
+        unit_id = unit.get("id")
+        attributes = unit.get("attributes", {})
+        name = attributes.get("name", f"Vacasa Unit {unit_id}")
+        code = attributes.get("code", "")
 
-        async_add_entities(entities, True)
-    except AuthenticationError as err:
-        _LOGGER.error("Authentication error setting up Vacasa calendars: %s", err)
-    except ApiError as err:
-        _LOGGER.error("API error setting up Vacasa calendars: %s", err)
+        entity = VacasaCalendar(
+            coordinator=coordinator,
+            client=client,
+            unit_id=unit_id,
+            name=name,
+            code=code,
+            unit_attributes=attributes,
+        )
+        entities.append(entity)
+
+    async_add_entities(entities, True)
 
 
 class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEntity):
