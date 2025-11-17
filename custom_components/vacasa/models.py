@@ -13,6 +13,8 @@ class ReservationWindow:
     summary: str | None = None
     start: datetime | None = None
     end: datetime | None = None
+    stay_type: str | None = None
+    guest_name: str | None = None
 
 
 @dataclass(slots=True)

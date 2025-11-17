@@ -94,6 +94,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         self._checkout_time = unit_attributes.get("checkOutTime")
         self._timezone = unit_attributes.get("timezone")
         self._event_cache: dict[str, list[CalendarEvent]] = {}
+        self._reservation_windows: dict[str, ReservationWindow] = {}
         self._current_event: CalendarEvent | None = None
         self._next_event: CalendarEvent | None = None
         self._unsubscribe_start_timer: Callable[[], None] | None = None
@@ -229,6 +230,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         try:
             # Clear event cache to ensure fresh data
             self._event_cache.clear()
+            self._reservation_windows.clear()
 
             # Update current and next events based on fresh data
             await self._update_current_event()
@@ -427,6 +429,10 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         if not event:
             return None
 
+        window = self._reservation_windows.get(event.uid)
+        if window:
+            return window
+
         return ReservationWindow(
             summary=event.summary,
             start=event.start,
@@ -595,15 +601,91 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
 
             description = "\n".join(description_parts)
 
+            reservation_identifier = reservation.get("id")
+            if reservation_identifier is None:
+                reservation_identifier = f"{start_date}_{end_date}_{stay_type}"
+            else:
+                reservation_identifier = str(reservation_identifier)
+
             # Create the event with datetime objects for start and end
-            return CalendarEvent(
-                uid=f"reservation_{reservation.get('id', '')}",
+            event = CalendarEvent(
+                uid=f"reservation_{reservation_identifier}",
                 summary=summary,
                 start=start_dt,
                 end=end_dt,
                 location=self._name,
                 description=description,
             )
+
+            window = self._build_reservation_window(
+                summary=summary,
+                start=start_dt,
+                end=end_dt,
+                stay_type=stay_type,
+                first_name=first_name,
+                last_name=last_name,
+                hold_who_booked=hold_who_booked,
+                hold_type=hold_type,
+            )
+
+            self._reservation_windows[event.uid] = window
+
+            return event
         except Exception as err:
             _LOGGER.error("Error converting reservation to event: %s", err)
             return None
+
+    def _build_reservation_window(
+        self,
+        *,
+        summary: str,
+        start: datetime,
+        end: datetime,
+        stay_type: str,
+        first_name: str | None,
+        last_name: str | None,
+        hold_who_booked: str | None,
+        hold_type: str | None,
+    ) -> ReservationWindow:
+        """Create a structured reservation window for dispatcher consumers."""
+        guest_name = self._resolve_guest_name(
+            stay_type,
+            first_name=first_name,
+            last_name=last_name,
+            hold_who_booked=hold_who_booked,
+            hold_type=hold_type,
+        )
+
+        return ReservationWindow(
+            summary=summary,
+            start=start,
+            end=end,
+            stay_type=stay_type,
+            guest_name=guest_name,
+        )
+
+    def _resolve_guest_name(
+        self,
+        stay_type: str,
+        *,
+        first_name: str | None,
+        last_name: str | None,
+        hold_who_booked: str | None,
+        hold_type: str | None,
+    ) -> str | None:
+        """Map reservation metadata to a person-friendly label."""
+        if stay_type == STAY_TYPE_GUEST:
+            parts = [part for part in (first_name, last_name) if part]
+            if parts:
+                return " ".join(parts)
+
+        if stay_type == STAY_TYPE_OWNER and hold_who_booked:
+            return hold_who_booked
+
+        if stay_type in (STAY_TYPE_BLOCK, STAY_TYPE_MAINTENANCE) and hold_type:
+            return hold_type
+
+        if hold_who_booked:
+            return hold_who_booked
+
+        return None

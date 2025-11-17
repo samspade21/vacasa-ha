@@ -20,13 +20,20 @@ def _mock_coordinator() -> Mock:
     return coordinator
 
 
-def _reservation_window(summary: str) -> ReservationWindow:
+def _reservation_window(
+    summary: str,
+    *,
+    guest_name: str | None = None,
+    stay_type: str = "guest",
+) -> ReservationWindow:
     """Build a reservation window with deterministic times."""
     now = datetime.now(timezone.utc)
     return ReservationWindow(
         summary=summary,
         start=now,
         end=now + timedelta(days=1),
+        guest_name=guest_name,
+        stay_type=stay_type,
     )
 
 
@@ -45,8 +52,16 @@ def test_handle_reservation_state_updates_sensor():
     sensor.async_write_ha_state = Mock()
 
     state = ReservationState(
-        current=_reservation_window("Guest Booking: Alice"),
-        upcoming=_reservation_window("Guest Booking: Bob"),
+        current=_reservation_window(
+            "Guest Booking: Alice",
+            guest_name="Alice",
+            stay_type="guest",
+        ),
+        upcoming=_reservation_window(
+            "Guest Booking: Bob",
+            guest_name="Bob",
+            stay_type="guest",
+        ),
     )
 
     sensor._handle_reservation_state("unit123", state)
@@ -73,7 +88,13 @@ def test_handle_reservation_state_ignores_other_units():
     sensor.hass = Mock()
     sensor.async_write_ha_state = Mock()
 
-    state = ReservationState(current=_reservation_window("Guest Booking: Alice"))
+    state = ReservationState(
+        current=_reservation_window(
+            "Guest Booking: Alice",
+            guest_name="Alice",
+            stay_type="guest",
+        )
+    )
 
     sensor._handle_reservation_state("unit999", state)
 
@@ -102,7 +123,13 @@ async def test_async_update_requests_coordinator_refresh():
 def test_refresh_from_coordinator_uses_cached_state():
     """Sensors bootstrap their state from the shared cache."""
     coordinator = _mock_coordinator()
-    state = ReservationState(current=_reservation_window("Guest Booking: Alice"))
+    state = ReservationState(
+        current=_reservation_window(
+            "Guest Booking: Alice",
+            guest_name="Alice",
+            stay_type="guest",
+        )
+    )
     coordinator.reservation_states["unit123"] = state
 
     sensor = VacasaOccupancySensor(

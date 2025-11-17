@@ -31,6 +31,8 @@ async def test_async_get_current_event():
                         "endDate": end.strftime("%Y-%m-%d"),
                         "checkinTime": "14:00:00",
                         "checkoutTime": "10:00:00",
+                        "firstName": "Alice",
+                        "lastName": "Current",
                     }
                 }
             ]
@@ -53,7 +55,7 @@ async def test_async_get_current_event():
     with patch("custom_components.vacasa.calendar.async_track_point_in_time", return_value=None):
         event = await calendar.async_get_current_event()
     assert event is not None
-    assert event.summary == "Guest Booking"
+    assert event.summary == "Guest Booking: Alice Current"
 
 
 def _build_calendar(
@@ -74,6 +76,8 @@ def _build_calendar(
                         "endDate": (now + end_delta).strftime("%Y-%m-%d"),
                         "checkinTime": "12:00:00",
                         "checkoutTime": "12:00:00",
+                        "firstName": "Alice",
+                        "lastName": "Current",
                     }
                 },
                 {
@@ -82,6 +86,8 @@ def _build_calendar(
                         "endDate": (now + next_end_delta).strftime("%Y-%m-%d"),
                         "checkinTime": "12:00:00",
                         "checkoutTime": "12:00:00",
+                        "firstName": "Bob",
+                        "lastName": "Future",
                     }
                 },
             ]
@@ -192,6 +198,9 @@ async def test_update_current_event_broadcasts_reservation_state():
     state = coordinator.reservation_states["unit123"]
     assert state.current is not None
     assert state.upcoming is not None
+    assert state.current.guest_name == "Alice Current"
+    assert state.current.stay_type == STAY_TYPE_GUEST
+    assert state.upcoming.guest_name == "Bob Future"
 
     mock_send.assert_called_with(
         calendar.hass,

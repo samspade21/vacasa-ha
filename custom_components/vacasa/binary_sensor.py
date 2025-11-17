@@ -17,7 +17,12 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from . import VacasaConfigEntry, VacasaDataUpdateCoordinator
-from .const import DOMAIN, SENSOR_OCCUPANCY, SIGNAL_RESERVATION_STATE
+from .const import (
+    DOMAIN,
+    SENSOR_OCCUPANCY,
+    SIGNAL_RESERVATION_STATE,
+    STAY_TYPE_TO_NAME,
+)
 from .models import ReservationState, ReservationWindow
 
 _LOGGER = logging.getLogger(__name__)
@@ -116,22 +121,20 @@ class VacasaOccupancySensor(CoordinatorEntity[VacasaDataUpdateCoordinator], Bina
             attrs["next_checkin"] = self._format_datetime(self._next_reservation.start)
             attrs["next_checkout"] = self._format_datetime(self._next_reservation.end)
 
-            guest_name = self._extract_guest_name_from_window(self._next_reservation)
-            if guest_name:
-                attrs["next_guest"] = guest_name
+            if self._next_reservation.guest_name:
+                attrs["next_guest"] = self._next_reservation.guest_name
 
-            reservation_type = self._extract_reservation_type_from_window(self._next_reservation)
+            reservation_type = self._reservation_type(self._next_reservation)
             if reservation_type:
                 attrs["next_reservation_type"] = reservation_type
 
         if self._current_reservation:
             attrs["current_checkout"] = self._format_datetime(self._current_reservation.end)
 
-            guest_name = self._extract_guest_name_from_window(self._current_reservation)
-            if guest_name:
-                attrs["current_guest"] = guest_name
+            if self._current_reservation.guest_name:
+                attrs["current_guest"] = self._current_reservation.guest_name
 
-            reservation_type = self._extract_reservation_type_from_window(self._current_reservation)
+            reservation_type = self._reservation_type(self._current_reservation)
             if reservation_type:
                 attrs["current_reservation_type"] = reservation_type
 
@@ -182,31 +185,15 @@ class VacasaOccupancySensor(CoordinatorEntity[VacasaDataUpdateCoordinator], Bina
         self._next_reservation = state.upcoming
         self._attr_available = True
 
-    def _extract_guest_name_from_window(self, window: ReservationWindow) -> str | None:
-        """Extract guest name from reservation summary."""
-        if not window or not window.summary:
+    def _reservation_type(self, window: ReservationWindow | None) -> str | None:
+        """Translate a reservation stay type into a display label."""
+        if not window or not window.stay_type:
             return None
 
-        summary = window.summary
-        if ":" in summary:
-            parts = summary.split(":", 1)
-            if len(parts) > 1:
-                guest_part = parts[1].strip()
-                if guest_part and guest_part not in ["Maintenance", "Block", "Other"]:
-                    return guest_part
-        return None
-
-    def _extract_reservation_type_from_window(self, window: ReservationWindow) -> str | None:
-        """Extract reservation type from reservation summary."""
-        if not window or not window.summary:
-            return None
-
-        summary = window.summary
-        if ":" in summary:
-            parts = summary.split(":", 1)
-            if parts:
-                return parts[0].strip()
-        return summary
+        return STAY_TYPE_TO_NAME.get(
+            window.stay_type,
+            window.stay_type.replace("_", " ").title(),
+        )
 
     def _format_datetime(self, dt: datetime | None) -> str | None:
         """Format a datetime for display."""
