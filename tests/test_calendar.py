@@ -6,7 +6,11 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from custom_components.vacasa.calendar import VacasaCalendar
-from custom_components.vacasa.const import SIGNAL_RESERVATION_BOUNDARY, STAY_TYPE_GUEST
+from custom_components.vacasa.const import (
+    SIGNAL_RESERVATION_BOUNDARY,
+    SIGNAL_RESERVATION_STATE,
+    STAY_TYPE_GUEST,
+)
 from homeassistant.util import dt as dt_util
 
 
@@ -27,25 +31,31 @@ async def test_async_get_current_event():
                         "endDate": end.strftime("%Y-%m-%d"),
                         "checkinTime": "14:00:00",
                         "checkoutTime": "10:00:00",
+                        "firstName": "Alice",
+                        "lastName": "Current",
                     }
                 }
             ]
         }
     )
 
+    coordinator = Mock()
+    coordinator.reservation_states = {}
+
     calendar = VacasaCalendar(
-        coordinator=Mock(),
+        coordinator=coordinator,
         client=client,
         unit_id="1",
         name="Unit 1",
         code="U1",
         unit_attributes={"timezone": "UTC"},
     )
+    calendar.hass = None
 
     with patch("custom_components.vacasa.calendar.async_track_point_in_time", return_value=None):
         event = await calendar.async_get_current_event()
     assert event is not None
-    assert event.summary == "Guest Booking"
+    assert event.summary == "Guest Booking: Alice Current"
 
 
 def _build_calendar(
@@ -66,6 +76,8 @@ def _build_calendar(
                         "endDate": (now + end_delta).strftime("%Y-%m-%d"),
                         "checkinTime": "12:00:00",
                         "checkoutTime": "12:00:00",
+                        "firstName": "Alice",
+                        "lastName": "Current",
                     }
                 },
                 {
@@ -74,6 +86,8 @@ def _build_calendar(
                         "endDate": (now + next_end_delta).strftime("%Y-%m-%d"),
                         "checkinTime": "12:00:00",
                         "checkoutTime": "12:00:00",
+                        "firstName": "Bob",
+                        "lastName": "Future",
                     }
                 },
             ]
@@ -85,10 +99,13 @@ def _build_calendar(
     hass.loop.call_at = Mock(return_value=None)
     hass.loop.time = Mock(return_value=0)
     hass.async_create_task = Mock()
+    hass._dispatcher_listeners = {}
+    hass.data = {}
 
     coordinator = Mock()
     coordinator.hass = hass
     coordinator.async_request_refresh = AsyncMock()
+    coordinator.reservation_states = {}
 
     calendar = VacasaCalendar(
         coordinator=coordinator,
@@ -163,3 +180,32 @@ def test_boundary_timer_dispatches_signal():
     created_coro = calendar.hass.async_create_task.call_args.args[0]
     assert mock_refresh.await_count == 0  # coroutine created but not awaited
     created_coro.close()
+
+
+@pytest.mark.asyncio
+async def test_update_current_event_broadcasts_reservation_state():
+    """Calendar publishes reservation data for other entities to consume."""
+    calendar, coordinator = _build_calendar(
+        start_delta=timedelta(days=-1),
+        end_delta=timedelta(days=1),
+        next_start_delta=timedelta(days=2),
+        next_end_delta=timedelta(days=3),
+    )
+
+    with patch("custom_components.vacasa.calendar.async_dispatcher_send") as mock_send:
+        await calendar._update_current_event()
+
+    assert "unit123" in coordinator.reservation_states
+    state = coordinator.reservation_states["unit123"]
+    assert state.current is not None
+    assert state.upcoming is not None
+    assert state.current.guest_name == "Alice Current"
+    assert state.current.stay_type == STAY_TYPE_GUEST
+    assert state.upcoming.guest_name == "Bob Future"
+
+    mock_send.assert_called_with(
+        calendar.hass,
+        SIGNAL_RESERVATION_STATE,
+        "unit123",
+        state,
+    )
