@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from contextlib import suppress
-from datetime import datetime, time, timedelta
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
@@ -33,11 +33,11 @@ from .const import (
     SENSOR_RATING,
     SENSOR_STATEMENTS_TOTAL,
     SENSOR_TIMEZONE,
-    SIGNAL_RESERVATION_BOUNDARY,
-    STAY_TYPE_GUEST,
+    SIGNAL_RESERVATION_STATE,
     STAY_TYPE_TO_CATEGORY,
     STAY_TYPE_TO_NAME,
 )
+from .models import ReservationState, ReservationWindow
 
 # Removed CoordinatorEntity import - these sensors contain static property data
 
@@ -805,7 +805,7 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
         }
 
 
-class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
+class VacasaNextStaySensor(VacasaBaseSensor):
     """Sensor representing the next upcoming stay/reservation."""
 
     def __init__(
@@ -825,7 +825,10 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
             sensor_type=SENSOR_NEXT_STAY,
             icon="mdi:calendar-clock",
         )
-        self._reservation: dict[str, Any] | None = None
+        self._attr_should_poll = False
+        self._attr_available = False
+        self._current_reservation: ReservationWindow | None = None
+        self._next_reservation: ReservationWindow | None = None
         _LOGGER.debug("VacasaNextStaySensor initialized successfully for unit %s", unit_id)
 
     async def async_added_to_hass(self) -> None:
@@ -834,189 +837,88 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass,
-                SIGNAL_RESERVATION_BOUNDARY,
-                self._handle_reservation_boundary_signal,
+                SIGNAL_RESERVATION_STATE,
+                self._handle_reservation_state,
             )
         )
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
 
-    async def _async_update_from_api(self) -> None:
-        """Fetch next reservation from API."""
-        _LOGGER.debug("VacasaNextStaySensor._async_update_from_api called for %s", self._name)
-        try:
-            # Get reservations starting from today
-            today = datetime.now().strftime("%Y-%m-%d")
-            future_date = (datetime.now() + timedelta(days=365)).strftime("%Y-%m-%d")
+        self._refresh_from_coordinator()
+        self.async_write_ha_state()
 
-            _LOGGER.debug(
-                "Fetching reservations for %s from %s to %s",
-                self._unit_id,
-                today,
-                future_date,
-            )
-            reservations = await self._coordinator.client.get_reservations(
-                self._unit_id,
-                start_date=today,
-                end_date=future_date,
-                limit=10,
-            )
-            _LOGGER.debug("Retrieved %s reservations for %s", len(reservations), self._unit_id)
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Update reservation data when the coordinator refreshes."""
+        self._refresh_from_coordinator()
+        self.async_write_ha_state()
 
-            # Find next upcoming or current reservation
-            self._reservation = self._find_next_stay(reservations)
-            _LOGGER.debug(
-                "Next stay for %s: %s",
-                self._unit_id,
-                "found" if self._reservation else "none",
-            )
+    def _refresh_from_coordinator(self) -> None:
+        """Load reservation state from the shared coordinator cache."""
+        state = self._coordinator.reservation_states.get(self._unit_id)
+        if state is None:
+            return
+        self._update_from_state(state)
 
-        except (AuthenticationError, ApiError) as err:
-            _LOGGER.warning("Unable to update next stay for %s: %s", self._name, err)
-            self._reservation = None
-        except Exception as err:
-            _LOGGER.error(
-                "Unexpected error updating next stay for %s: %s",
-                self._name,
-                err,
-                exc_info=True,
-            )
-            self._reservation = None
-
-    def _handle_reservation_boundary_signal(self, unit_id: str, boundary: str) -> None:
-        """Refresh reservation data at check-in/check-out boundaries."""
+    def _handle_reservation_state(self, unit_id: str, state: ReservationState) -> None:
+        """Handle reservation updates sent by the calendar entities."""
         if unit_id != self._unit_id:
             return
 
-        _LOGGER.debug(
-            "Received reservation boundary signal (%s) for %s - requesting refresh",
-            boundary,
-            self._name,
+        self._update_from_state(state)
+        self.async_write_ha_state()
+
+    def _update_from_state(self, state: ReservationState) -> None:
+        """Store reservation windows and mark availability."""
+        self._current_reservation = state.current
+        self._next_reservation = state.upcoming
+        self._attr_available = True
+
+    @staticmethod
+    def _as_local(value: datetime | None) -> datetime | None:
+        """Ensure datetime objects are timezone-aware and local."""
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return dt_util.as_local(value)
+        return value
+
+    def _days_until(self, target: datetime | None, now: datetime) -> int | None:
+        """Calculate whole days between now and a target datetime."""
+        if target is None:
+            return None
+
+        target_local = self._as_local(target)
+        now_local = (
+            now.astimezone(target_local.tzinfo) if target_local and target_local.tzinfo else now
         )
 
-        self._ensure_refresh_task()
-
-    def _find_next_stay(self, reservations: list[dict]) -> dict | None:
-        """Find the next relevant reservation (current or upcoming)."""
-        now = dt_util.now()
-
-        for reservation in sorted(
-            reservations,
-            key=lambda r: r.get("attributes", {}).get("startDate", ""),
-        ):
-            attrs = reservation.get("attributes", {})
-            end_date = self._parse_date(
-                attrs.get("endDate"),
-                time_str=attrs.get("checkoutTime") or self._unit_attributes.get("checkOutTime"),
-            )
-
-            # Include if checkout is in the future (current or upcoming)
-            if end_date and end_date > now:
-                return reservation
-
-        return None
-
-    def _parse_date(self, date_str: str | None, time_str: str | None = None) -> datetime | None:
-        """Parse date string to datetime object, applying optional time."""
-        if not date_str:
+        if target_local is None:
             return None
 
-        try:
-            # Try parsing as date only first
-            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+        return (target_local.date() - now_local.date()).days
 
-            parsed_datetime = date_obj
-
-        except ValueError:
-            # Try parsing as full datetime
-            try:
-                parsed_datetime = dt_util.parse_datetime(date_str)
-            except Exception:
-                _LOGGER.warning("Could not parse date: %s", date_str)
-                return None
-
-        if parsed_datetime is None:
-            return None
-
-        # Apply optional time if provided
-        if time_str:
-            parsed_time = self._parse_time_string(time_str)
-            if parsed_time:
-                parsed_datetime = parsed_datetime.replace(
-                    hour=parsed_time.hour,
-                    minute=parsed_time.minute,
-                    second=parsed_time.second,
-                    microsecond=0,
-                )
-
-        # Ensure timezone awareness
-        tz = None
-        if self._unit_attributes.get("timezone"):
-            try:
-                from zoneinfo import ZoneInfo
-
-                tz = ZoneInfo(self._unit_attributes["timezone"])
-            except Exception:
-                tz = None
-
-        if parsed_datetime.tzinfo is None:
-            if tz is not None:
-                parsed_datetime = parsed_datetime.replace(tzinfo=tz)
-            else:
-                parsed_datetime = dt_util.as_local(parsed_datetime)
-        elif tz is not None:
-            parsed_datetime = parsed_datetime.astimezone(tz)
-
-        return parsed_datetime
-
-    def _parse_time_string(self, time_str: str | None) -> time | None:
-        """Parse a time string into a time object."""
-        if not time_str:
-            return None
-
-        cleaned = time_str.strip()
-        for fmt in ("%H:%M:%S", "%H:%M", "%I:%M %p", "%I %p", "%I:%M%p", "%H%M"):
-            with suppress(ValueError):
-                return datetime.strptime(cleaned, fmt).time()
-
-        # Handle whole hour without delimiters (e.g., "16")
-        with suppress(ValueError):
-            hour = int(cleaned)
-            if 0 <= hour <= 23:
-                return datetime.strptime(f"{hour:02d}:00", "%H:%M").time()
-
-        _LOGGER.debug("Could not parse time string '%s'", time_str)
-        return None
+    def _active_reservation(self) -> ReservationWindow | None:
+        """Return the current reservation if present, otherwise the next."""
+        return self._current_reservation or self._next_reservation
 
     @property
     def native_value(self) -> str:
-        """Return human-readable state."""
-        if not self._reservation:
+        """Return human-readable state based on reservation windows."""
+        reservation = self._active_reservation()
+        if reservation is None:
             return "No upcoming reservations"
 
-        attrs = self._reservation.get("attributes", {})
-        start_date = self._parse_date(
-            attrs.get("startDate"),
-            time_str=attrs.get("checkinTime") or self._unit_attributes.get("checkInTime"),
-        )
-        end_date = self._parse_date(
-            attrs.get("endDate"),
-            time_str=attrs.get("checkoutTime") or self._unit_attributes.get("checkOutTime"),
-        )
+        start_date = self._as_local(reservation.start)
+        end_date = self._as_local(reservation.end)
         now = dt_util.now()
 
-        # Determine if current or upcoming
         is_current = start_date and end_date and start_date <= now < end_date
-
-        # Get stay type
-        stay_type = self._coordinator.client.categorize_reservation(self._reservation)
-        stay_name = STAY_TYPE_TO_NAME.get(stay_type, "Reservation")
+        stay_name = STAY_TYPE_TO_NAME.get(reservation.stay_type, "Reservation")
 
         if is_current:
             return f"{stay_name} (currently occupied)"
 
-        days_until = None
-        if start_date:
-            compare_now = now.astimezone(start_date.tzinfo) if start_date.tzinfo else now
-            days_until = (start_date.date() - compare_now.date()).days
+        days_until = self._days_until(start_date, now)
         if days_until is not None:
             if days_until == 0:
                 return f"{stay_name} (today)"
@@ -1028,80 +930,43 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return detailed reservation attributes."""
-        if not self._reservation:
+        """Return detailed reservation attributes from shared state."""
+        reservation = self._active_reservation()
+        if reservation is None:
             return {
                 "is_current": False,
                 "is_upcoming": False,
             }
 
-        attrs = self._reservation.get("attributes", {})
-        start_date = self._parse_date(
-            attrs.get("startDate"),
-            time_str=attrs.get("checkinTime") or self._unit_attributes.get("checkInTime"),
-        )
-        end_date = self._parse_date(
-            attrs.get("endDate"),
-            time_str=attrs.get("checkoutTime") or self._unit_attributes.get("checkOutTime"),
-        )
+        start_date = self._as_local(reservation.start)
+        end_date = self._as_local(reservation.end)
         now = dt_util.now()
 
-        # Compute time values
         is_current = start_date and end_date and start_date <= now < end_date
-        if start_date:
-            compare_now = now.astimezone(start_date.tzinfo) if start_date.tzinfo else now
-            days_until_checkin = (
-                (start_date.date() - compare_now.date()).days if start_date > now else None
-            )
-        else:
-            days_until_checkin = None
+        is_upcoming = start_date and start_date > now
 
-        if end_date:
-            compare_now_end = now.astimezone(end_date.tzinfo) if end_date.tzinfo else now
-            days_until_checkout = (end_date.date() - compare_now_end.date()).days
-        else:
-            days_until_checkout = None
-
+        days_until_checkin = self._days_until(start_date, now) if is_upcoming else None
+        days_until_checkout = self._days_until(end_date, now)
         stay_duration = (
             (end_date.date() - start_date.date()).days if start_date and end_date else None
         )
 
-        # Get stay classification
-        stay_type = self._coordinator.client.categorize_reservation(self._reservation)
-
-        # Extract guest info
-        guest_name = None
-        if stay_type == STAY_TYPE_GUEST:
-            first = attrs.get("firstName", "")
-            last = attrs.get("lastName", "")
-            if first and last:
-                guest_name = f"{first} {last}"
-
         return {
-            # Core data
-            "reservation_id": self._reservation.get("id"),
-            "status": "confirmed",  # MVP: Assume confirmed
-            # Dates
+            "summary": reservation.summary,
+            "reservation_id": reservation.reservation_id,
             "checkin_date": start_date.isoformat() if start_date else None,
             "checkout_date": end_date.isoformat() if end_date else None,
-            "checkin_time": attrs.get("checkinTime", self._unit_attributes.get("checkInTime")),
-            "checkout_time": attrs.get("checkoutTime", self._unit_attributes.get("checkOutTime")),
-            # Classification
-            "stay_type": stay_type,
-            "stay_category": STAY_TYPE_TO_CATEGORY.get(stay_type),
-            # Guest info
-            "guest_count": attrs.get("guestCount"),
-            "guest_name": guest_name,
-            # Booking (MVP: limited data)
-            "booking_source": "vacasa_direct",
-            "special_notes": None,
-            # Computed values
+            "checkin_time": start_date.time().isoformat() if start_date else None,
+            "checkout_time": end_date.time().isoformat() if end_date else None,
+            "stay_type": reservation.stay_type,
+            "stay_category": STAY_TYPE_TO_CATEGORY.get(reservation.stay_type),
+            "guest_name": reservation.guest_name,
+            "guest_count": reservation.guest_count,
             "days_until_checkin": days_until_checkin,
             "days_until_checkout": days_until_checkout,
             "stay_duration_nights": stay_duration,
-            # Flags
-            "is_current": is_current,
-            "is_upcoming": not is_current and days_until_checkin is not None,
+            "is_current": bool(is_current),
+            "is_upcoming": bool(is_upcoming),
         }
 
 

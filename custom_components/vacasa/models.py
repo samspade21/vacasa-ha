@@ -10,11 +10,13 @@ from datetime import datetime
 class ReservationWindow:
     """Represents a reservation window for a property."""
 
+    reservation_id: str | None = None
     summary: str | None = None
     start: datetime | None = None
     end: datetime | None = None
     stay_type: str | None = None
     guest_name: str | None = None
+    guest_count: int | None = None
 
 
 @dataclass(slots=True)

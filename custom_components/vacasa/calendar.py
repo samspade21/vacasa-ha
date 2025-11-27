@@ -621,6 +621,8 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                 start=start_dt,
                 end=end_dt,
                 stay_type=stay_type,
+                reservation_id=reservation.get("id"),
+                guest_count=attributes.get("guestCount"),
                 first_name=first_name,
                 last_name=last_name,
                 hold_who_booked=hold_who_booked,
@@ -641,6 +643,8 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         start: datetime,
         end: datetime,
         stay_type: str,
+        reservation_id: str | None,
+        guest_count: int | None,
         first_name: str | None,
         last_name: str | None,
         hold_who_booked: str | None,
@@ -656,11 +660,13 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         )
 
         return ReservationWindow(
+            reservation_id=str(reservation_id) if reservation_id is not None else None,
             summary=summary,
             start=start,
             end=end,
             stay_type=stay_type,
             guest_name=guest_name,
+            guest_count=guest_count,
         )
 
     def _resolve_guest_name(
