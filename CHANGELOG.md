@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2025-12-01
+
+### Fixed
+- **CRITICAL**: Fixed premature occupancy state changes during active guest stays (#71)
+  - Checkout times now default to 10:00 AM instead of midnight
+  - Check-in times now default to 4:00 PM instead of midnight
+  - Prevents system from incorrectly showing vacancy 10+ hours before actual checkout
+- Fixed occupancy sensor setup and tests (#74)
+- Fixed automation examples using non-existent `trigger.calendar_event.category` field (#81)
+
+### Added
+- Event-driven updates for reservation sensors (#70)
+- Coordinator-based caching for Vacasa units (#72)
+- Comprehensive entity attributes documentation in README (#81)
+- Stay types reference table with all available categories (#81)
+
+### Changed
+- Refactored next stay sensor to use shared reservation state (#79)
+- Improved automation examples with three working alternatives (#81)
+
+### Dependencies
+- Bumped pre-commit from 4.4.0 to 4.5.0 (#78)
+- Bumped mypy from 1.18.2 to 1.19.0 (#80)
+- Bumped actions/github-script from 7 to 8 (#77)
+- Bumped actions/checkout from 5 to 6 (#76)
+- Bumped actions/upload-artifact from 4 to 5 (#75)
+
 ## [1.6.0] - 2025-11-14
 
 ### Added
