@@ -73,18 +73,29 @@ For each Vacasa property, the integration creates:
 - Categorizes reservations by type (guest, owner, maintenance, etc.)
 - Includes detailed information in event descriptions
 
-### Occupancy Sensor
+### Occupancy Sensor (Binary Sensor)
 
 - Entity ID: `binary_sensor.vacasa_[property_name]_occupancy`
 - State: `on` when the property is currently occupied, `off` when vacant
-- Attributes:
+- **Attributes** (use these in automations):
   - `current_guest`: Name of the current guest (if applicable)
-  - `current_checkout`: Date and time of the current guest's check-out
-  - `current_reservation_type`: Type of the current reservation
-  - `next_checkin`: Date and time of the next check-in
-  - `next_checkout`: Date and time of the next check-out
+  - `current_checkout`: Date and time of the current guest's check-out (ISO format)
+  - `current_reservation_type`: Type of current reservation (e.g., "Guest Booking", "Owner Stay", "Maintenance")
+  - `next_checkin`: Date and time of the next check-in (ISO format)
+  - `next_checkout`: Date and time of the next check-out (ISO format)
   - `next_guest`: Name of the next guest (if applicable)
-  - `next_reservation_type`: Type of the next reservation
+  - `next_reservation_type`: Type of next reservation (e.g., "Guest Booking", "Owner Stay")
+
+### Next Stay Sensor
+
+- Entity ID: `sensor.vacasa_[property_name]_next_stay`
+- State: Number of days until the next check-in
+- **Attributes** (use these in automations):
+  - `stay_type`: Type of the upcoming stay (e.g., "Guest Booking", "Owner Stay", "Maintenance")
+  - `stay_category`: Categorized stay type in lowercase with underscores (e.g., "guest_booking", "owner_stay", "maintenance")
+  - `guest_name`: Name of the next guest (if applicable)
+  - `checkin_date`: Check-in date and time (ISO format)
+  - `checkout_date`: Check-out date and time (ISO format)
 
 ### Property Information Sensors
 
@@ -107,17 +118,27 @@ For each Vacasa property, the integration creates:
 - **Pet Friendly**: Whether the property allows pets ("Yes"/"No")
 - **Parking**: Number of parking spaces with detailed attributes
 
-## Calendar Categories
+## Stay Types and Categories
 
-The integration categorizes reservations into the following types:
+The integration categorizes reservations into the following types. These are available through entity attributes and can be used in automations:
 
-- **Guest Booking**: Reservations made by guests
-- **Owner Stay**: Reservations made by the property owner
-- **Maintenance**: Maintenance visits
-- **Block**: Other types of blocks (e.g., seasonal holds)
-- **Other**: Any other type of reservation
+| Display Name | Category Value | Binary Sensor Attribute | Next Stay Attribute | Description |
+|-------------|----------------|------------------------|---------------------|-------------|
+| **Guest Booking** | `guest_booking` | `Guest Booking` | `guest_booking` | Regular guest reservations |
+| **Owner Stay** | `owner_stay` | `Owner Stay` | `owner_stay` | When the property owner is staying |
+| **Maintenance** | `maintenance` | `Maintenance` | `maintenance` | Scheduled maintenance visits |
+| **Block** | `block` | `Block` | `block` | Property blocks (seasonal holds, etc.) |
+| **Other** | `other` | `Other` | `other` | Any other type of reservation |
 
-These categories can be used in automations to trigger different actions based on the type of reservation.
+### Using Stay Types in Automations
+
+Stay types are accessible through different attributes depending on which entity you use:
+
+- **Binary Sensor attributes**: Use `current_reservation_type` or `next_reservation_type` (returns display names like "Guest Booking")
+- **Next Stay Sensor attributes**: Use `stay_type` (display name) or `stay_category` (lowercase with underscores like "guest_booking")
+- **Calendar event descriptions**: Parse the description field which contains the type information (e.g., "Guest booking from...")
+
+**Recommendation**: Use binary sensor attributes (`current_reservation_type` or `next_reservation_type`) for most automations as they are the most straightforward and reliable.
 
 ## Services
 
@@ -128,24 +149,143 @@ The integration provides the following services:
 
 ## Automation Examples
 
-### Adjust Temperature for Guest Arrival
+**Important Note**: Calendar events do NOT have a `category` attribute. Use the methods shown below to check reservation types in automations.
+
+### Option 1: Using Binary Sensor Attributes (Recommended)
+
+This is the most straightforward and reliable method for checking reservation types.
 
 ```yaml
 automation:
   - alias: "Adjust Temperature for Guest Arrival"
     trigger:
-      - platform: calendar
-        event: start
-        entity_id: calendar.vacasa_vacation_cabin
+      - platform: state
+        entity_id: binary_sensor.vacasa_vacation_cabin_occupancy
+        to: "on"
     condition:
       - condition: template
-        value_template: "{{ trigger.calendar_event.category == 'guest_booking' }}"
+        value_template: >
+          {{ state_attr('binary_sensor.vacasa_vacation_cabin_occupancy', 'current_reservation_type') == 'Guest Booking' }}
     action:
       - service: climate.set_temperature
         target:
           entity_id: climate.living_room
         data:
           temperature: 70
+      - service: notify.mobile_app
+        data:
+          title: "Guest Arrival"
+          message: "Guests have checked in. Temperature set to 70°F."
+```
+
+### Option 2: Using Next Stay Sensor Attributes
+
+Use the next stay sensor when you need to react to upcoming reservations before they start.
+
+```yaml
+automation:
+  - alias: "Prepare for Upcoming Owner Stay"
+    trigger:
+      - platform: state
+        entity_id: sensor.vacasa_vacation_cabin_next_stay
+    condition:
+      - condition: template
+        value_template: >
+          {{ state_attr('sensor.vacasa_vacation_cabin_next_stay', 'stay_category') == 'owner_stay' }}
+      - condition: template
+        value_template: >
+          {{ states('sensor.vacasa_vacation_cabin_next_stay') | int <= 2 }}
+    action:
+      - service: script.prepare_for_owner
+      - service: notify.mobile_app
+        data:
+          title: "Owner Stay Approaching"
+          message: "Owner stay begins in {{ states('sensor.vacasa_vacation_cabin_next_stay') }} days."
+```
+
+### Option 3: Using Calendar Event Description
+
+Parse the event description when using calendar triggers. Note: This is less reliable than using sensor attributes.
+
+```yaml
+automation:
+  - alias: "Notify on Maintenance Arrival"
+    trigger:
+      - platform: calendar
+        event: start
+        entity_id: calendar.vacasa_vacation_cabin
+    condition:
+      - condition: template
+        value_template: >
+          {{ 'Maintenance' in trigger.calendar_event.description }}
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Maintenance Arrival"
+          message: "Maintenance crew has arrived at the property."
+```
+
+### Differentiate Between Guest Types
+
+Use the reservation type to apply different settings for guests vs. owners vs. maintenance:
+
+```yaml
+automation:
+  - alias: "Set Climate Based on Reservation Type"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.vacasa_vacation_cabin_occupancy
+        to: "on"
+    action:
+      - choose:
+          # Guest booking - comfortable temperature
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ state_attr('binary_sensor.vacasa_vacation_cabin_occupancy', 'current_reservation_type') == 'Guest Booking' }}
+            sequence:
+              - service: climate.set_temperature
+                target:
+                  entity_id: climate.living_room
+                data:
+                  temperature: 70
+              - service: switch.turn_on
+                entity_id: switch.guest_mode
+
+          # Owner stay - preferred settings
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ state_attr('binary_sensor.vacasa_vacation_cabin_occupancy', 'current_reservation_type') == 'Owner Stay' }}
+            sequence:
+              - service: climate.set_temperature
+                target:
+                  entity_id: climate.living_room
+                data:
+                  temperature: 68
+              - service: switch.turn_on
+                entity_id: switch.owner_mode
+
+          # Maintenance - minimal settings
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ state_attr('binary_sensor.vacasa_vacation_cabin_occupancy', 'current_reservation_type') == 'Maintenance' }}
+            sequence:
+              - service: climate.set_temperature
+                target:
+                  entity_id: climate.living_room
+                data:
+                  temperature: 65
+              - service: light.turn_on
+                entity_id: light.workshop
+        default:
+          # Other types - economy mode
+          - service: climate.set_temperature
+            target:
+              entity_id: climate.living_room
+            data:
+              temperature: 62
 ```
 
 ### Turn Down Heat When Vacant
