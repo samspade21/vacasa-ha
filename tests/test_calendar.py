@@ -182,6 +182,40 @@ def test_boundary_timer_dispatches_signal():
     created_coro.close()
 
 
+def test_midnight_times_use_default_checkin_and_checkout():
+    """Midnight check-in/out values should fall back to default times."""
+    coordinator = Mock()
+    coordinator.reservation_states = {}
+
+    calendar = VacasaCalendar(
+        coordinator=coordinator,
+        client=Mock(),
+        unit_id="unit123",
+        name="Test Unit",
+        code="TU",
+        unit_attributes={},
+    )
+
+    event = calendar._reservation_to_event(
+        {
+            "id": "res123",
+            "attributes": {
+                "startDate": "2024-05-01",
+                "endDate": "2024-05-02",
+                "checkinTime": "00:00:00.000Z",
+                "checkoutTime": "00:00:00.000Z",
+            },
+        },
+        STAY_TYPE_GUEST,
+    )
+
+    assert event is not None
+    assert event.start.hour == 16
+    assert event.start.minute == 0
+    assert event.end.hour == 10
+    assert event.end.minute == 0
+
+
 @pytest.mark.asyncio
 async def test_update_current_event_broadcasts_reservation_state():
     """Calendar publishes reservation data for other entities to consume."""
