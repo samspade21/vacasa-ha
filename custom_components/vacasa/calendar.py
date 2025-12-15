@@ -438,6 +438,33 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             end=event.end,
         )
 
+    def _normalize_time_value(self, time_value: Any) -> str | None:
+        """Return a usable time string or None when the value represents midnight."""
+        if not isinstance(time_value, str):
+            return None
+
+        normalized = time_value.strip()
+        if not normalized:
+            return None
+
+        try:
+            parsed_dt = dt_util.parse_datetime(f"1970-01-01T{normalized}")
+        except Exception:  # pragma: no cover - defensive parsing
+            return normalized
+
+        if parsed_dt is None:
+            return normalized
+
+        if (
+            parsed_dt.hour == 0
+            and parsed_dt.minute == 0
+            and parsed_dt.second == 0
+            and parsed_dt.microsecond == 0
+        ):
+            return None
+
+        return normalized
+
     def _reservation_to_event(  # noqa: C901
         self, reservation: dict[str, Any], stay_type: str
     ) -> CalendarEvent | None:
@@ -453,26 +480,28 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                 return None
 
             # Get check-in and check-out times from the reservation or property
-            checkin_time = attributes.get("checkinTime")
-            checkout_time = attributes.get("checkoutTime")
+            checkin_time = self._normalize_time_value(attributes.get("checkinTime"))
+            checkout_time = self._normalize_time_value(attributes.get("checkoutTime"))
+            property_checkin_time = self._normalize_time_value(self._checkin_time)
+            property_checkout_time = self._normalize_time_value(self._checkout_time)
 
             # Create datetime objects based on available information
-            if checkin_time and checkin_time != "00:00:00":
+            if checkin_time:
                 # Use time from reservation
                 start_dt_str = f"{start_date}T{checkin_time}"
-            elif self._checkin_time:
+            elif property_checkin_time:
                 # Use property-specific time
-                start_dt_str = f"{start_date}T{self._checkin_time}"
+                start_dt_str = f"{start_date}T{property_checkin_time}"
             else:
                 # No time available, default to 4:00 PM (16:00)
                 start_dt_str = f"{start_date}T16:00:00"
 
-            if checkout_time and checkout_time != "00:00:00":
+            if checkout_time:
                 # Use time from reservation
                 end_dt_str = f"{end_date}T{checkout_time}"
-            elif self._checkout_time:
+            elif property_checkout_time:
                 # Use property-specific time
-                end_dt_str = f"{end_date}T{self._checkout_time}"
+                end_dt_str = f"{end_date}T{property_checkout_time}"
             else:
                 # No time available, default to 10:00 AM (10:00)
                 end_dt_str = f"{end_date}T10:00:00"
