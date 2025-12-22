@@ -589,8 +589,6 @@ class VacasaApiClient:
         if "#access_token=" in url:
             return url.split("#access_token=")[0] + "#<token_redacted>"
         if "access_token=" in url:
-            import re
-
             return re.sub(r"access_token=[^&\s]+", "access_token=<redacted>", url)
         return url
 
