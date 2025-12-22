@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2024-12-22
+
+### Fixed
+- Calendar boundary refresh now enables real-time sensor updates at exact checkin/checkout times
+- Removed blocking coordinator refresh that caused sensors to update hours late
+
+### Security
+- Added URL sanitization to prevent token exposure in debug logs
+- Added HTML escaping for user-provided display content (XSS protection)
+- Improved exception handling with specific exception types
+- Added comprehensive JWT parsing documentation
+
+### Changed
+- Exception handling now uses specific types instead of broad catches
+
 ## [1.7.0] - 2025-12-01
 
 ### Fixed
