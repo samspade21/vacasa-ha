@@ -3,11 +3,12 @@
 import asyncio
 import logging
 from contextlib import suppress
-from datetime import datetime, time, timedelta
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
@@ -19,7 +20,6 @@ from .const import (
     SENSOR_ADDRESS,
     SENSOR_BATHROOMS,
     SENSOR_BEDROOMS,
-    SENSOR_HOME_STATUS,
     SENSOR_HOT_TUB,
     SENSOR_LOCATION,
     SENSOR_MAINTENANCE_OPEN,
@@ -33,10 +33,11 @@ from .const import (
     SENSOR_RATING,
     SENSOR_STATEMENTS_TOTAL,
     SENSOR_TIMEZONE,
-    STAY_TYPE_GUEST,
+    SIGNAL_RESERVATION_STATE,
     STAY_TYPE_TO_CATEGORY,
     STAY_TYPE_TO_NAME,
 )
+from .models import ReservationState, ReservationWindow
 
 # Removed CoordinatorEntity import - these sensors contain static property data
 
@@ -644,88 +645,6 @@ class VacasaAddressSensor(VacasaBaseSensor):
         return attributes
 
 
-class VacasaHomeInfoSensor(VacasaApiUpdateMixin, VacasaBaseSensor):
-    """Sensor exposing home inspection and cleanliness information."""
-
-    def __init__(
-        self,
-        coordinator,
-        unit_id: str,
-        name: str,
-        unit_attributes: dict[str, Any],
-    ) -> None:
-        """Initialize home info sensor."""
-        super().__init__(
-            coordinator=coordinator,
-            unit_id=unit_id,
-            name=name,
-            unit_attributes=unit_attributes,
-            sensor_type=SENSOR_HOME_STATUS,
-            icon="mdi:home-analytics",
-        )
-        self._home_info: dict[str, Any] = {}
-
-    async def _async_update_from_api(self) -> None:
-        """Refresh the home info payload."""
-        try:
-            self._home_info = await self._coordinator.client.get_home_info(self._unit_id)
-        except (AuthenticationError, ApiError) as err:
-            _LOGGER.warning("Unable to update home info for %s: %s", self._name, err)
-            self._home_info = {}
-
-    def _home_attributes(self) -> dict[str, Any]:
-        """Return the attribute payload from the home info response."""
-
-        def extract_attributes(payload: Any) -> dict[str, Any]:
-            """Recursively walk home-info payloads to locate attributes."""
-            if isinstance(payload, dict):
-                attributes = payload.get("attributes")
-                if isinstance(attributes, dict):
-                    return attributes
-
-                data = payload.get("data")
-                if data is not None:
-                    extracted = extract_attributes(data)
-                    if extracted:
-                        return extracted
-
-                return payload if payload else {}
-
-            if isinstance(payload, list):
-                for item in payload:
-                    extracted = extract_attributes(item)
-                    if extracted:
-                        return extracted
-
-            return {}
-
-        return extract_attributes(self._home_info)
-
-    @property
-    def native_value(self) -> str | None:
-        """Return the current home status if available."""
-        attributes = self._home_attributes()
-        for key in ("homeStatus", "cleanStatus", "propertyStatus", "status"):
-            value = attributes.get(key)
-            if isinstance(value, str):
-                return value
-        return None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Expose additional inspection metadata."""
-        attributes = self._home_attributes()
-        return {
-            "last_inspection_date": attributes.get("lastInspectionDate")
-            or attributes.get("inspectionDate"),
-            "last_clean_date": attributes.get("lastCleanDate"),
-            "next_clean_date": attributes.get("nextCleanDate"),
-            "clean_score": attributes.get("cleanScore") or attributes.get("score"),
-            "inspection_score": attributes.get("inspectionScore"),
-            "upcoming_tasks": attributes.get("upcomingTasks"),
-        }
-
-
 class VacasaMaintenanceSensor(VacasaApiUpdateMixin, VacasaBaseSensor):
     """Sensor representing open maintenance tickets for a unit."""
 
@@ -886,7 +805,7 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
         }
 
 
-class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
+class VacasaNextStaySensor(VacasaBaseSensor):
     """Sensor representing the next upcoming stay/reservation."""
 
     def __init__(
@@ -906,174 +825,100 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
             sensor_type=SENSOR_NEXT_STAY,
             icon="mdi:calendar-clock",
         )
-        self._reservation: dict[str, Any] | None = None
+        self._attr_should_poll = False
+        self._attr_available = False
+        self._current_reservation: ReservationWindow | None = None
+        self._next_reservation: ReservationWindow | None = None
         _LOGGER.debug("VacasaNextStaySensor initialized successfully for unit %s", unit_id)
 
-    async def _async_update_from_api(self) -> None:
-        """Fetch next reservation from API."""
-        _LOGGER.debug("VacasaNextStaySensor._async_update_from_api called for %s", self._name)
-        try:
-            # Get reservations starting from today
-            today = datetime.now().strftime("%Y-%m-%d")
-            future_date = (datetime.now() + timedelta(days=365)).strftime("%Y-%m-%d")
-
-            _LOGGER.debug(
-                "Fetching reservations for %s from %s to %s",
-                self._unit_id,
-                today,
-                future_date,
+    async def async_added_to_hass(self) -> None:
+        """Register listeners when added to Home Assistant."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_RESERVATION_STATE,
+                self._handle_reservation_state,
             )
-            reservations = await self._coordinator.client.get_reservations(
-                self._unit_id,
-                start_date=today,
-                end_date=future_date,
-                limit=10,
-            )
-            _LOGGER.debug("Retrieved %s reservations for %s", len(reservations), self._unit_id)
+        )
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
 
-            # Find next upcoming or current reservation
-            self._reservation = self._find_next_stay(reservations)
-            _LOGGER.debug(
-                "Next stay for %s: %s",
-                self._unit_id,
-                "found" if self._reservation else "none",
-            )
+        self._refresh_from_coordinator()
+        self.async_write_ha_state()
 
-        except (AuthenticationError, ApiError) as err:
-            _LOGGER.warning("Unable to update next stay for %s: %s", self._name, err)
-            self._reservation = None
-        except Exception as err:
-            _LOGGER.error(
-                "Unexpected error updating next stay for %s: %s",
-                self._name,
-                err,
-                exc_info=True,
-            )
-            self._reservation = None
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Update reservation data when the coordinator refreshes."""
+        self._refresh_from_coordinator()
+        self.async_write_ha_state()
 
-    def _find_next_stay(self, reservations: list[dict]) -> dict | None:
-        """Find the next relevant reservation (current or upcoming)."""
-        now = dt_util.now()
+    def _refresh_from_coordinator(self) -> None:
+        """Load reservation state from the shared coordinator cache."""
+        state = self._coordinator.reservation_states.get(self._unit_id)
+        if state is None:
+            return
+        self._update_from_state(state)
 
-        for reservation in sorted(
-            reservations,
-            key=lambda r: r.get("attributes", {}).get("startDate", ""),
-        ):
-            attrs = reservation.get("attributes", {})
-            end_date = self._parse_date(
-                attrs.get("endDate"),
-                time_str=attrs.get("checkoutTime") or self._unit_attributes.get("checkOutTime"),
-            )
+    def _handle_reservation_state(self, unit_id: str, state: ReservationState) -> None:
+        """Handle reservation updates sent by the calendar entities."""
+        if unit_id != self._unit_id:
+            return
 
-            # Include if checkout is in the future (current or upcoming)
-            if end_date and end_date > now:
-                return reservation
+        self._update_from_state(state)
+        self.async_write_ha_state()
 
-        return None
+    def _update_from_state(self, state: ReservationState) -> None:
+        """Store reservation windows and mark availability."""
+        self._current_reservation = state.current
+        self._next_reservation = state.upcoming
+        self._attr_available = True
 
-    def _parse_date(self, date_str: str | None, time_str: str | None = None) -> datetime | None:
-        """Parse date string to datetime object, applying optional time."""
-        if not date_str:
+    @staticmethod
+    def _as_local(value: datetime | None) -> datetime | None:
+        """Ensure datetime objects are timezone-aware and local."""
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return dt_util.as_local(value)
+        return value
+
+    def _days_until(self, target: datetime | None, now: datetime) -> int | None:
+        """Calculate whole days between now and a target datetime."""
+        if target is None:
             return None
 
-        try:
-            # Try parsing as date only first
-            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+        target_local = self._as_local(target)
+        now_local = (
+            now.astimezone(target_local.tzinfo) if target_local and target_local.tzinfo else now
+        )
 
-            parsed_datetime = date_obj
-
-        except ValueError:
-            # Try parsing as full datetime
-            try:
-                parsed_datetime = dt_util.parse_datetime(date_str)
-            except Exception:
-                _LOGGER.warning("Could not parse date: %s", date_str)
-                return None
-
-        if parsed_datetime is None:
+        if target_local is None:
             return None
 
-        # Apply optional time if provided
-        if time_str:
-            parsed_time = self._parse_time_string(time_str)
-            if parsed_time:
-                parsed_datetime = parsed_datetime.replace(
-                    hour=parsed_time.hour,
-                    minute=parsed_time.minute,
-                    second=parsed_time.second,
-                    microsecond=0,
-                )
+        return (target_local.date() - now_local.date()).days
 
-        # Ensure timezone awareness
-        tz = None
-        if self._unit_attributes.get("timezone"):
-            try:
-                from zoneinfo import ZoneInfo
-
-                tz = ZoneInfo(self._unit_attributes["timezone"])
-            except Exception:
-                tz = None
-
-        if parsed_datetime.tzinfo is None:
-            if tz is not None:
-                parsed_datetime = parsed_datetime.replace(tzinfo=tz)
-            else:
-                parsed_datetime = dt_util.as_local(parsed_datetime)
-        elif tz is not None:
-            parsed_datetime = parsed_datetime.astimezone(tz)
-
-        return parsed_datetime
-
-    def _parse_time_string(self, time_str: str | None) -> time | None:
-        """Parse a time string into a time object."""
-        if not time_str:
-            return None
-
-        cleaned = time_str.strip()
-        for fmt in ("%H:%M:%S", "%H:%M", "%I:%M %p", "%I %p", "%I:%M%p", "%H%M"):
-            with suppress(ValueError):
-                return datetime.strptime(cleaned, fmt).time()
-
-        # Handle whole hour without delimiters (e.g., "16")
-        with suppress(ValueError):
-            hour = int(cleaned)
-            if 0 <= hour <= 23:
-                return datetime.strptime(f"{hour:02d}:00", "%H:%M").time()
-
-        _LOGGER.debug("Could not parse time string '%s'", time_str)
-        return None
+    def _active_reservation(self) -> ReservationWindow | None:
+        """Return the current reservation if present, otherwise the next."""
+        return self._current_reservation or self._next_reservation
 
     @property
     def native_value(self) -> str:
-        """Return human-readable state."""
-        if not self._reservation:
+        """Return human-readable state based on reservation windows."""
+        reservation = self._active_reservation()
+        if reservation is None:
             return "No upcoming reservations"
 
-        attrs = self._reservation.get("attributes", {})
-        start_date = self._parse_date(
-            attrs.get("startDate"),
-            time_str=attrs.get("checkinTime") or self._unit_attributes.get("checkInTime"),
-        )
-        end_date = self._parse_date(
-            attrs.get("endDate"),
-            time_str=attrs.get("checkoutTime") or self._unit_attributes.get("checkOutTime"),
-        )
+        start_date = self._as_local(reservation.start)
+        end_date = self._as_local(reservation.end)
         now = dt_util.now()
 
-        # Determine if current or upcoming
         is_current = start_date and end_date and start_date <= now < end_date
-
-        # Get stay type
-        stay_type = self._coordinator.client.categorize_reservation(self._reservation)
-        stay_name = STAY_TYPE_TO_NAME.get(stay_type, "Reservation")
+        stay_name = STAY_TYPE_TO_NAME.get(reservation.stay_type, "Reservation")
 
         if is_current:
             return f"{stay_name} (currently occupied)"
 
-        days_until = None
-        if start_date:
-            compare_now = now.astimezone(start_date.tzinfo) if start_date.tzinfo else now
-            days_until = (start_date.date() - compare_now.date()).days
+        days_until = self._days_until(start_date, now)
         if days_until is not None:
             if days_until == 0:
                 return f"{stay_name} (today)"
@@ -1085,80 +930,43 @@ class VacasaNextStaySensor(VacasaApiUpdateMixin, VacasaBaseSensor):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return detailed reservation attributes."""
-        if not self._reservation:
+        """Return detailed reservation attributes from shared state."""
+        reservation = self._active_reservation()
+        if reservation is None:
             return {
                 "is_current": False,
                 "is_upcoming": False,
             }
 
-        attrs = self._reservation.get("attributes", {})
-        start_date = self._parse_date(
-            attrs.get("startDate"),
-            time_str=attrs.get("checkinTime") or self._unit_attributes.get("checkInTime"),
-        )
-        end_date = self._parse_date(
-            attrs.get("endDate"),
-            time_str=attrs.get("checkoutTime") or self._unit_attributes.get("checkOutTime"),
-        )
+        start_date = self._as_local(reservation.start)
+        end_date = self._as_local(reservation.end)
         now = dt_util.now()
 
-        # Compute time values
         is_current = start_date and end_date and start_date <= now < end_date
-        if start_date:
-            compare_now = now.astimezone(start_date.tzinfo) if start_date.tzinfo else now
-            days_until_checkin = (
-                (start_date.date() - compare_now.date()).days if start_date > now else None
-            )
-        else:
-            days_until_checkin = None
+        is_upcoming = start_date and start_date > now
 
-        if end_date:
-            compare_now_end = now.astimezone(end_date.tzinfo) if end_date.tzinfo else now
-            days_until_checkout = (end_date.date() - compare_now_end.date()).days
-        else:
-            days_until_checkout = None
-
+        days_until_checkin = self._days_until(start_date, now) if is_upcoming else None
+        days_until_checkout = self._days_until(end_date, now)
         stay_duration = (
             (end_date.date() - start_date.date()).days if start_date and end_date else None
         )
 
-        # Get stay classification
-        stay_type = self._coordinator.client.categorize_reservation(self._reservation)
-
-        # Extract guest info
-        guest_name = None
-        if stay_type == STAY_TYPE_GUEST:
-            first = attrs.get("firstName", "")
-            last = attrs.get("lastName", "")
-            if first and last:
-                guest_name = f"{first} {last}"
-
         return {
-            # Core data
-            "reservation_id": self._reservation.get("id"),
-            "status": "confirmed",  # MVP: Assume confirmed
-            # Dates
+            "summary": reservation.summary,
+            "reservation_id": reservation.reservation_id,
             "checkin_date": start_date.isoformat() if start_date else None,
             "checkout_date": end_date.isoformat() if end_date else None,
-            "checkin_time": attrs.get("checkinTime", self._unit_attributes.get("checkInTime")),
-            "checkout_time": attrs.get("checkoutTime", self._unit_attributes.get("checkOutTime")),
-            # Classification
-            "stay_type": stay_type,
-            "stay_category": STAY_TYPE_TO_CATEGORY.get(stay_type),
-            # Guest info
-            "guest_count": attrs.get("guestCount"),
-            "guest_name": guest_name,
-            # Booking (MVP: limited data)
-            "booking_source": "vacasa_direct",
-            "special_notes": None,
-            # Computed values
+            "checkin_time": start_date.time().isoformat() if start_date else None,
+            "checkout_time": end_date.time().isoformat() if end_date else None,
+            "stay_type": reservation.stay_type,
+            "stay_category": STAY_TYPE_TO_CATEGORY.get(reservation.stay_type),
+            "guest_name": reservation.guest_name,
+            "guest_count": reservation.guest_count,
             "days_until_checkin": days_until_checkin,
             "days_until_checkout": days_until_checkout,
             "stay_duration_nights": stay_duration,
-            # Flags
-            "is_current": is_current,
-            "is_upcoming": not is_current and days_until_checkin is not None,
+            "is_current": bool(is_current),
+            "is_upcoming": bool(is_upcoming),
         }
 
 
@@ -1179,7 +987,6 @@ UNIT_SENSOR_CLASSES: tuple[type[VacasaBaseSensor], ...] = (
     VacasaPetFriendlySensor,
     VacasaParkingSensor,
     VacasaAddressSensor,
-    VacasaHomeInfoSensor,
     VacasaMaintenanceSensor,
     VacasaNextStaySensor,
 )
@@ -1210,9 +1017,16 @@ def _create_unit_sensors(
             )
             sensors.append(sensor)
             _LOGGER.debug("Successfully created %s for unit %s", sensor_class.__name__, unit_id)
-        except Exception as err:
+        except (ValueError, KeyError, TypeError) as err:
             _LOGGER.error(
                 "Failed to create %s for unit %s: %s",
+                sensor_class.__name__,
+                unit_id,
+                err,
+            )
+        except Exception as err:
+            _LOGGER.error(
+                "Unexpected error creating %s for unit %s: %s",
                 sensor_class.__name__,
                 unit_id,
                 err,
@@ -1228,18 +1042,14 @@ async def async_setup_entry(
 ) -> None:
     """Set up the Vacasa sensor platform."""
     data = config_entry.runtime_data
-    client = data.client
     coordinator = data.coordinator
 
-    try:
-        units = await client.get_units()
-        _LOGGER.debug("Found %s Vacasa units for sensors", len(units))
-    except AuthenticationError as err:
-        _LOGGER.error("Authentication error setting up Vacasa sensors: %s", err)
+    units = coordinator.data.get("units") if coordinator.data else None
+    if units is None:
+        _LOGGER.warning("Vacasa unit data unavailable while setting up sensors")
         return
-    except ApiError as err:
-        _LOGGER.error("API error setting up Vacasa sensors: %s", err)
-        return
+
+    _LOGGER.debug("Found %s Vacasa units for sensors", len(units))
 
     entities: list[SensorEntity] = []
     for unit in units:

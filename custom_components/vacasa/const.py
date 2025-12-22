@@ -79,7 +79,6 @@ SENSOR_TIMEZONE = "timezone"
 SENSOR_LOCATION = "location"
 SENSOR_PARKING = "parking"
 SENSOR_ADDRESS = "address"
-SENSOR_HOME_STATUS = "home_status"
 SENSOR_MAINTENANCE_OPEN = "maintenance_open"
 SENSOR_STATEMENTS_TOTAL = "statements_total"
 SENSOR_NEXT_STAY = "next_stay"
@@ -87,3 +86,7 @@ SENSOR_NEXT_STAY = "next_stay"
 # Services
 SERVICE_REFRESH_DATA = "refresh_data"
 SERVICE_CLEAR_CACHE = "clear_cache"
+
+# Dispatcher signals
+SIGNAL_RESERVATION_BOUNDARY = "vacasa_reservation_boundary"
+SIGNAL_RESERVATION_STATE = "vacasa_reservation_state"

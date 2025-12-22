@@ -443,8 +443,11 @@ class VacasaApiClient:
 
         try:
             await self._run_blocking_io(self._save_token_to_cache_sync)
-        except Exception as e:
+        except (OSError, IOError) as e:
             _LOGGER.warning("Failed to save token to cache file: %s", e)
+        except Exception as e:
+            _LOGGER.error("Unexpected error saving token to cache: %s", e)
+            raise
 
     def _load_token_from_cache_sync(self) -> bool:
         """Load the token from the cache file (synchronous helper).
@@ -580,6 +583,14 @@ class VacasaApiClient:
             input += "=" * (4 - padding)
 
         return base64.urlsafe_b64decode(input).decode("utf-8")
+
+    def _sanitize_url_for_log(self, url: str) -> str:
+        """Remove sensitive tokens from URLs before logging."""
+        if "#access_token=" in url:
+            return url.split("#access_token=")[0] + "#<token_redacted>"
+        if "access_token=" in url:
+            return re.sub(r"access_token=[^&\s]+", "access_token=<redacted>", url)
+        return url
 
     def _timestamp_to_datetime(self, timestamp: int) -> datetime:
         """Convert timestamp to datetime.
@@ -1106,18 +1117,6 @@ class VacasaApiClient:
         except Exception as e:
             _LOGGER.error("Error getting unit details: %s", e)
             raise ApiError(f"Error getting unit details: {e}")
-
-    async def get_home_info(self, unit_id: str) -> dict[str, Any]:
-        """Return the detailed home-info payload for a unit."""
-        await self.ensure_token()
-        owner_id = await self.get_owner_id()
-
-        data = await self._request(
-            "GET",
-            f"/owners/{owner_id}/units/{unit_id}/home-info",
-        )
-
-        return data.get("data", {}) if isinstance(data, dict) else {}
 
     async def get_statements(
         self, year: int | None = None, month: int | None = None

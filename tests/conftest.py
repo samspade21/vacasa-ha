@@ -88,6 +88,7 @@ aiohttp_client = types.ModuleType("homeassistant.helpers.aiohttp_client")
 update_coordinator = types.ModuleType("homeassistant.helpers.update_coordinator")
 entity_platform = types.ModuleType("homeassistant.helpers.entity_platform")
 entity_registry = types.ModuleType("homeassistant.helpers.entity_registry")
+dispatcher_helper = types.ModuleType("homeassistant.helpers.dispatcher")
 event_helper = types.ModuleType("homeassistant.helpers.event")
 util = types.ModuleType("homeassistant.util")
 dt_util = types.ModuleType("homeassistant.util.dt")
@@ -105,14 +106,25 @@ event_helper.async_track_point_in_time = _async_track_point_in_time
 
 
 class BinarySensorEntity:
+    def __init__(self):
+        self.hass = None
+        self._on_remove_callbacks = []
+
     async def async_added_to_hass(self):
         return None
 
     async def async_will_remove_from_hass(self):
+        for callback in self._on_remove_callbacks:
+            callback()
+        self._on_remove_callbacks.clear()
         return None
 
     def async_write_ha_state(self):
         return None
+
+    def async_on_remove(self, func):  # pragma: no cover - simple storage
+        self._on_remove_callbacks.append(func)
+        return func
 
 
 class BinarySensorDeviceClass:
@@ -131,6 +143,30 @@ class CalendarEvent:
 
 
 components_calendar.CalendarEvent = CalendarEvent
+
+
+def _async_dispatcher_connect(hass, signal, callback):
+    listeners = getattr(hass, "_dispatcher_listeners", {})
+    listeners.setdefault(signal, []).append(callback)
+    setattr(hass, "_dispatcher_listeners", listeners)
+
+    def _remove():
+        listeners = getattr(hass, "_dispatcher_listeners", {})
+        callbacks = listeners.get(signal, [])
+        if callback in callbacks:
+            callbacks.remove(callback)
+
+    return _remove
+
+
+def _async_dispatcher_send(hass, signal, *args):
+    listeners = getattr(hass, "_dispatcher_listeners", {})
+    for callback in list(listeners.get(signal, [])):
+        callback(*args)
+
+
+dispatcher_helper.async_dispatcher_connect = _async_dispatcher_connect
+dispatcher_helper.async_dispatcher_send = _async_dispatcher_send
 
 
 class SensorEntity:
@@ -220,6 +256,7 @@ update_coordinator.UpdateFailed = UpdateFailed
 update_coordinator.CoordinatorEntity = CoordinatorEntity
 
 helpers.aiohttp_client = aiohttp_client
+helpers.dispatcher = dispatcher_helper
 helpers.update_coordinator = update_coordinator
 helpers.event = event_helper
 
@@ -242,6 +279,7 @@ modules = {
     "homeassistant.helpers.update_coordinator": update_coordinator,
     "homeassistant.helpers.entity_platform": entity_platform,
     "homeassistant.helpers.entity_registry": entity_registry,
+    "homeassistant.helpers.dispatcher": dispatcher_helper,
     "homeassistant.helpers.event": event_helper,
     "homeassistant.util": util,
     "homeassistant.util.dt": dt_util,

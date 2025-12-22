@@ -73,18 +73,29 @@ For each Vacasa property, the integration creates:
 - Categorizes reservations by type (guest, owner, maintenance, etc.)
 - Includes detailed information in event descriptions
 
-### Occupancy Sensor
+### Occupancy Sensor (Binary Sensor)
 
 - Entity ID: `binary_sensor.vacasa_[property_name]_occupancy`
 - State: `on` when the property is currently occupied, `off` when vacant
-- Attributes:
+- **Attributes** (use these in automations):
   - `current_guest`: Name of the current guest (if applicable)
-  - `current_checkout`: Date and time of the current guest's check-out
-  - `current_reservation_type`: Type of the current reservation
-  - `next_checkin`: Date and time of the next check-in
-  - `next_checkout`: Date and time of the next check-out
+  - `current_checkout`: Date and time of the current guest's check-out (ISO format)
+  - `current_reservation_type`: Type of current reservation (e.g., "Guest Booking", "Owner Stay", "Maintenance")
+  - `next_checkin`: Date and time of the next check-in (ISO format)
+  - `next_checkout`: Date and time of the next check-out (ISO format)
   - `next_guest`: Name of the next guest (if applicable)
-  - `next_reservation_type`: Type of the next reservation
+  - `next_reservation_type`: Type of next reservation (e.g., "Guest Booking", "Owner Stay")
+
+### Next Stay Sensor
+
+- Entity ID: `sensor.vacasa_[property_name]_next_stay`
+- State: Number of days until the next check-in
+- **Attributes** (use these in automations):
+  - `stay_type`: Type of the upcoming stay (e.g., "Guest Booking", "Owner Stay", "Maintenance")
+  - `stay_category`: Categorized stay type in lowercase with underscores (e.g., "guest_booking", "owner_stay", "maintenance")
+  - `guest_name`: Name of the next guest (if applicable)
+  - `checkin_date`: Check-in date and time (ISO format)
+  - `checkout_date`: Check-out date and time (ISO format)
 
 ### Property Information Sensors
 
@@ -107,17 +118,27 @@ For each Vacasa property, the integration creates:
 - **Pet Friendly**: Whether the property allows pets ("Yes"/"No")
 - **Parking**: Number of parking spaces with detailed attributes
 
-## Calendar Categories
+## Stay Types and Categories
 
-The integration categorizes reservations into the following types:
+The integration categorizes reservations into the following types. These are available through entity attributes and can be used in automations:
 
-- **Guest Booking**: Reservations made by guests
-- **Owner Stay**: Reservations made by the property owner
-- **Maintenance**: Maintenance visits
-- **Block**: Other types of blocks (e.g., seasonal holds)
-- **Other**: Any other type of reservation
+| Display Name | Category Value | Binary Sensor Attribute | Next Stay Attribute | Description |
+|-------------|----------------|------------------------|---------------------|-------------|
+| **Guest Booking** | `guest_booking` | `Guest Booking` | `guest_booking` | Regular guest reservations |
+| **Owner Stay** | `owner_stay` | `Owner Stay` | `owner_stay` | When the property owner is staying |
+| **Maintenance** | `maintenance` | `Maintenance` | `maintenance` | Scheduled maintenance visits |
+| **Block** | `block` | `Block` | `block` | Property blocks (seasonal holds, etc.) |
+| **Other** | `other` | `Other` | `other` | Any other type of reservation |
 
-These categories can be used in automations to trigger different actions based on the type of reservation.
+### Using Stay Types in Automations
+
+Stay types are accessible through different attributes depending on which entity you use:
+
+- **Binary Sensor attributes**: Use `current_reservation_type` or `next_reservation_type` (returns display names like "Guest Booking")
+- **Next Stay Sensor attributes**: Use `stay_type` (display name) or `stay_category` (lowercase with underscores like "guest_booking")
+- **Calendar event descriptions**: Parse the description field which contains the type information (e.g., "Guest booking from...")
+
+**Recommendation**: Use binary sensor attributes (`current_reservation_type` or `next_reservation_type`) for most automations as they are the most straightforward and reliable.
 
 ## Services
 
@@ -128,24 +149,143 @@ The integration provides the following services:
 
 ## Automation Examples
 
-### Adjust Temperature for Guest Arrival
+**Important Note**: Calendar events do NOT have a `category` attribute. Use the methods shown below to check reservation types in automations.
+
+### Option 1: Using Binary Sensor Attributes (Recommended)
+
+This is the most straightforward and reliable method for checking reservation types.
 
 ```yaml
 automation:
   - alias: "Adjust Temperature for Guest Arrival"
     trigger:
-      - platform: calendar
-        event: start
-        entity_id: calendar.vacasa_vacation_cabin
+      - platform: state
+        entity_id: binary_sensor.vacasa_vacation_cabin_occupancy
+        to: "on"
     condition:
       - condition: template
-        value_template: "{{ trigger.calendar_event.category == 'guest_booking' }}"
+        value_template: >
+          {{ state_attr('binary_sensor.vacasa_vacation_cabin_occupancy', 'current_reservation_type') == 'Guest Booking' }}
     action:
       - service: climate.set_temperature
         target:
           entity_id: climate.living_room
         data:
           temperature: 70
+      - service: notify.mobile_app
+        data:
+          title: "Guest Arrival"
+          message: "Guests have checked in. Temperature set to 70°F."
+```
+
+### Option 2: Using Next Stay Sensor Attributes
+
+Use the next stay sensor when you need to react to upcoming reservations before they start.
+
+```yaml
+automation:
+  - alias: "Prepare for Upcoming Owner Stay"
+    trigger:
+      - platform: state
+        entity_id: sensor.vacasa_vacation_cabin_next_stay
+    condition:
+      - condition: template
+        value_template: >
+          {{ state_attr('sensor.vacasa_vacation_cabin_next_stay', 'stay_category') == 'owner_stay' }}
+      - condition: template
+        value_template: >
+          {{ states('sensor.vacasa_vacation_cabin_next_stay') | int <= 2 }}
+    action:
+      - service: script.prepare_for_owner
+      - service: notify.mobile_app
+        data:
+          title: "Owner Stay Approaching"
+          message: "Owner stay begins in {{ states('sensor.vacasa_vacation_cabin_next_stay') }} days."
+```
+
+### Option 3: Using Calendar Event Description
+
+Parse the event description when using calendar triggers. Note: This is less reliable than using sensor attributes.
+
+```yaml
+automation:
+  - alias: "Notify on Maintenance Arrival"
+    trigger:
+      - platform: calendar
+        event: start
+        entity_id: calendar.vacasa_vacation_cabin
+    condition:
+      - condition: template
+        value_template: >
+          {{ 'Maintenance' in trigger.calendar_event.description }}
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Maintenance Arrival"
+          message: "Maintenance crew has arrived at the property."
+```
+
+### Differentiate Between Guest Types
+
+Use the reservation type to apply different settings for guests vs. owners vs. maintenance:
+
+```yaml
+automation:
+  - alias: "Set Climate Based on Reservation Type"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.vacasa_vacation_cabin_occupancy
+        to: "on"
+    action:
+      - choose:
+          # Guest booking - comfortable temperature
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ state_attr('binary_sensor.vacasa_vacation_cabin_occupancy', 'current_reservation_type') == 'Guest Booking' }}
+            sequence:
+              - service: climate.set_temperature
+                target:
+                  entity_id: climate.living_room
+                data:
+                  temperature: 70
+              - service: switch.turn_on
+                entity_id: switch.guest_mode
+
+          # Owner stay - preferred settings
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ state_attr('binary_sensor.vacasa_vacation_cabin_occupancy', 'current_reservation_type') == 'Owner Stay' }}
+            sequence:
+              - service: climate.set_temperature
+                target:
+                  entity_id: climate.living_room
+                data:
+                  temperature: 68
+              - service: switch.turn_on
+                entity_id: switch.owner_mode
+
+          # Maintenance - minimal settings
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ state_attr('binary_sensor.vacasa_vacation_cabin_occupancy', 'current_reservation_type') == 'Maintenance' }}
+            sequence:
+              - service: climate.set_temperature
+                target:
+                  entity_id: climate.living_room
+                data:
+                  temperature: 65
+              - service: light.turn_on
+                entity_id: light.workshop
+        default:
+          # Other types - economy mode
+          - service: climate.set_temperature
+            target:
+              entity_id: climate.living_room
+            data:
+              temperature: 62
 ```
 
 ### Turn Down Heat When Vacant
@@ -394,49 +534,110 @@ pip install -r requirements-test.txt
 pytest
 ```
 
-### Automated Release Deployment
+### Release Process for Maintainers
 
-For maintainers, this project includes a fully automated release deployment process that handles the entire workflow from development branch to production release.
+This project uses an automated release process with clear separation between manual preparation and automated deployment.
 
-#### Quick Release
+#### Quick Release Steps
 
 ```bash
-# 1. Update VERSION file and manifest.json with new version
-# 2. Update CHANGELOG.md with release notes
-# 3. Commit changes to development branch
-# 4. Run automated deployment
+# 1. Prepare release on main branch
+#    - Update VERSION file with new version (e.g., "1.7.1")
+#    - Update custom_components/vacasa/manifest.json version field
+#    - Update CHANGELOG.md with release notes
+#    - Commit all changes: git commit -m "chore: prepare release v1.7.1"
+
+# 2. Run the release script
 ./new-prod-release.sh
+
+# 3. Review and merge the PR
+#    - Script creates PR from development to main
+#    - Review PR and ensure CI checks pass
+#    - Merge when ready
+
+# 4. Automatic release creation
+#    - GitHub Actions automatically creates git tag
+#    - Release workflow creates GitHub release with assets
+#    - HACS is notified for distribution
 ```
 
-The script automatically:
-- ✅ Validates environment and version consistency
-- ✅ Runs all tests and quality checks
-- ✅ Pushes development branch and waits for CI/CD validation
-- ✅ Creates and merges pull request to main branch
-- ✅ Triggers GitHub release workflow
-- ✅ Monitors release completion and verifies success
-- ✅ Updates main branch with release artifacts
+#### Prerequisites
 
-#### Prerequisites for Release Deployment
+- **GitHub CLI**: `brew install gh` (macOS) or `sudo apt install gh` (Linux)
+- **Authentication**: Run `gh auth login` before first use
+- **Clean Working Directory**: All changes must be committed
+- **Version Consistency**: VERSION file and manifest.json must match
+- **Changelog Entry**: CHANGELOG.md must contain new version section
 
-- **GitHub CLI**: `brew install gh` (macOS) or equivalent
-- **Authentication**: `gh auth login`
-- **Clean Development Branch**: All changes committed
-- **Version Consistency**: VERSION file and manifest.json updated
-- **Changelog Updated**: CHANGELOG.md contains release notes
+#### What the Script Does
 
-#### Release Process Documentation
+The `new-prod-release.sh` script:
+1. ✅ Validates prerequisites (git, gh CLI authentication)
+2. ✅ Verifies you're on development branch with clean working directory
+3. ✅ Checks version consistency across VERSION, manifest.json, and CHANGELOG.md
+4. ✅ Pushes development branch to GitHub
+5. ✅ Creates pull request from development to main
+6. ✅ Displays PR information and next steps
 
-For detailed instructions, troubleshooting, and advanced configuration options, see:
-**📖 [Complete Deployment Guide](DEPLOYMENT.md)**
+After PR merge, GitHub Actions automatically:
+1. 🤖 Detects release merge and reads version from VERSION file
+2. 🏷️ Creates annotated git tag (e.g., v1.7.1)
+3. 📦 Triggers release workflow
+4. 🚀 Creates GitHub release with changelog and assets
+5. 📢 Notifies HACS for distribution
 
-The deployment guide covers:
-- Step-by-step setup instructions
-- Version management best practices
-- CI/CD workflow integration
-- Troubleshooting common issues
-- Manual deployment procedures
-- Rollback processes
+#### Troubleshooting
+
+**Issue: "GitHub CLI is not authenticated"**
+```bash
+gh auth login
+gh auth status
+```
+
+**Issue: "Working directory is not clean"**
+```bash
+git status
+git add .
+git commit -m "chore: cleanup before release"
+```
+
+**Issue: "Version mismatch"**
+```bash
+# Check versions
+cat VERSION
+grep version custom_components/vacasa/manifest.json
+grep "## \[" CHANGELOG.md | head -1
+
+# Update all files to match
+echo "1.7.1" > VERSION
+# Edit manifest.json manually
+# Ensure CHANGELOG.md has [1.7.1] entry
+```
+
+**Issue: "PR already exists"**
+```bash
+gh pr list
+gh pr close <pr-number>  # Close old PR if needed
+./new-prod-release.sh    # Try again
+```
+
+**Issue: "Auto-tag workflow didn't trigger"**
+- Check commit message contains "Release v" or "prepare release v"
+- Manually create tag if needed:
+  ```bash
+  git checkout main
+  git pull origin main
+  git tag -a v1.7.1 -m "Release v1.7.1"
+  git push origin v1.7.1
+  ```
+
+#### Version Management Best Practices
+
+- **Semantic Versioning**: Use MAJOR.MINOR.PATCH format
+- **Consistency**: Always update VERSION, manifest.json, and CHANGELOG.md together
+- **Changelog Format**: Follow Keep a Changelog format with date
+- **Branch Hygiene**: Keep development branch in sync with main after releases
+- **Testing**: Test changes thoroughly before creating release PR
 
 ## Contributing
 
@@ -571,46 +772,6 @@ Contributors are recognized in:
 Thank you for contributing to the Vacasa Home Assistant integration! 🎉
 
 ## For Developers
-
-This project uses Cline Memory Bank for comprehensive documentation and context management. The memory bank provides a structured way to maintain project knowledge and ensure consistent development across time.
-
-### Memory Bank Overview
-
-The memory bank is a collection of markdown files that document different aspects of the project. It serves as a knowledge repository that helps developers understand the project's architecture, design decisions, and implementation details.
-
-- **Documentation**: [Cline Memory Bank Documentation](https://docs.cline.bot/prompting/cline-memory-bank)
-- **Purpose**: Maintains project context across development sessions
-- **Benefits**: Easier onboarding, consistent development, and better knowledge retention
-
-### Memory Bank Structure
-
-The project's memory bank contains the following files:
-
-- [Project Brief](memory-bank/projectbrief.md) - Core requirements and goals
-- [Product Context](memory-bank/productContext.md) - Why this project exists and how it should work
-- [Active Context](memory-bank/activeContext.md) - Current work focus and recent changes
-- [System Patterns](memory-bank/systemPatterns.md) - Architecture and design patterns
-- [Tech Context](memory-bank/techContext.md) - Technologies, dependencies, and technical details
-- [Progress](memory-bank/progress.md) - Current status, completed features, and next steps
-
-### Working with Cline
-
-[Cline](https://docs.cline.bot/) is an AI assistant designed to work with codebases and maintain context across development sessions. To use Cline with this project:
-
-1. **Setup Cline**: Follow the [installation instructions](https://docs.cline.bot/getting-started/installation)
-2. **Read the Memory Bank**: Cline will automatically read the memory bank files to understand the project
-3. **Update Documentation**: When making significant changes, update the relevant memory bank files
-
-### Development Workflow
-
-When working on this project with Cline:
-
-1. **Start with Context**: Begin by reviewing the memory bank files to understand the current state
-2. **Implement Changes**: Make your code changes with Cline's assistance
-3. **Update Documentation**: Update the memory bank files to reflect your changes
-4. **Commit Changes**: Include both code and documentation changes in your commits
-
-This approach ensures that project knowledge is maintained and accessible to all contributors.
 
 ## License
 

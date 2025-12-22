@@ -1,15 +1,15 @@
 """Tests for Vacasa property sensors."""
 
 from datetime import datetime, timezone
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
 from custom_components.vacasa import sensor as sensor_module
 from custom_components.vacasa.const import STAY_TYPE_GUEST
+from custom_components.vacasa.models import ReservationState, ReservationWindow
 from custom_components.vacasa.sensor import (
     VacasaBathroomsSensor,
-    VacasaHomeInfoSensor,
     VacasaLocationSensor,
     VacasaNextStaySensor,
     VacasaRatingSensor,
@@ -86,8 +86,7 @@ def test_next_stay_sensor_current_reservation(monkeypatch):
     monkeypatch.setattr(sensor_module.dt_util, "now", lambda: fixed_now)
 
     coordinator = Mock()
-    coordinator.client = Mock()
-    coordinator.client.categorize_reservation.return_value = STAY_TYPE_GUEST
+    coordinator.reservation_states = {}
 
     unit_attributes = {
         "timezone": "UTC",
@@ -101,38 +100,26 @@ def test_next_stay_sensor_current_reservation(monkeypatch):
         unit_attributes=unit_attributes,
     )
 
-    reservations = [
-        {
-            "id": "past",
-            "attributes": {
-                "startDate": "2023-12-20",
-                "endDate": "2023-12-24",
-            },
-        },
-        {
-            "id": "current",
-            "attributes": {
-                "startDate": "2023-12-31",
-                "endDate": "2024-01-03",
-                "firstName": "Jane",
-                "lastName": "Doe",
-                "guestCount": 4,
-            },
-        },
-        {
-            "id": "future",
-            "attributes": {
-                "startDate": "2024-02-01",
-                "endDate": "2024-02-05",
-            },
-        },
-    ]
+    state = ReservationState(
+        current=ReservationWindow(
+            reservation_id="current",
+            summary="Guest Booking",
+            start=datetime(2023, 12, 31, tzinfo=timezone.utc),
+            end=datetime(2024, 1, 3, tzinfo=timezone.utc),
+            stay_type=STAY_TYPE_GUEST,
+            guest_name="Jane Doe",
+            guest_count=4,
+        ),
+        upcoming=ReservationWindow(
+            reservation_id="future",
+            summary="Guest Booking",
+            start=datetime(2024, 2, 1, tzinfo=timezone.utc),
+            end=datetime(2024, 2, 5, tzinfo=timezone.utc),
+            stay_type=STAY_TYPE_GUEST,
+        ),
+    )
 
-    next_reservation = sensor._find_next_stay(reservations)
-    assert next_reservation is not None
-    assert next_reservation["id"] == "current"
-
-    sensor._reservation = next_reservation
+    sensor._update_from_state(state)
 
     assert sensor.native_value == "Guest Booking (currently occupied)"
 
@@ -151,8 +138,7 @@ def test_next_stay_sensor_upcoming_reservation(monkeypatch):
     monkeypatch.setattr(sensor_module.dt_util, "now", lambda: fixed_now)
 
     coordinator = Mock()
-    coordinator.client = Mock()
-    coordinator.client.categorize_reservation.return_value = STAY_TYPE_GUEST
+    coordinator.reservation_states = {}
 
     unit_attributes = {
         "timezone": "UTC",
@@ -166,13 +152,17 @@ def test_next_stay_sensor_upcoming_reservation(monkeypatch):
         unit_attributes=unit_attributes,
     )
 
-    sensor._reservation = {
-        "id": "upcoming",
-        "attributes": {
-            "startDate": "2024-01-03",
-            "endDate": "2024-01-05",
-        },
-    }
+    sensor._update_from_state(
+        ReservationState(
+            upcoming=ReservationWindow(
+                reservation_id="upcoming",
+                summary="Guest Booking",
+                start=datetime(2024, 1, 3, tzinfo=timezone.utc),
+                end=datetime(2024, 1, 5, tzinfo=timezone.utc),
+                stay_type=STAY_TYPE_GUEST,
+            )
+        )
+    )
 
     assert sensor.native_value == "Guest Booking in 2 days"
 
@@ -182,46 +172,36 @@ def test_next_stay_sensor_upcoming_reservation(monkeypatch):
     assert attrs["is_upcoming"] is True
 
 
-def test_home_info_sensor_handles_nested_attributes():
-    """Home info sensor extracts status from nested API payloads."""
-    sensor = VacasaHomeInfoSensor(
-        coordinator=Mock(),
-        unit_id="5",
-        name="Forest Cabin",
-        unit_attributes={},
+def test_next_stay_reservation_state_signal(monkeypatch):
+    """Reservation state signals update the next stay sensor when unit matches."""
+    fixed_now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(sensor_module.dt_util, "now", lambda: fixed_now)
+
+    coordinator = Mock()
+    coordinator.reservation_states = {}
+
+    sensor = VacasaNextStaySensor(
+        coordinator=coordinator,
+        unit_id="42",
+        name="Signal Test",
+        unit_attributes={"timezone": "UTC"},
     )
 
-    sensor._home_info = {
-        "data": {
-            "id": "5",
-            "attributes": {
-                "homeStatus": "Clean",
-                "lastInspectionDate": "2024-01-15",
-            },
-        }
-    }
-
-    assert sensor.native_value == "Clean"
-    assert sensor.extra_state_attributes["last_inspection_date"] == "2024-01-15"
-
-
-def test_home_info_sensor_handles_list_payloads():
-    """Home info sensor supports list responses from the API."""
-    sensor = VacasaHomeInfoSensor(
-        coordinator=Mock(),
-        unit_id="6",
-        name="Lakeside Retreat",
-        unit_attributes={},
+    state = ReservationState(
+        upcoming=ReservationWindow(
+            reservation_id="signal",
+            summary="Guest Booking",
+            start=datetime(2024, 1, 3, tzinfo=timezone.utc),
+            end=datetime(2024, 1, 5, tzinfo=timezone.utc),
+            stay_type=STAY_TYPE_GUEST,
+        )
     )
 
-    sensor._home_info = [
-        {
-            "attributes": {
-                "status": "Ready",
-                "cleanScore": 95,
-            }
-        }
-    ]
+    with patch.object(sensor, "async_write_ha_state") as mock_write:
+        sensor._handle_reservation_state("other", state)
+        mock_write.assert_not_called()
+        assert sensor.native_value == "No upcoming reservations"
 
-    assert sensor.native_value == "Ready"
-    assert sensor.extra_state_attributes["clean_score"] == 95
+        sensor._handle_reservation_state("42", state)
+        mock_write.assert_called_once()
+        assert sensor.native_value == "Guest Booking in 2 days"

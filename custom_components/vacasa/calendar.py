@@ -2,18 +2,23 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any
+from functools import partial
+from typing import Any, Callable
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from . import VacasaConfigEntry, VacasaDataUpdateCoordinator
-from .api_client import ApiError, AuthenticationError, VacasaApiClient
+from .api_client import VacasaApiClient
 from .const import (
     DOMAIN,
+    SIGNAL_RESERVATION_BOUNDARY,
+    SIGNAL_RESERVATION_STATE,
     STAY_TYPE_BLOCK,
     STAY_TYPE_GUEST,
     STAY_TYPE_MAINTENANCE,
@@ -21,6 +26,7 @@ from .const import (
     STAY_TYPE_TO_CATEGORY,
     STAY_TYPE_TO_NAME,
 )
+from .models import ReservationState, ReservationWindow
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,34 +41,33 @@ async def async_setup_entry(
     client = data.client
     coordinator = data.coordinator
 
-    # Get all units
-    try:
-        units = await client.get_units()
-        _LOGGER.info("Found %d Vacasa units for calendars", len(units))
+    # Get all units from the coordinator cache
+    units = coordinator.data.get("units") if coordinator.data else None
+    if units is None:
+        _LOGGER.warning("Vacasa unit data unavailable while setting up calendars")
+        return
 
-        # Create a calendar entity for each unit
-        entities = []
-        for unit in units:
-            unit_id = unit.get("id")
-            attributes = unit.get("attributes", {})
-            name = attributes.get("name", f"Vacasa Unit {unit_id}")
-            code = attributes.get("code", "")
+    _LOGGER.info("Found %d Vacasa units for calendars", len(units))
 
-            entity = VacasaCalendar(
-                coordinator=coordinator,
-                client=client,
-                unit_id=unit_id,
-                name=name,
-                code=code,
-                unit_attributes=attributes,
-            )
-            entities.append(entity)
+    # Create a calendar entity for each unit
+    entities = []
+    for unit in units:
+        unit_id = unit.get("id")
+        attributes = unit.get("attributes", {})
+        name = attributes.get("name", f"Vacasa Unit {unit_id}")
+        code = attributes.get("code", "")
 
-        async_add_entities(entities, True)
-    except AuthenticationError as err:
-        _LOGGER.error("Authentication error setting up Vacasa calendars: %s", err)
-    except ApiError as err:
-        _LOGGER.error("API error setting up Vacasa calendars: %s", err)
+        entity = VacasaCalendar(
+            coordinator=coordinator,
+            client=client,
+            unit_id=unit_id,
+            name=name,
+            code=code,
+            unit_attributes=attributes,
+        )
+        entities.append(entity)
+
+    async_add_entities(entities, True)
 
 
 class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEntity):
@@ -88,7 +93,11 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         self._checkout_time = unit_attributes.get("checkOutTime")
         self._timezone = unit_attributes.get("timezone")
         self._event_cache: dict[str, list[CalendarEvent]] = {}
+        self._reservation_windows: dict[str, ReservationWindow] = {}
         self._current_event: CalendarEvent | None = None
+        self._next_event: CalendarEvent | None = None
+        self._unsubscribe_start_timer: Callable[[], None] | None = None
+        self._unsubscribe_end_timer: Callable[[], None] | None = None
 
         # Entity properties
         self._attr_unique_id = f"vacasa_calendar_{unit_id}"
@@ -175,86 +184,40 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         await self._update_current_event()
 
     async def _update_current_event(self) -> None:
-        """Update the current event - only sets current event if it's actually happening now."""
-        self._current_event = await self.async_get_current_event()
+        """Update cached current and next events."""
+        self._current_event, self._next_event = await self._determine_current_and_next_events()
+        self._schedule_boundary_timers()
+        self._broadcast_reservation_state()
 
     async def async_get_current_event(self) -> CalendarEvent | None:
         """Get the current event if active right now, otherwise None."""
-        now = dt_util.now()
-        events = await self.async_get_events(self.hass, now, now + timedelta(days=365))
-
-        _LOGGER.debug(
-            "Checking events for %s at %s - found %d total events",
-            self._name,
-            now.isoformat(),
-            len(events),
-        )
-
-        # Check for current events (happening right now)
-        for event in events:
-            event_start = event.start
-            event_end = event.end
-            if event_start and event_end:
-                _LOGGER.debug(
-                    "Checking event %s: start=%s, end=%s, now=%s, is_current=%s",
-                    event.summary,
-                    event_start.isoformat(),
-                    event_end.isoformat(),
-                    now.isoformat(),
-                    event_start <= now < event_end,
-                )
-                if event_start <= now < event_end:
-                    # This event is currently active
-                    _LOGGER.debug(
-                        "Found current event for %s: %s (start: %s, end: %s)",
-                        self._name,
-                        event.summary,
-                        event_start.isoformat(),
-                        event_end.isoformat(),
-                    )
-                    return event
-
-        _LOGGER.debug("No current event found for %s", self._name)
-        return None
+        if self._current_event is None and self._next_event is None:
+            self._current_event, self._next_event = await self._determine_current_and_next_events()
+            self._schedule_boundary_timers()
+            self._broadcast_reservation_state()
+        return self._current_event
 
     async def async_get_next_event(self) -> CalendarEvent | None:
         """Get the next upcoming event (for display purposes)."""
-        now = dt_util.now()
-        events = await self.async_get_events(self.hass, now, now + timedelta(days=365))
-
-        # First check if there's a current event
-        current_event = await self.async_get_current_event()
-        if current_event:
-            return current_event
-
-        # No current event, find the next future event
-        next_event = None
-        for event in events:
-            event_start = event.start
-            if event_start and event_start >= now:
-                if next_event is None:
-                    next_event = event
-                else:
-                    if event_start < next_event.start:
-                        next_event = event
-
-        if next_event:
-            _LOGGER.debug(
-                "Found next event for %s: %s (starts: %s)",
-                self._name,
-                next_event.summary,
-                next_event.start.isoformat(),
-            )
-        else:
-            _LOGGER.debug("No next event found for %s", self._name)
-
-        return next_event
+        if self._current_event is None and self._next_event is None:
+            self._current_event, self._next_event = await self._determine_current_and_next_events()
+            self._schedule_boundary_timers()
+            self._broadcast_reservation_state()
+        if self._current_event:
+            return self._current_event
+        return self._next_event
 
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
         # Update current event when entity is added to hass
         await self._update_current_event()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Clean up when entity is removed from hass."""
+        self._cancel_boundary_timers()
+        self.coordinator.reservation_states.pop(self._unit_id, None)
+        await super().async_will_remove_from_hass()
 
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
@@ -266,8 +229,9 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         try:
             # Clear event cache to ensure fresh data
             self._event_cache.clear()
+            self._reservation_windows.clear()
 
-            # Update current event based on fresh data
+            # Update current and next events based on fresh data
             await self._update_current_event()
 
             # Write the state to Home Assistant
@@ -281,6 +245,221 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             )
         except Exception as err:
             _LOGGER.error("Error during coordinator update for calendar %s: %s", self._name, err)
+
+    async def _determine_current_and_next_events(
+        self,
+    ) -> tuple[CalendarEvent | None, CalendarEvent | None]:
+        """Determine the current and next events for the property."""
+        now_local = dt_util.now()
+        now_utc = dt_util.utcnow()
+        events = await self.async_get_events(self.hass, now_local, now_local + timedelta(days=365))
+
+        _LOGGER.debug(
+            "Evaluating %d events for %s at %s",
+            len(events),
+            self._name,
+            now_utc.isoformat(),
+        )
+
+        current_event: CalendarEvent | None = None
+        next_event: CalendarEvent | None = None
+
+        def _as_utc(value: datetime | None) -> datetime | None:
+            if value is None:
+                return None
+            return dt_util.as_utc(value)
+
+        for event in sorted(events, key=lambda evt: _as_utc(evt.start) or now_utc):
+            start_utc = _as_utc(event.start)
+            end_utc = _as_utc(event.end)
+
+            if start_utc is None or end_utc is None:
+                continue
+
+            in_progress = start_utc <= now_utc < end_utc
+            upcoming = start_utc > now_utc
+
+            _LOGGER.debug(
+                "Event %s: start=%s, end=%s, now=%s, in_progress=%s, upcoming=%s",
+                event.summary,
+                start_utc.isoformat(),
+                end_utc.isoformat(),
+                now_utc.isoformat(),
+                in_progress,
+                upcoming,
+            )
+
+            if in_progress:
+                current_event = event
+                continue
+
+            if upcoming and next_event is None:
+                next_event = event
+                if current_event:
+                    break
+
+        if current_event:
+            _LOGGER.debug(
+                "Current event for %s set to %s (start=%s, end=%s)",
+                self._name,
+                current_event.summary,
+                current_event.start.isoformat() if current_event.start else "unknown",
+                current_event.end.isoformat() if current_event.end else "unknown",
+            )
+        else:
+            _LOGGER.debug("No current event identified for %s", self._name)
+
+        if next_event:
+            _LOGGER.debug(
+                "Next event for %s set to %s (start=%s)",
+                self._name,
+                next_event.summary,
+                next_event.start.isoformat() if next_event.start else "unknown",
+            )
+        else:
+            _LOGGER.debug("No upcoming event identified for %s", self._name)
+
+        return current_event, next_event
+
+    def _cancel_boundary_timers(self) -> None:
+        """Cancel any scheduled boundary refresh timers."""
+        if self._unsubscribe_start_timer:
+            self._unsubscribe_start_timer()
+            self._unsubscribe_start_timer = None
+        if self._unsubscribe_end_timer:
+            self._unsubscribe_end_timer()
+            self._unsubscribe_end_timer = None
+
+    def _schedule_boundary_timers(self) -> None:
+        """Schedule refresh timers aligned with reservation boundaries."""
+        if not self.hass:
+            return
+
+        self._cancel_boundary_timers()
+
+        now_utc = dt_util.utcnow()
+
+        if self._current_event and getattr(self._current_event, "end", None):
+            end_utc = dt_util.as_utc(self._current_event.end)
+            if end_utc and end_utc > now_utc:
+                self._unsubscribe_end_timer = async_track_point_in_time(
+                    self.hass,
+                    partial(self._handle_boundary_timer, boundary="checkout"),
+                    end_utc,
+                )
+                _LOGGER.debug(
+                    "Scheduled checkout refresh for %s at %s",
+                    self._name,
+                    end_utc.isoformat(),
+                )
+
+        if self._next_event and getattr(self._next_event, "start", None):
+            start_utc = dt_util.as_utc(self._next_event.start)
+            if start_utc and start_utc > now_utc:
+                self._unsubscribe_start_timer = async_track_point_in_time(
+                    self.hass,
+                    partial(self._handle_boundary_timer, boundary="checkin"),
+                    start_utc,
+                )
+                _LOGGER.debug(
+                    "Scheduled check-in refresh for %s at %s",
+                    self._name,
+                    start_utc.isoformat(),
+                )
+
+    def _handle_boundary_timer(self, scheduled_time: datetime, *, boundary: str) -> None:
+        """Handle a scheduled reservation boundary timer."""
+        if not self.hass:
+            return
+
+        _LOGGER.debug(
+            "Boundary timer (%s) fired for %s at %s",
+            boundary,
+            self._name,
+            scheduled_time.isoformat(),
+        )
+
+        async_dispatcher_send(
+            self.hass,
+            SIGNAL_RESERVATION_BOUNDARY,
+            self._unit_id,
+            boundary,
+        )
+
+        self.hass.async_create_task(self._boundary_refresh(boundary))
+
+    async def _boundary_refresh(self, boundary: str) -> None:
+        """Refresh coordinator and calendar state at reservation boundaries."""
+        _LOGGER.debug("Starting boundary refresh (%s) for %s", boundary, self._name)
+
+        # Immediately update current event using existing event cache.
+        # The calendar has sufficient cached event data from periodic coordinator updates
+        # to determine that a boundary has passed. Awaiting coordinator refresh here
+        # would block sensor updates by 3-10 seconds until the API call completes.
+        # The coordinator's normal periodic refresh cycle will fetch fresh data soon.
+        await self._update_current_event()
+        self.async_write_ha_state()
+
+    def _broadcast_reservation_state(self) -> None:
+        """Store the latest reservation state and notify listeners."""
+        if not self.hass:
+            return
+
+        state = ReservationState(
+            current=self._event_to_window(self._current_event),
+            upcoming=self._event_to_window(self._next_event),
+        )
+
+        self.coordinator.reservation_states[self._unit_id] = state
+
+        async_dispatcher_send(
+            self.hass,
+            SIGNAL_RESERVATION_STATE,
+            self._unit_id,
+            state,
+        )
+
+    def _event_to_window(self, event: CalendarEvent | None) -> ReservationWindow | None:
+        """Convert a CalendarEvent into a ReservationWindow."""
+        if not event:
+            return None
+
+        window = self._reservation_windows.get(event.uid)
+        if window:
+            return window
+
+        return ReservationWindow(
+            summary=event.summary,
+            start=event.start,
+            end=event.end,
+        )
+
+    def _normalize_time_value(self, time_value: Any) -> str | None:
+        """Return a usable time string or None when the value represents midnight."""
+        if not isinstance(time_value, str):
+            return None
+
+        normalized = time_value.strip()
+        if not normalized:
+            return None
+
+        try:
+            parsed_dt = dt_util.parse_datetime(f"1970-01-01T{normalized}")
+        except Exception:  # pragma: no cover - defensive parsing
+            return normalized
+
+        if parsed_dt is None:
+            return normalized
+
+        if (
+            parsed_dt.hour == 0
+            and parsed_dt.minute == 0
+            and parsed_dt.second == 0
+            and parsed_dt.microsecond == 0
+        ):
+            return None
+
+        return normalized
 
     def _reservation_to_event(  # noqa: C901
         self, reservation: dict[str, Any], stay_type: str
@@ -297,29 +476,31 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                 return None
 
             # Get check-in and check-out times from the reservation or property
-            checkin_time = attributes.get("checkinTime")
-            checkout_time = attributes.get("checkoutTime")
+            checkin_time = self._normalize_time_value(attributes.get("checkinTime"))
+            checkout_time = self._normalize_time_value(attributes.get("checkoutTime"))
+            property_checkin_time = self._normalize_time_value(self._checkin_time)
+            property_checkout_time = self._normalize_time_value(self._checkout_time)
 
             # Create datetime objects based on available information
-            if checkin_time and checkin_time not in ["00:00:00", "12:00:00"]:
+            if checkin_time:
                 # Use time from reservation
                 start_dt_str = f"{start_date}T{checkin_time}"
-            elif self._checkin_time:
+            elif property_checkin_time:
                 # Use property-specific time
-                start_dt_str = f"{start_date}T{self._checkin_time}"
+                start_dt_str = f"{start_date}T{property_checkin_time}"
             else:
-                # No time available, use date only
-                start_dt_str = f"{start_date}T00:00:00"
+                # No time available, default to 4:00 PM (16:00)
+                start_dt_str = f"{start_date}T16:00:00"
 
-            if checkout_time and checkout_time not in ["00:00:00", "12:00:00"]:
+            if checkout_time:
                 # Use time from reservation
                 end_dt_str = f"{end_date}T{checkout_time}"
-            elif self._checkout_time:
+            elif property_checkout_time:
                 # Use property-specific time
-                end_dt_str = f"{end_date}T{self._checkout_time}"
+                end_dt_str = f"{end_date}T{property_checkout_time}"
             else:
-                # No time available, use date only
-                end_dt_str = f"{end_date}T00:00:00"
+                # No time available, default to 10:00 AM (10:00)
+                end_dt_str = f"{end_date}T10:00:00"
 
             # Parse datetime strings
             start_dt = dt_util.parse_datetime(start_dt_str)
@@ -409,19 +590,19 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             description_parts = []
 
             # Add check-in and check-out information
-            if checkin_time and checkin_time not in ["00:00:00", "12:00:00"]:
+            if checkin_time and checkin_time != "00:00:00":
                 description_parts.append(f"Check-in: {start_date} {checkin_time[:5]}")
             elif self._checkin_time:
                 description_parts.append(f"Check-in: {start_date} {self._checkin_time[:5]}")
             else:
-                description_parts.append(f"Check-in: {start_date}")
+                description_parts.append(f"Check-in: {start_date} 16:00")
 
-            if checkout_time and checkout_time not in ["00:00:00", "12:00:00"]:
+            if checkout_time and checkout_time != "00:00:00":
                 description_parts.append(f"Check-out: {end_date} {checkout_time[:5]}")
             elif self._checkout_time:
                 description_parts.append(f"Check-out: {end_date} {self._checkout_time[:5]}")
             else:
-                description_parts.append(f"Check-out: {end_date}")
+                description_parts.append(f"Check-out: {end_date} 10:00")
 
             description_parts.append("")
 
@@ -444,15 +625,97 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
 
             description = "\n".join(description_parts)
 
+            reservation_identifier = reservation.get("id")
+            if reservation_identifier is None:
+                reservation_identifier = f"{start_date}_{end_date}_{stay_type}"
+            else:
+                reservation_identifier = str(reservation_identifier)
+
             # Create the event with datetime objects for start and end
-            return CalendarEvent(
-                uid=f"reservation_{reservation.get('id', '')}",
+            event = CalendarEvent(
+                uid=f"reservation_{reservation_identifier}",
                 summary=summary,
                 start=start_dt,
                 end=end_dt,
                 location=self._name,
                 description=description,
             )
+
+            window = self._build_reservation_window(
+                summary=summary,
+                start=start_dt,
+                end=end_dt,
+                stay_type=stay_type,
+                reservation_id=reservation.get("id"),
+                guest_count=attributes.get("guestCount"),
+                first_name=first_name,
+                last_name=last_name,
+                hold_who_booked=hold_who_booked,
+                hold_type=hold_type,
+            )
+
+            self._reservation_windows[event.uid] = window
+
+            return event
         except Exception as err:
             _LOGGER.error("Error converting reservation to event: %s", err)
             return None
+
+    def _build_reservation_window(
+        self,
+        *,
+        summary: str,
+        start: datetime,
+        end: datetime,
+        stay_type: str,
+        reservation_id: str | None,
+        guest_count: int | None,
+        first_name: str | None,
+        last_name: str | None,
+        hold_who_booked: str | None,
+        hold_type: str | None,
+    ) -> ReservationWindow:
+        """Create a structured reservation window for dispatcher consumers."""
+        guest_name = self._resolve_guest_name(
+            stay_type,
+            first_name=first_name,
+            last_name=last_name,
+            hold_who_booked=hold_who_booked,
+            hold_type=hold_type,
+        )
+
+        return ReservationWindow(
+            reservation_id=str(reservation_id) if reservation_id is not None else None,
+            summary=summary,
+            start=start,
+            end=end,
+            stay_type=stay_type,
+            guest_name=guest_name,
+            guest_count=guest_count,
+        )
+
+    def _resolve_guest_name(
+        self,
+        stay_type: str,
+        *,
+        first_name: str | None,
+        last_name: str | None,
+        hold_who_booked: str | None,
+        hold_type: str | None,
+    ) -> str | None:
+        """Map reservation metadata to a person-friendly label."""
+        if stay_type == STAY_TYPE_GUEST:
+            parts = [part for part in (first_name, last_name) if part]
+            if parts:
+                return " ".join(parts)
+
+        if stay_type == STAY_TYPE_OWNER and hold_who_booked:
+            return hold_who_booked
+
+        if stay_type in (STAY_TYPE_BLOCK, STAY_TYPE_MAINTENANCE) and hold_type:
+            return hold_type
+
+        if hold_who_booked:
+            return hold_who_booked
+
+        return None
