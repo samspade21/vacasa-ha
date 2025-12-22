@@ -1017,9 +1017,16 @@ def _create_unit_sensors(
             )
             sensors.append(sensor)
             _LOGGER.debug("Successfully created %s for unit %s", sensor_class.__name__, unit_id)
-        except Exception as err:
+        except (ValueError, KeyError, TypeError) as err:
             _LOGGER.error(
                 "Failed to create %s for unit %s: %s",
+                sensor_class.__name__,
+                unit_id,
+                err,
+            )
+        except Exception as err:
+            _LOGGER.error(
+                "Unexpected error creating %s for unit %s: %s",
                 sensor_class.__name__,
                 unit_id,
                 err,
