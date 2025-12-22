@@ -534,49 +534,110 @@ pip install -r requirements-test.txt
 pytest
 ```
 
-### Automated Release Deployment
+### Release Process for Maintainers
 
-For maintainers, this project includes a fully automated release deployment process that handles the entire workflow from development branch to production release.
+This project uses an automated release process with clear separation between manual preparation and automated deployment.
 
-#### Quick Release
+#### Quick Release Steps
 
 ```bash
-# 1. Update VERSION file and manifest.json with new version
-# 2. Update CHANGELOG.md with release notes
-# 3. Commit changes to development branch
-# 4. Run automated deployment
+# 1. Prepare release on main branch
+#    - Update VERSION file with new version (e.g., "1.7.1")
+#    - Update custom_components/vacasa/manifest.json version field
+#    - Update CHANGELOG.md with release notes
+#    - Commit all changes: git commit -m "chore: prepare release v1.7.1"
+
+# 2. Run the release script
 ./new-prod-release.sh
+
+# 3. Review and merge the PR
+#    - Script creates PR from development to main
+#    - Review PR and ensure CI checks pass
+#    - Merge when ready
+
+# 4. Automatic release creation
+#    - GitHub Actions automatically creates git tag
+#    - Release workflow creates GitHub release with assets
+#    - HACS is notified for distribution
 ```
 
-The script automatically:
-- ✅ Validates environment and version consistency
-- ✅ Runs all tests and quality checks
-- ✅ Pushes development branch and waits for CI/CD validation
-- ✅ Creates and merges pull request to main branch
-- ✅ Triggers GitHub release workflow
-- ✅ Monitors release completion and verifies success
-- ✅ Updates main branch with release artifacts
+#### Prerequisites
 
-#### Prerequisites for Release Deployment
+- **GitHub CLI**: `brew install gh` (macOS) or `sudo apt install gh` (Linux)
+- **Authentication**: Run `gh auth login` before first use
+- **Clean Working Directory**: All changes must be committed
+- **Version Consistency**: VERSION file and manifest.json must match
+- **Changelog Entry**: CHANGELOG.md must contain new version section
 
-- **GitHub CLI**: `brew install gh` (macOS) or equivalent
-- **Authentication**: `gh auth login`
-- **Clean Development Branch**: All changes committed
-- **Version Consistency**: VERSION file and manifest.json updated
-- **Changelog Updated**: CHANGELOG.md contains release notes
+#### What the Script Does
 
-#### Release Process Documentation
+The `new-prod-release.sh` script:
+1. ✅ Validates prerequisites (git, gh CLI authentication)
+2. ✅ Verifies you're on development branch with clean working directory
+3. ✅ Checks version consistency across VERSION, manifest.json, and CHANGELOG.md
+4. ✅ Pushes development branch to GitHub
+5. ✅ Creates pull request from development to main
+6. ✅ Displays PR information and next steps
 
-For detailed instructions, troubleshooting, and advanced configuration options, see:
-**📖 [Complete Deployment Guide](DEPLOYMENT.md)**
+After PR merge, GitHub Actions automatically:
+1. 🤖 Detects release merge and reads version from VERSION file
+2. 🏷️ Creates annotated git tag (e.g., v1.7.1)
+3. 📦 Triggers release workflow
+4. 🚀 Creates GitHub release with changelog and assets
+5. 📢 Notifies HACS for distribution
 
-The deployment guide covers:
-- Step-by-step setup instructions
-- Version management best practices
-- CI/CD workflow integration
-- Troubleshooting common issues
-- Manual deployment procedures
-- Rollback processes
+#### Troubleshooting
+
+**Issue: "GitHub CLI is not authenticated"**
+```bash
+gh auth login
+gh auth status
+```
+
+**Issue: "Working directory is not clean"**
+```bash
+git status
+git add .
+git commit -m "chore: cleanup before release"
+```
+
+**Issue: "Version mismatch"**
+```bash
+# Check versions
+cat VERSION
+grep version custom_components/vacasa/manifest.json
+grep "## \[" CHANGELOG.md | head -1
+
+# Update all files to match
+echo "1.7.1" > VERSION
+# Edit manifest.json manually
+# Ensure CHANGELOG.md has [1.7.1] entry
+```
+
+**Issue: "PR already exists"**
+```bash
+gh pr list
+gh pr close <pr-number>  # Close old PR if needed
+./new-prod-release.sh    # Try again
+```
+
+**Issue: "Auto-tag workflow didn't trigger"**
+- Check commit message contains "Release v" or "prepare release v"
+- Manually create tag if needed:
+  ```bash
+  git checkout main
+  git pull origin main
+  git tag -a v1.7.1 -m "Release v1.7.1"
+  git push origin v1.7.1
+  ```
+
+#### Version Management Best Practices
+
+- **Semantic Versioning**: Use MAJOR.MINOR.PATCH format
+- **Consistency**: Always update VERSION, manifest.json, and CHANGELOG.md together
+- **Changelog Format**: Follow Keep a Changelog format with date
+- **Branch Hygiene**: Keep development branch in sync with main after releases
+- **Testing**: Test changes thoroughly before creating release PR
 
 ## Contributing
 
