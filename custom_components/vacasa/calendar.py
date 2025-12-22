@@ -391,16 +391,12 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
     async def _boundary_refresh(self, boundary: str) -> None:
         """Refresh coordinator and calendar state at reservation boundaries."""
         _LOGGER.debug("Starting boundary refresh (%s) for %s", boundary, self._name)
-        try:
-            await self.coordinator.async_request_refresh()
-        except Exception as err:  # pragma: no cover - coordinator handles its own errors
-            _LOGGER.warning(
-                "Boundary refresh (%s) for %s failed: %s",
-                boundary,
-                self._name,
-                err,
-            )
 
+        # Immediately update current event using existing event cache.
+        # The calendar has sufficient cached event data from periodic coordinator updates
+        # to determine that a boundary has passed. Awaiting coordinator refresh here
+        # would block sensor updates by 3-10 seconds until the API call completes.
+        # The coordinator's normal periodic refresh cycle will fetch fresh data soon.
         await self._update_current_event()
         self.async_write_ha_state()
 
