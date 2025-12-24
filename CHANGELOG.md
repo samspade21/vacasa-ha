@@ -5,7 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.7.2] - 2025-01-07
+## [1.7.3] - 2025-12-24
+
+### Fixed
+- Fixed thread safety violations in sensor signal handlers (#91)
+- Eliminated RuntimeError when sensors update from coordinator threads
+- Replaced direct `async_write_ha_state()` calls with `call_soon_threadsafe()`
+- Ensured occupancy and next stay sensors update correctly at check-in time
+- Prevented sensor update failures occurring every 2 hours during reservation updates
+- Fixed options flow initialization causing 500 Internal Server Error when opening integration settings
+- Corrected OptionsFlow base class initialization to not pass config_entry argument
+
+## [1.7.2] - 2025-12-24
 
 ### Fixed
 - Fixed options flow initialization to prevent 500 errors when opening Vacasa settings
