@@ -865,7 +865,10 @@ class VacasaNextStaySensor(VacasaBaseSensor):
             return
 
         self._update_from_state(state)
-        self.async_write_ha_state()
+        # Schedule state write on event loop thread-safely
+        # Signal handlers execute on worker threads, so we must use call_soon_threadsafe
+        if self.hass:
+            self.hass.loop.call_soon_threadsafe(self.async_write_ha_state)
 
     def _update_from_state(self, state: ReservationState) -> None:
         """Store reservation windows and mark availability."""
