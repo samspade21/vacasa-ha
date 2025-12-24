@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any
@@ -181,7 +182,14 @@ class VacasaOccupancySensor(CoordinatorEntity[VacasaDataUpdateCoordinator], Bina
             return
 
         self._update_from_state(state)
-        self.async_write_ha_state()
+        # Schedule state write on event loop thread-safely
+        # Signal handlers execute on worker threads, so we must use call_soon_threadsafe
+        hass = getattr(self, "hass", None)
+        loop = getattr(hass, "loop", None)
+        if isinstance(loop, asyncio.AbstractEventLoop):
+            loop.call_soon_threadsafe(self.async_write_ha_state)
+        else:
+            self.async_write_ha_state()
 
     def _update_from_state(self, state: ReservationState) -> None:
         """Store reservation state and mark availability."""
