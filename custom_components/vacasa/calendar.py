@@ -401,7 +401,11 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                 )
 
     def _handle_boundary_timer(self, scheduled_time: datetime, *, boundary: str) -> None:
-        """Handle a scheduled reservation boundary timer."""
+        """Handle a scheduled reservation boundary timer.
+
+        This callback is executed on a worker thread by Home Assistant's timer system,
+        so we must use call_soon_threadsafe to schedule work on the event loop.
+        """
         if not self.hass:
             return
 
@@ -413,14 +417,19 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             dt_util.utcnow().isoformat(),
         )
 
-        async_dispatcher_send(
+        # Schedule dispatcher send on event loop thread
+        self.hass.loop.call_soon_threadsafe(
+            async_dispatcher_send,
             self.hass,
             SIGNAL_RESERVATION_BOUNDARY,
             self._unit_id,
             boundary,
         )
 
-        self.hass.async_create_task(self._boundary_refresh(boundary))
+        # Schedule boundary refresh on event loop thread
+        self.hass.loop.call_soon_threadsafe(
+            lambda: self.hass.async_create_task(self._boundary_refresh(boundary))
+        )
 
     async def _boundary_refresh(self, boundary: str) -> None:
         """Refresh coordinator and calendar state at reservation boundaries."""

@@ -8,11 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.7.4] - 2026-01-02
 
 ### Fixed
-- **CRITICAL**: Fixed occupancy sensor changing state hours before actual checkout time
+- **CRITICAL**: Fixed occupancy sensor not updating at checkout/checkin times
   - Calendar now queries events from 60 days in the past to capture active reservations
   - Previously only queried from "today", missing guests who checked in before today
-  - Resolves issue where occupancy would show vacant 8+ hours before actual checkout
-  - Ensures boundary timers fire at correct checkout/checkin times
+  - Fixed thread safety violation in boundary timer callback
+  - Boundary timer now uses `call_soon_threadsafe()` to properly schedule updates on event loop
+  - Resolves issue where boundary timers would fire but fail silently due to thread errors
+  - Occupancy now correctly changes to vacant at exact 10 AM checkout time
 - Fixed options flow initialization causing 500 Internal Server Error (complete fix)
   - Removed manual `config_entry` assignment in OptionsFlowHandler.__init__
   - Framework now properly injects config_entry automatically
@@ -21,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Enhanced debug logging for occupancy state changes and boundary timer events
 - Detailed timestamp comparisons in event evaluation for easier troubleshooting
+- Thread safety documentation in boundary timer callback
 
 ## [1.7.3] - 2025-12-24
 
