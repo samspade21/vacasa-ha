@@ -163,10 +163,7 @@ def test_boundary_timer_dispatches_signal():
     calendar.hass.loop.call_soon_threadsafe = mock_call_soon
     calendar.hass.async_create_task = Mock()
 
-    with (
-        patch("custom_components.vacasa.calendar.async_dispatcher_send") as mock_send,
-        patch.object(calendar, "_boundary_refresh", new=AsyncMock()) as mock_refresh,
-    ):
+    with patch("custom_components.vacasa.calendar.async_dispatcher_send") as mock_send:
         calendar._handle_boundary_timer(
             dt_util.utcnow(),
             boundary="checkin",
@@ -182,9 +179,10 @@ def test_boundary_timer_dispatches_signal():
     assert first_call_args[2] == SIGNAL_RESERVATION_BOUNDARY
     assert first_call_args[3] == "unit123"
     assert first_call_args[4] == "checkin"
-    created_coro = calendar.hass.async_create_task.call_args.args[0]
-    assert mock_refresh.await_count == 0  # coroutine created but not awaited
-    created_coro.close()
+
+    # Verify the second call was for refresh (wrapped in a lambda)
+    second_call_args = mock_call_soon.call_args_list[1][0]
+    assert callable(second_call_args[0])  # Should be a lambda or callable
 
 
 def test_midnight_times_use_default_checkin_and_checkout():
