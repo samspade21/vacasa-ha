@@ -193,9 +193,31 @@ class VacasaOccupancySensor(CoordinatorEntity[VacasaDataUpdateCoordinator], Bina
 
     def _update_from_state(self, state: ReservationState) -> None:
         """Store reservation state and mark availability."""
+        old_occupancy = self.is_on
         self._current_reservation = state.current
         self._next_reservation = state.upcoming
         self._attr_available = True
+        new_occupancy = self.is_on
+
+        # Log occupancy changes to help diagnose timing issues
+        if old_occupancy != new_occupancy:
+            _LOGGER.warning(
+                "OCCUPANCY CHANGED for %s: %s -> %s. Current reservation: %s",
+                self._name,
+                "occupied" if old_occupancy else "vacant",
+                "occupied" if new_occupancy else "vacant",
+                f"{self._current_reservation.summary} (checkout: {self._current_reservation.end})"
+                if self._current_reservation
+                else "None",
+            )
+        else:
+            _LOGGER.debug(
+                "Occupancy update for %s: still %s. Current: %s, Next: %s",
+                self._name,
+                "occupied" if new_occupancy else "vacant",
+                self._current_reservation.summary if self._current_reservation else "None",
+                self._next_reservation.summary if self._next_reservation else "None",
+            )
 
     def _reservation_type(self, window: ReservationWindow | None) -> str | None:
         """Translate a reservation stay type into a display label."""

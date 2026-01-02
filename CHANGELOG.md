@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.4] - 2026-01-02
+
+### Fixed
+- **CRITICAL**: Fixed occupancy sensor changing state hours before actual checkout time
+  - Calendar now queries events from 60 days in the past to capture active reservations
+  - Previously only queried from "today", missing guests who checked in before today
+  - Resolves issue where occupancy would show vacant 8+ hours before actual checkout
+  - Ensures boundary timers fire at correct checkout/checkin times
+- Fixed options flow initialization causing 500 Internal Server Error (complete fix)
+  - Removed manual `config_entry` assignment in OptionsFlowHandler.__init__
+  - Framework now properly injects config_entry automatically
+  - Settings page now opens without errors
+
+### Added
+- Enhanced debug logging for occupancy state changes and boundary timer events
+- Detailed timestamp comparisons in event evaluation for easier troubleshooting
+
 ## [1.7.3] - 2025-12-24
 
 ### Fixed
