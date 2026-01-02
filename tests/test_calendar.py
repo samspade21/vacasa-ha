@@ -158,6 +158,9 @@ def test_boundary_timer_dispatches_signal():
         next_end_delta=timedelta(days=3),
     )
 
+    # Mock the event loop's call_soon_threadsafe
+    mock_call_soon = Mock()
+    calendar.hass.loop.call_soon_threadsafe = mock_call_soon
     calendar.hass.async_create_task = Mock()
 
     with (
@@ -169,14 +172,16 @@ def test_boundary_timer_dispatches_signal():
             boundary="checkin",
         )
 
-    mock_send.assert_called_once_with(
-        calendar.hass,
-        SIGNAL_RESERVATION_BOUNDARY,
-        "unit123",
-        "checkin",
-    )
+    # Verify call_soon_threadsafe was called twice (once for dispatcher, once for refresh)
+    assert mock_call_soon.call_count == 2
 
-    calendar.hass.async_create_task.assert_called_once()
+    # Verify the first call was for async_dispatcher_send
+    first_call_args = mock_call_soon.call_args_list[0][0]
+    assert first_call_args[0] == mock_send
+    assert first_call_args[1] == calendar.hass
+    assert first_call_args[2] == SIGNAL_RESERVATION_BOUNDARY
+    assert first_call_args[3] == "unit123"
+    assert first_call_args[4] == "checkin"
     created_coro = calendar.hass.async_create_task.call_args.args[0]
     assert mock_refresh.await_count == 0  # coroutine created but not awaited
     created_coro.close()
