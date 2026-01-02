@@ -252,7 +252,11 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         """Determine the current and next events for the property."""
         now_local = dt_util.now()
         now_utc = dt_util.utcnow()
-        events = await self.async_get_events(self.hass, now_local, now_local + timedelta(days=365))
+        # Query from 60 days ago to catch any currently active reservations that started in the past
+        # but are still in progress (e.g., guest checking out today but checked in weeks ago)
+        start_date = now_local - timedelta(days=60)
+        end_date = now_local + timedelta(days=365)
+        events = await self.async_get_events(self.hass, start_date, end_date)
 
         _LOGGER.debug(
             "Evaluating %d events for %s at %s",
@@ -279,6 +283,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             in_progress = start_utc <= now_utc < end_utc
             upcoming = start_utc > now_utc
 
+            # Enhanced debug logging to diagnose timing issues
             _LOGGER.debug(
                 "Event %s: start=%s, end=%s, now=%s, in_progress=%s, upcoming=%s",
                 event.summary,
@@ -287,6 +292,24 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                 now_utc.isoformat(),
                 in_progress,
                 upcoming,
+            )
+            _LOGGER.debug(
+                "  Comparison details: start_utc_ts=%s, end_utc_ts=%s, now_utc_ts=%s",
+                start_utc.timestamp(),
+                end_utc.timestamp(),
+                now_utc.timestamp(),
+            )
+            _LOGGER.debug(
+                "  Original event times: start=%s (tzinfo=%s), end=%s (tzinfo=%s)",
+                event.start.isoformat() if event.start else "None",
+                event.start.tzinfo if event.start else "None",
+                event.end.isoformat() if event.end else "None",
+                event.end.tzinfo if event.end else "None",
+            )
+            _LOGGER.debug(
+                "  Boolean checks: (start_utc <= now_utc)=%s, (now_utc < end_utc)=%s",
+                start_utc <= now_utc,
+                now_utc < end_utc,
             )
 
             if in_progress:
@@ -347,10 +370,15 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                     partial(self._handle_boundary_timer, boundary="checkout"),
                     end_utc,
                 )
-                _LOGGER.debug(
-                    "Scheduled checkout refresh for %s at %s",
+                _LOGGER.warning(
+                    "Scheduled checkout refresh for %s at %s "
+                    "(local: %s, original: %s with tz: %s). Event: %s",
                     self._name,
                     end_utc.isoformat(),
+                    dt_util.as_local(end_utc).isoformat(),
+                    self._current_event.end.isoformat(),
+                    self._current_event.end.tzinfo,
+                    self._current_event.summary,
                 )
 
         if self._next_event and getattr(self._next_event, "start", None):
@@ -361,32 +389,47 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                     partial(self._handle_boundary_timer, boundary="checkin"),
                     start_utc,
                 )
-                _LOGGER.debug(
-                    "Scheduled check-in refresh for %s at %s",
+                _LOGGER.warning(
+                    "Scheduled check-in refresh for %s at %s "
+                    "(local: %s, original: %s with tz: %s). Event: %s",
                     self._name,
                     start_utc.isoformat(),
+                    dt_util.as_local(start_utc).isoformat(),
+                    self._next_event.start.isoformat(),
+                    self._next_event.start.tzinfo,
+                    self._next_event.summary,
                 )
 
     def _handle_boundary_timer(self, scheduled_time: datetime, *, boundary: str) -> None:
-        """Handle a scheduled reservation boundary timer."""
+        """Handle a scheduled reservation boundary timer.
+
+        This callback is executed on a worker thread by Home Assistant's timer system,
+        so we must use call_soon_threadsafe to schedule work on the event loop.
+        """
         if not self.hass:
             return
 
-        _LOGGER.debug(
-            "Boundary timer (%s) fired for %s at %s",
+        _LOGGER.warning(
+            "BOUNDARY TIMER (%s) FIRED for %s! Scheduled: %s, Actual: %s",
             boundary,
             self._name,
             scheduled_time.isoformat(),
+            dt_util.utcnow().isoformat(),
         )
 
-        async_dispatcher_send(
+        # Schedule dispatcher send on event loop thread
+        self.hass.loop.call_soon_threadsafe(
+            async_dispatcher_send,
             self.hass,
             SIGNAL_RESERVATION_BOUNDARY,
             self._unit_id,
             boundary,
         )
 
-        self.hass.async_create_task(self._boundary_refresh(boundary))
+        # Schedule boundary refresh on event loop thread
+        self.hass.loop.call_soon_threadsafe(
+            lambda: self.hass.async_create_task(self._boundary_refresh(boundary))
+        )
 
     async def _boundary_refresh(self, boundary: str) -> None:
         """Refresh coordinator and calendar state at reservation boundaries."""
