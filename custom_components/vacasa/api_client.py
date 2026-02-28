@@ -23,6 +23,8 @@ from .const import (
     DEFAULT_CONN_TIMEOUT,
     DEFAULT_JITTER_MAX,
     DEFAULT_KEEPALIVE_TIMEOUT,
+    CLIENT_ID_CACHE_TTL,
+    DEFAULT_MAX_CONCURRENT_REQUESTS,
     DEFAULT_MAX_CONNECTIONS,
     DEFAULT_READ_TIMEOUT,
     DEFAULT_TIMEOUT,
@@ -143,6 +145,9 @@ class VacasaApiClient:
             hass=hass,
         )
 
+        # Semaphore to cap concurrent API requests and avoid rate-limit errors
+        self._request_semaphore = asyncio.Semaphore(DEFAULT_MAX_CONCURRENT_REQUESTS)
+
         # Set up retry handler
         self._retry_handler = RetryWithBackoff(
             max_retries=max_retries,
@@ -224,7 +229,8 @@ class VacasaApiClient:
         """Ensure the OAuth client ID is up to date."""
         now = time.time()
         cache_valid = (
-            self._client_id_last_fetch is not None and now - self._client_id_last_fetch < 3600
+            self._client_id_last_fetch is not None
+            and now - self._client_id_last_fetch < CLIENT_ID_CACHE_TTL
         )
 
         if cache_valid and self._client_id:
@@ -335,77 +341,78 @@ class VacasaApiClient:
         for version in self._version_candidates(version_override):
             url = self._build_api_url(path, version)
             try:
-                async with session.request(
-                    method,
-                    url,
-                    params=params,
-                    json=json_data,
-                    headers=self._get_headers(),
-                    timeout=DEFAULT_TIMEOUT,
-                ) as response:
-                    if response.status in acceptable_status:
-                        self._set_api_version(version)
-                        if not return_json:
-                            return await response.text()
-                        # Always attempt JSON parsing when return_json=True
-                        # API may include charset in content-type
-                        # (e.g., "application/json; charset=utf-8")
-                        try:
-                            return await response.json()
-                        except (aiohttp.ContentTypeError, json.JSONDecodeError) as e:
-                            # Log diagnostic info for troubleshooting
-                            response_text = await response.text()
-                            _LOGGER.warning(
-                                "Failed to parse JSON from %s (content-type: %s): %s. Response: %s",
-                                url,
-                                response.content_type,
-                                e,
-                                response_text[:200],
-                            )
-                            # Return text as fallback, but this will likely
-                            # cause errors in calling code
-                            return response_text
+                async with self._request_semaphore:
+                    async with session.request(
+                        method,
+                        url,
+                        params=params,
+                        json=json_data,
+                        headers=self._get_headers(),
+                        timeout=DEFAULT_TIMEOUT,
+                    ) as response:
+                        if response.status in acceptable_status:
+                            self._set_api_version(version)
+                            if not return_json:
+                                return await response.text()
+                            # Always attempt JSON parsing when return_json=True
+                            # API may include charset in content-type
+                            # (e.g., "application/json; charset=utf-8")
+                            try:
+                                return await response.json()
+                            except (aiohttp.ContentTypeError, json.JSONDecodeError) as e:
+                                # Log diagnostic info for troubleshooting
+                                response_text = await response.text()
+                                _LOGGER.warning(
+                                    "Failed to parse JSON from %s (content-type: %s): %s. Response: %s",
+                                    url,
+                                    response.content_type,
+                                    e,
+                                    response_text[:200],
+                                )
+                                raise ApiError(
+                                    f"Non-JSON response from {url}: {response_text[:200]}"
+                                ) from e
 
-                    if response.status == 401:
-                        # Attempt token refresh once when unauthorized
-                        _LOGGER.warning("API request unauthorized for %s, refreshing token", url)
-                        if retry_on_unauthorized:
-                            await self.authenticate()
-                            await self._save_token_to_cache()
-                            return await self._request(
-                                method,
+                        if response.status == 401:
+                            # Attempt token refresh once when unauthorized
+                            _LOGGER.warning("API request unauthorized for %s, refreshing token", url)
+                            if retry_on_unauthorized:
+                                await self.authenticate()
+                                await self._save_token_to_cache()
+                                return await self._request(
+                                    method,
+                                    path,
+                                    params=params,
+                                    json_data=json_data,
+                                    acceptable_status=acceptable_status,
+                                    version_override=version,
+                                    return_json=return_json,
+                                    retry_on_unauthorized=False,
+                                )
+                            last_error = AuthenticationError("Unauthorized")
+                            continue
+
+                        if response.status == 403:
+                            last_error = AuthenticationError(
+                                f"Forbidden request to {path}: {response.status}"
+                            )
+                            break
+
+                        # Try next version on not found errors when fallbacks are allowed
+                        if response.status in (404, 400) and version_override is None:
+                            _LOGGER.debug(
+                                "API version %s returned %s for %s, trying fallback",
+                                version,
+                                response.status,
                                 path,
-                                params=params,
-                                json_data=json_data,
-                                acceptable_status=acceptable_status,
-                                version_override=version,
-                                return_json=return_json,
-                                retry_on_unauthorized=False,
                             )
-                        last_error = AuthenticationError("Unauthorized")
-                        continue
+                            last_error = ApiError(f"Endpoint {path} unavailable")
+                            continue
 
-                    if response.status == 403:
-                        last_error = AuthenticationError(
-                            f"Forbidden request to {path}: {response.status}"
+                        response_text = await response.text()
+                        last_error = ApiError(
+                            f"Unexpected status {response.status} for {path}: {response_text[:200]}"
                         )
-                        break
-
-                    # Try next version on not found errors when fallbacks are allowed
-                    if response.status in (404, 400) and version_override is None:
-                        _LOGGER.debug(
-                            "API version %s returned %s for %s, trying fallback",
-                            version,
-                            response.status,
-                            path,
-                        )
-                        last_error = ApiError(f"Endpoint {path} unavailable")
-                        continue
-
-                    response_text = await response.text()
-                    last_error = ApiError(
-                        f"Unexpected status {response.status} for {path}: {response_text[:200]}"
-                    )
             except AuthenticationError:
                 raise
             except aiohttp.ClientError as err:
@@ -866,11 +873,15 @@ class VacasaApiClient:
                                 return token
 
                         # If we've reached owners.vacasa.com without a token, try one more request
-                        # Use proper hostname parsing to prevent URL manipulation attacks
+                        # Use domain-parts check: ensure last 3 labels are owners.vacasa.com
+                        # This prevents false matches like fake-owners.vacasa.com
                         response_host = str(response.url.host).lower() if response.url.host else ""
-                        if response_host == "owners.vacasa.com" or response_host.endswith(
-                            ".owners.vacasa.com"
-                        ):
+                        host_parts = response_host.split(".")
+                        is_owners_host = (
+                            len(host_parts) >= 3
+                            and ".".join(host_parts[-3:]) == "owners.vacasa.com"
+                        )
+                        if is_owners_host:
                             page_content = await response.text()
                             token_match = re.search(r'access_token=([^&"\']+)', page_content)
                             if token_match:
