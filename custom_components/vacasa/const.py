@@ -93,11 +93,11 @@ SIGNAL_RESERVATION_BOUNDARY = "vacasa_reservation_boundary"
 SIGNAL_RESERVATION_STATE = "vacasa_reservation_state"
 
 # Calendar event window constants
-CALENDAR_LOOKBACK_DAYS = 60   # days to look back for active reservations
+CALENDAR_LOOKBACK_DAYS = 60  # days to look back for active reservations
 CALENDAR_LOOKAHEAD_DAYS = 365  # days to look ahead for future reservations
 
 # Default reservation times when none are provided by the API
-DEFAULT_CHECKIN_TIME = "16:00:00"   # 4:00 PM
+DEFAULT_CHECKIN_TIME = "16:00:00"  # 4:00 PM
 DEFAULT_CHECKOUT_TIME = "10:00:00"  # 10:00 AM
 
 # Client ID cache TTL (re-use DEFAULT_CACHE_TTL for this purpose)

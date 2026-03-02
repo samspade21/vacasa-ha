@@ -17,13 +17,13 @@ from .cached_data import CachedData, RetryWithBackoff
 from .const import (
     API_BASE_TEMPLATE,
     AUTH_URL,
+    CLIENT_ID_CACHE_TTL,
     DEFAULT_API_VERSION,
     DEFAULT_CACHE_TTL,
     DEFAULT_CLIENT_ID,
     DEFAULT_CONN_TIMEOUT,
     DEFAULT_JITTER_MAX,
     DEFAULT_KEEPALIVE_TIMEOUT,
-    CLIENT_ID_CACHE_TTL,
     DEFAULT_MAX_CONCURRENT_REQUESTS,
     DEFAULT_MAX_CONNECTIONS,
     DEFAULT_READ_TIMEOUT,
@@ -375,7 +375,9 @@ class VacasaApiClient:
 
                         if response.status == 401:
                             # Attempt token refresh once when unauthorized
-                            _LOGGER.warning("API request unauthorized for %s, refreshing token", url)
+                            _LOGGER.warning(
+                                "API request unauthorized for %s, refreshing token", url
+                            )
                             if retry_on_unauthorized:
                                 await self.authenticate()
                                 await self._save_token_to_cache()
