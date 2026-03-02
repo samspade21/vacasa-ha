@@ -363,7 +363,8 @@ class VacasaApiClient:
                                 # Log diagnostic info for troubleshooting
                                 response_text = await response.text()
                                 _LOGGER.warning(
-                                    "Failed to parse JSON from %s (content-type: %s): %s. Response: %s",
+                                    "Failed to parse JSON from %s (content-type: %s): %s. "
+                                    "Response: %s",
                                     url,
                                     response.content_type,
                                     e,
