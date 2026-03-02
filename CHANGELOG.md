@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.5] - 2026-03-01
+
+### Fixed
+- **Code Quality**: Fixed ruff E501 line-too-long error in api_client.py (#95)
+  - Split warning message across two lines using implicit string concatenation
+  - Ensures compliance with 100-character line length limit
+- **JSON Parsing**: Enhanced error handling when JSON parsing fails (#94)
+  - Now raises ApiError instead of silently returning raw text
+  - Prevents type confusion in API client callers
+- **Hostname Validation**: Corrected URL validation for owners.vacasa.com (#94)
+  - Fixed endswith() check that incorrectly matched malicious hostnames
+  - Now uses proper domain-parts validation
+- **Rate Limiting**: Added API request rate limiting to prevent throttling (#94)
+  - Implemented asyncio.Semaphore with max 5 concurrent requests
+  - Prevents hitting Vacasa API rate limits during heavy operations
+- **Thread Safety**: Improved signal handler implementations (#94)
+  - Added @callback decorator to _handle_reservation_state methods
+  - Removed fragile call_soon_threadsafe fallback code
+  - Signal handlers now correctly run on event loop
+
+### Changed
+- **Constants**: Replaced magic numbers with named constants (#94)
+  - CLIENT_ID_CACHE_TTL replaces hardcoded 3600
+  - CALENDAR_LOOKBACK_DAYS / CALENDAR_LOOKAHEAD_DAYS replace 60 / 365
+  - DEFAULT_CHECKIN_TIME / DEFAULT_CHECKOUT_TIME replace "16:00:00" / "10:00:00"
+- **Logging**: Adjusted log levels for normal operations (#94)
+  - Occupancy changes now logged at info level instead of warning
+  - Boundary timer scheduling logged at debug level instead of warning
+  - Reduces noise in default logging configuration
+- **Error Reporting**: Added warning log when statement parsing fails (#94)
+  - _coerce_amount now logs warnings instead of silently returning None
+
 ## [1.7.4] - 2026-01-02
 
 ### Fixed
