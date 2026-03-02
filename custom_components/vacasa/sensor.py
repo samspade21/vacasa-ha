@@ -755,8 +755,8 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
 
         return max(self._statements, key=_sort_key)
 
-    @staticmethod
-    def _coerce_amount(value: Any) -> float | None:
+    @classmethod
+    def _coerce_amount(cls, value: Any) -> float | None:
         if isinstance(value, (int, float)):
             return float(value)
         if isinstance(value, str):
@@ -764,6 +764,7 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
             try:
                 return float(cleaned)
             except ValueError:
+                _LOGGER.warning("Could not parse statement amount %r as a number", value)
                 return None
         return None
 
@@ -859,20 +860,14 @@ class VacasaNextStaySensor(VacasaBaseSensor):
             return
         self._update_from_state(state)
 
+    @callback
     def _handle_reservation_state(self, unit_id: str, state: ReservationState) -> None:
         """Handle reservation updates sent by the calendar entities."""
         if unit_id != self._unit_id:
             return
 
         self._update_from_state(state)
-        # Schedule state write on event loop thread-safely
-        # Signal handlers execute on worker threads, so we must use call_soon_threadsafe
-        hass = getattr(self, "hass", None)
-        loop = getattr(hass, "loop", None)
-        if isinstance(loop, asyncio.AbstractEventLoop):
-            loop.call_soon_threadsafe(self.async_write_ha_state)
-        else:
-            self.async_write_ha_state()
+        self.async_write_ha_state()
 
     def _update_from_state(self, state: ReservationState) -> None:
         """Store reservation windows and mark availability."""

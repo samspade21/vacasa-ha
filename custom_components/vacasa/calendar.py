@@ -16,6 +16,10 @@ from homeassistant.util import dt as dt_util
 from . import VacasaConfigEntry, VacasaDataUpdateCoordinator
 from .api_client import VacasaApiClient
 from .const import (
+    CALENDAR_LOOKAHEAD_DAYS,
+    CALENDAR_LOOKBACK_DAYS,
+    DEFAULT_CHECKIN_TIME,
+    DEFAULT_CHECKOUT_TIME,
     DOMAIN,
     SIGNAL_RESERVATION_BOUNDARY,
     SIGNAL_RESERVATION_STATE,
@@ -252,10 +256,10 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         """Determine the current and next events for the property."""
         now_local = dt_util.now()
         now_utc = dt_util.utcnow()
-        # Query from 60 days ago to catch any currently active reservations that started in the past
-        # but are still in progress (e.g., guest checking out today but checked in weeks ago)
-        start_date = now_local - timedelta(days=60)
-        end_date = now_local + timedelta(days=365)
+        # Query from CALENDAR_LOOKBACK_DAYS ago to catch active reservations started in the past
+        # (e.g., guest checking out today but checked in weeks ago)
+        start_date = now_local - timedelta(days=CALENDAR_LOOKBACK_DAYS)
+        end_date = now_local + timedelta(days=CALENDAR_LOOKAHEAD_DAYS)
         events = await self.async_get_events(self.hass, start_date, end_date)
 
         _LOGGER.debug(
@@ -370,7 +374,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                     partial(self._handle_boundary_timer, boundary="checkout"),
                     end_utc,
                 )
-                _LOGGER.warning(
+                _LOGGER.debug(
                     "Scheduled checkout refresh for %s at %s "
                     "(local: %s, original: %s with tz: %s). Event: %s",
                     self._name,
@@ -389,7 +393,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                     partial(self._handle_boundary_timer, boundary="checkin"),
                     start_utc,
                 )
-                _LOGGER.warning(
+                _LOGGER.debug(
                     "Scheduled check-in refresh for %s at %s "
                     "(local: %s, original: %s with tz: %s). Event: %s",
                     self._name,
@@ -409,8 +413,8 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         if not self.hass:
             return
 
-        _LOGGER.warning(
-            "BOUNDARY TIMER (%s) FIRED for %s! Scheduled: %s, Actual: %s",
+        _LOGGER.debug(
+            "Boundary timer (%s) fired for %s. Scheduled: %s, Actual: %s",
             boundary,
             self._name,
             scheduled_time.isoformat(),
@@ -532,8 +536,8 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                 # Use property-specific time
                 start_dt_str = f"{start_date}T{property_checkin_time}"
             else:
-                # No time available, default to 4:00 PM (16:00)
-                start_dt_str = f"{start_date}T16:00:00"
+                # No time available, use default check-in time
+                start_dt_str = f"{start_date}T{DEFAULT_CHECKIN_TIME}"
 
             if checkout_time:
                 # Use time from reservation
@@ -542,8 +546,8 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                 # Use property-specific time
                 end_dt_str = f"{end_date}T{property_checkout_time}"
             else:
-                # No time available, default to 10:00 AM (10:00)
-                end_dt_str = f"{end_date}T10:00:00"
+                # No time available, use default checkout time
+                end_dt_str = f"{end_date}T{DEFAULT_CHECKOUT_TIME}"
 
             # Parse datetime strings
             start_dt = dt_util.parse_datetime(start_dt_str)
@@ -638,14 +642,14 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             elif self._checkin_time:
                 description_parts.append(f"Check-in: {start_date} {self._checkin_time[:5]}")
             else:
-                description_parts.append(f"Check-in: {start_date} 16:00")
+                description_parts.append(f"Check-in: {start_date} {DEFAULT_CHECKIN_TIME[:5]}")
 
             if checkout_time and checkout_time != "00:00:00":
                 description_parts.append(f"Check-out: {end_date} {checkout_time[:5]}")
             elif self._checkout_time:
                 description_parts.append(f"Check-out: {end_date} {self._checkout_time[:5]}")
             else:
-                description_parts.append(f"Check-out: {end_date} 10:00")
+                description_parts.append(f"Check-out: {end_date} {DEFAULT_CHECKOUT_TIME[:5]}")
 
             description_parts.append("")
 
