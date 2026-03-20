@@ -42,7 +42,6 @@ def test_handle_reservation_state_updates_sensor():
     coordinator = _mock_coordinator()
     sensor = VacasaOccupancySensor(
         coordinator=coordinator,
-        client=Mock(),
         unit_id="unit123",
         name="Test Unit",
         code="TU",
@@ -79,7 +78,6 @@ def test_handle_reservation_state_ignores_other_units():
     coordinator = _mock_coordinator()
     sensor = VacasaOccupancySensor(
         coordinator=coordinator,
-        client=Mock(),
         unit_id="unit123",
         name="Test Unit",
         code="TU",
@@ -108,7 +106,6 @@ async def test_async_update_requests_coordinator_refresh():
     coordinator = _mock_coordinator()
     sensor = VacasaOccupancySensor(
         coordinator=coordinator,
-        client=Mock(),
         unit_id="unit123",
         name="Test Unit",
         code="TU",
@@ -134,7 +131,6 @@ def test_refresh_from_coordinator_uses_cached_state():
 
     sensor = VacasaOccupancySensor(
         coordinator=coordinator,
-        client=Mock(),
         unit_id="unit123",
         name="Test Unit",
         code="TU",

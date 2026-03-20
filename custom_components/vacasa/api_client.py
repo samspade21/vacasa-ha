@@ -512,7 +512,7 @@ class VacasaApiClient:
             await self._run_blocking_io(os.remove, self._token_cache_file)
             _LOGGER.debug("Token cache file removed: %s", self._token_cache_file)
         except FileNotFoundError:
-            pass
+            pass  # File already absent — nothing to remove
         except Exception as e:
             _LOGGER.warning("Failed to remove token cache file: %s", e)
 

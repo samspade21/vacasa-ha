@@ -215,7 +215,7 @@ class CachedData:
             await self._run_io_task(os.remove, self._cache_file)
             _LOGGER.debug("Cache file removed: %s", self._cache_file)
         except FileNotFoundError:
-            pass
+            pass  # File already absent — nothing to remove
         except Exception as e:
             _LOGGER.warning("Failed to remove cache file: %s", e)
 

@@ -241,7 +241,7 @@ class TestTokenCaching:
 
     def test_load_token_from_cache_sync_file_not_exists(self, api_client):
         """Test loading token from cache when file doesn't exist."""
-        with patch("os.path.exists", return_value=False):
+        with patch("builtins.open", side_effect=FileNotFoundError):
             result = api_client._load_token_from_cache_sync()
             assert result is False
 
@@ -250,7 +250,6 @@ class TestTokenCaching:
         mock_file = mock_open(read_data=json.dumps(valid_token_cache_data))
 
         with (
-            patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_file),
             patch("json.load", return_value=valid_token_cache_data),
         ):
@@ -266,7 +265,6 @@ class TestTokenCaching:
         mock_file = mock_open(read_data=json.dumps(invalid_data))
 
         with (
-            patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_file),
             patch("json.load", return_value=invalid_data),
         ):
@@ -296,10 +294,7 @@ class TestTokenCaching:
         api_client._token = "test_token"
         api_client._token_expiry = datetime.now(timezone.utc)
 
-        with (
-            patch("os.path.exists", return_value=True),
-            patch("os.remove") as mock_remove,
-        ):
+        with patch("os.remove") as mock_remove:
             await api_client.clear_cache()
 
             assert api_client._token is None
@@ -309,15 +304,12 @@ class TestTokenCaching:
     @pytest.mark.asyncio
     async def test_clear_cache_file_not_exists(self, api_client):
         """Test clearing cache when file doesn't exist."""
-        with (
-            patch("os.path.exists", return_value=False),
-            patch("os.remove") as mock_remove,
-        ):
+        with patch("os.remove", side_effect=FileNotFoundError) as mock_remove:
             await api_client.clear_cache()
 
             assert api_client._token is None
             assert api_client._token_expiry is None
-            mock_remove.assert_not_called()
+            mock_remove.assert_called_once_with(api_client._token_cache_file)
 
 
 class TestAuthenticationTokenHandling:
