@@ -526,6 +526,7 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
         self._coordinator = coordinator
         self._config_entry = config_entry
         self._statements: list[dict[str, Any]] = []
+        self._latest: dict[str, Any] | None = None
         self._attr_name = "Vacasa Statements"
         self._attr_has_entity_name = True
         self._attr_unique_id = f"vacasa_{SENSOR_STATEMENTS_TOTAL}_{config_entry.entry_id}"
@@ -542,6 +543,7 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
         except (AuthenticationError, ApiError) as err:
             _LOGGER.warning("Unable to update statements: %s", err)
             self._statements = []
+        self._latest = self._latest_statement()
 
     def _latest_statement(self) -> dict[str, Any] | None:
         if not self._statements:
@@ -573,7 +575,7 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
     @property
     def native_value(self) -> float | int:
         """Return the latest statement total."""
-        latest = self._latest_statement()
+        latest = self._latest
         if not latest:
             return 0
 
@@ -591,7 +593,7 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Expose detailed statement attributes."""
-        latest = self._latest_statement()
+        latest = self._latest
         attributes = latest.get("attributes", {}) if isinstance(latest, dict) else {}
         if not isinstance(attributes, dict):
             attributes = {}
@@ -656,12 +658,8 @@ class VacasaNextStaySensor(VacasaReservationStateMixin, VacasaBaseSensor):
 
     @staticmethod
     def _as_local(value: datetime | None) -> datetime | None:
-        """Ensure datetime objects are timezone-aware and local."""
-        if value is None:
-            return None
-        if value.tzinfo is None:
-            return dt_util.as_local(value)
-        return value
+        """Convert a datetime to local timezone, or return None."""
+        return dt_util.as_local(value) if value is not None else None
 
     def _days_until(self, target: datetime | None, now: datetime) -> int | None:
         """Calculate whole days between now and a target datetime."""
