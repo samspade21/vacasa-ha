@@ -39,7 +39,7 @@ jobs:
         python-version: "3.14"
 
     - name: Install dependencies
-      run: uv sync
+      run: uv sync --group dev --group test
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v4

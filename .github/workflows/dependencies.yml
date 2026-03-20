@@ -36,7 +36,7 @@ jobs:
 
       - name: Comprehensive security audit
         run: |
-          uvx pip-audit --format=json --output=audit.json || true
+          uvx pip-audit --format=json --output=audit.json
           if [ -s audit.json ]; then
             echo "::warning::Security vulnerabilities found in dependencies"
             cat audit.json
@@ -96,6 +96,7 @@ jobs:
           "
 
       - name: Upload dependency reports
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: dependency-reports
