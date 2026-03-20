@@ -502,7 +502,27 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
 
         return normalized
 
-    def _reservation_to_event(  # noqa: C901
+    @staticmethod
+    def _resolve_time(
+        reservation_time: str | None,
+        property_time: str | None,
+        default_time: str,
+    ) -> str:
+        """Return the first non-falsy time value from the priority chain."""
+        return reservation_time or property_time or default_time
+
+    def _apply_timezone(self, dt: datetime, is_all_day: bool) -> datetime:
+        """Apply the property timezone (or local fallback) to a naive datetime."""
+        if is_all_day:
+            return dt
+        if self._timezone:
+            try:
+                return dt.replace(tzinfo=None).replace(tzinfo=ZoneInfo(self._timezone))
+            except Exception as e:
+                _LOGGER.warning("Error applying timezone %s: %s", self._timezone, e)
+        return dt_util.as_local(dt)
+
+    def _reservation_to_event(
         self, reservation: dict[str, Any], stay_type: str
     ) -> CalendarEvent | None:
         """Convert a reservation to a calendar event."""
@@ -522,26 +542,15 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             property_checkin_time = self._normalize_time_value(self._checkin_time)
             property_checkout_time = self._normalize_time_value(self._checkout_time)
 
-            # Create datetime objects based on available information
-            if checkin_time:
-                # Use time from reservation
-                start_dt_str = f"{start_date}T{checkin_time}"
-            elif property_checkin_time:
-                # Use property-specific time
-                start_dt_str = f"{start_date}T{property_checkin_time}"
-            else:
-                # No time available, use default check-in time
-                start_dt_str = f"{start_date}T{DEFAULT_CHECKIN_TIME}"
-
-            if checkout_time:
-                # Use time from reservation
-                end_dt_str = f"{end_date}T{checkout_time}"
-            elif property_checkout_time:
-                # Use property-specific time
-                end_dt_str = f"{end_date}T{property_checkout_time}"
-            else:
-                # No time available, use default checkout time
-                end_dt_str = f"{end_date}T{DEFAULT_CHECKOUT_TIME}"
+            # Build datetime strings using first available time source
+            checkin_time_resolved = self._resolve_time(
+                checkin_time, property_checkin_time, DEFAULT_CHECKIN_TIME
+            )
+            checkout_time_resolved = self._resolve_time(
+                checkout_time, property_checkout_time, DEFAULT_CHECKOUT_TIME
+            )
+            start_dt_str = f"{start_date}T{checkin_time_resolved}"
+            end_dt_str = f"{end_date}T{checkout_time_resolved}"
 
             # Parse datetime strings
             start_dt = dt_util.parse_datetime(start_dt_str)
@@ -550,53 +559,25 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             if not start_dt or not end_dt:
                 return None
 
-            # Handle timezone properly
-            # For all-day events (no specific time), don't apply timezone
+            # Apply timezone; skip for all-day events (both sides at midnight)
             is_all_day_start = "T00:00:00" in start_dt_str
             is_all_day_end = "T00:00:00" in end_dt_str
 
             if is_all_day_start and is_all_day_end:
-                # This is an all-day event
                 _LOGGER.debug(
                     "Creating all-day event for %s from %s to %s",
                     self._name,
                     start_date,
                     end_date,
                 )
-                # No timezone needed for all-day events
             else:
-                # This is a timed event, apply timezone
-                if self._timezone:
-                    try:
-                        tz = ZoneInfo(self._timezone)
-                        _LOGGER.debug("Using property timezone: %s", self._timezone)
-
-                        # Create timezone-aware datetime objects
-                        if not is_all_day_start:
-                            # Use replace with zoneinfo to handle DST correctly
-                            naive_start = start_dt.replace(tzinfo=None)
-                            start_dt = naive_start.replace(tzinfo=tz)
-                            _LOGGER.debug("Start time with TZ: %s", start_dt)
-
-                        if not is_all_day_end:
-                            # Use replace with zoneinfo to handle DST correctly
-                            naive_end = end_dt.replace(tzinfo=None)
-                            end_dt = naive_end.replace(tzinfo=tz)
-                            _LOGGER.debug("End time with TZ: %s", end_dt)
-                    except Exception as e:
-                        _LOGGER.warning("Error applying timezone %s: %s", self._timezone, e)
-                        # Fall back to local timezone
-                        if not is_all_day_start:
-                            start_dt = dt_util.as_local(start_dt)
-                        if not is_all_day_end:
-                            end_dt = dt_util.as_local(end_dt)
-                else:
-                    # No property timezone, use local timezone
-                    _LOGGER.debug("No property timezone, using local timezone")
-                    if not is_all_day_start:
-                        start_dt = dt_util.as_local(start_dt)
-                    if not is_all_day_end:
-                        end_dt = dt_util.as_local(end_dt)
+                _LOGGER.debug(
+                    "Applying %s timezone for %s",
+                    self._timezone or "local",
+                    self._name,
+                )
+                start_dt = self._apply_timezone(start_dt, is_all_day_start)
+                end_dt = self._apply_timezone(end_dt, is_all_day_end)
 
             # Get guest/owner information
             first_name = attributes.get("firstName", "")
@@ -629,19 +610,14 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             description_parts = []
 
             # Add check-in and check-out information
-            if checkin_time and checkin_time != "00:00:00":
-                description_parts.append(f"Check-in: {start_date} {checkin_time[:5]}")
-            elif self._checkin_time:
-                description_parts.append(f"Check-in: {start_date} {self._checkin_time[:5]}")
-            else:
-                description_parts.append(f"Check-in: {start_date} {DEFAULT_CHECKIN_TIME[:5]}")
-
-            if checkout_time and checkout_time != "00:00:00":
-                description_parts.append(f"Check-out: {end_date} {checkout_time[:5]}")
-            elif self._checkout_time:
-                description_parts.append(f"Check-out: {end_date} {self._checkout_time[:5]}")
-            else:
-                description_parts.append(f"Check-out: {end_date} {DEFAULT_CHECKOUT_TIME[:5]}")
+            checkin_display = self._resolve_time(
+                checkin_time, property_checkin_time, DEFAULT_CHECKIN_TIME
+            )
+            checkout_display = self._resolve_time(
+                checkout_time, property_checkout_time, DEFAULT_CHECKOUT_TIME
+            )
+            description_parts.append(f"Check-in: {start_date} {checkin_display[:5]}")
+            description_parts.append(f"Check-out: {end_date} {checkout_display[:5]}")
 
             description_parts.append("")
 
