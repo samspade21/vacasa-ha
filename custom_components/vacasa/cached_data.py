@@ -123,13 +123,10 @@ class CachedData:
     async def clear(self) -> None:
         """Clear all cached data."""
         async with self._lock:
-            had_entries = bool(self._cache)
             self._cache.clear()
             _LOGGER.debug("Cleared all cache data")
 
-        if had_entries or os.path.exists(self._cache_file):
-            # Remove cache file
-            await self._clear_disk_cache()
+        await self._clear_disk_cache()
 
     async def cleanup_expired(self) -> int:
         """Remove expired entries from cache.
@@ -170,10 +167,7 @@ class CachedData:
 
     async def _save_to_disk(self) -> None:
         """Save cache to disk."""
-        try:
-            await self._run_io_task(self._save_to_disk_sync)
-        except Exception as e:
-            _LOGGER.warning("Failed to save cache to disk: %s", e)
+        await self._run_io_task(self._save_to_disk_sync)
 
     def _load_from_disk_sync(self) -> bool:
         """Load cache from disk (synchronous helper).
@@ -181,10 +175,6 @@ class CachedData:
         Returns:
             True if loaded successfully, False otherwise
         """
-        if not os.path.exists(self._cache_file):
-            _LOGGER.debug("Cache file does not exist: %s", self._cache_file)
-            return False
-
         try:
             with open(self._cache_file, "r") as f:
                 cache_data = json.load(f)
@@ -197,6 +187,9 @@ class CachedData:
             _LOGGER.debug("Cache loaded from disk: %s entries", len(self._cache))
             return True
 
+        except FileNotFoundError:
+            _LOGGER.debug("Cache file does not exist: %s", self._cache_file)
+            return False
         except json.JSONDecodeError:
             _LOGGER.warning("Failed to parse cache file (invalid JSON)")
             return False
@@ -218,12 +211,13 @@ class CachedData:
 
     async def _clear_disk_cache(self) -> None:
         """Clear the disk cache file."""
-        if os.path.exists(self._cache_file):
-            try:
-                await self._run_io_task(os.remove, self._cache_file)
-                _LOGGER.debug("Cache file removed: %s", self._cache_file)
-            except Exception as e:
-                _LOGGER.warning("Failed to remove cache file: %s", e)
+        try:
+            await self._run_io_task(os.remove, self._cache_file)
+            _LOGGER.debug("Cache file removed: %s", self._cache_file)
+        except FileNotFoundError:
+            pass  # File already absent — nothing to remove
+        except Exception as e:
+            _LOGGER.warning("Failed to remove cache file: %s", e)
 
     def get_stats(self) -> dict[str, Any]:
         """Get cache statistics.

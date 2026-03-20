@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 import async_timeout
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -27,7 +27,7 @@ from .const import (
     SERVICE_CLEAR_CACHE,
     SERVICE_REFRESH_DATA,
 )
-from .models import ReservationState
+from .models import ReservationState, ReservationWindow
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,6 +46,40 @@ if TYPE_CHECKING:
 else:
     # For runtime, use the base class
     VacasaConfigEntry = ConfigEntry
+
+
+class VacasaReservationStateMixin:
+    """Shared reservation-state subscription logic for sensor/binary-sensor entities.
+
+    Expects the subclass to set self._coordinator (VacasaDataUpdateCoordinator)
+    and self._unit_id (str) before calling into these methods.
+    """
+
+    _unit_id: str
+    _coordinator: "VacasaDataUpdateCoordinator"
+    _current_reservation: ReservationWindow | None
+    _next_reservation: ReservationWindow | None
+
+    def _refresh_from_coordinator(self) -> None:
+        """Load reservation state from the shared coordinator cache."""
+        state = self._coordinator.reservation_states.get(self._unit_id)
+        if state is None:
+            return
+        self._update_from_state(state)
+
+    @callback
+    def _handle_reservation_state(self, unit_id: str, state: ReservationState) -> None:
+        """Handle reservation updates broadcast by the calendar entities."""
+        if unit_id != self._unit_id:
+            return
+        self._update_from_state(state)
+        self.async_write_ha_state()  # type: ignore[attr-defined]
+
+    def _update_from_state(self, state: ReservationState) -> None:
+        """Store reservation windows and mark entity as available."""
+        self._current_reservation = state.current
+        self._next_reservation = state.upcoming
+        self._attr_available = True  # type: ignore[attr-defined]
 
 
 class VacasaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):

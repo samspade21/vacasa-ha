@@ -16,7 +16,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from . import VacasaConfigEntry, VacasaDataUpdateCoordinator
+from . import VacasaConfigEntry, VacasaDataUpdateCoordinator, VacasaReservationStateMixin
 from .const import (
     DOMAIN,
     SENSOR_OCCUPANCY,
@@ -37,7 +37,6 @@ async def async_setup_entry(
     _LOGGER.debug("Setting up Vacasa binary sensor platform")
 
     data = config_entry.runtime_data
-    client = data.client
     coordinator = data.coordinator
 
     units = coordinator.data.get("units") if coordinator.data else None
@@ -58,7 +57,6 @@ async def async_setup_entry(
             entities.append(
                 VacasaOccupancySensor(
                     coordinator=coordinator,
-                    client=client,
                     unit_id=unit_id,
                     name=name,
                     code=code,
@@ -74,7 +72,11 @@ async def async_setup_entry(
         _LOGGER.debug("Full traceback: %s", traceback.format_exc())
 
 
-class VacasaOccupancySensor(CoordinatorEntity[VacasaDataUpdateCoordinator], BinarySensorEntity):
+class VacasaOccupancySensor(
+    VacasaReservationStateMixin,
+    CoordinatorEntity[VacasaDataUpdateCoordinator],
+    BinarySensorEntity,
+):
     """Representation of a Vacasa occupancy sensor."""
 
     _attr_device_class = BinarySensorDeviceClass.OCCUPANCY
@@ -82,7 +84,6 @@ class VacasaOccupancySensor(CoordinatorEntity[VacasaDataUpdateCoordinator], Bina
     def __init__(
         self,
         coordinator: VacasaDataUpdateCoordinator,
-        client,
         unit_id,
         name,
         code,
@@ -90,7 +91,7 @@ class VacasaOccupancySensor(CoordinatorEntity[VacasaDataUpdateCoordinator], Bina
     ) -> None:
         """Initialize the Vacasa occupancy sensor."""
         super().__init__(coordinator)
-        self._client = client
+        self._coordinator = coordinator
         self._unit_id = unit_id
         self._name = name
         self._code = code
@@ -167,22 +168,6 @@ class VacasaOccupancySensor(CoordinatorEntity[VacasaDataUpdateCoordinator], Bina
         """Update reservation data from the coordinator."""
         self._refresh_from_coordinator()
         super()._handle_coordinator_update()
-
-    def _refresh_from_coordinator(self) -> None:
-        """Load reservation state from the shared coordinator cache."""
-        state = self.coordinator.reservation_states.get(self._unit_id)
-        if state is None:
-            return
-        self._update_from_state(state)
-
-    @callback
-    def _handle_reservation_state(self, unit_id: str, state: ReservationState) -> None:
-        """Handle reservation updates sent by the calendar entities."""
-        if unit_id != self._unit_id:
-            return
-
-        self._update_from_state(state)
-        self.async_write_ha_state()
 
     def _update_from_state(self, state: ReservationState) -> None:
         """Store reservation state and mark availability."""

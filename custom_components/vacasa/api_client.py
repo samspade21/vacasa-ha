@@ -465,12 +465,12 @@ class VacasaApiClient:
         Returns:
             True if the token was loaded successfully, False otherwise
         """
-        if not os.path.exists(self._token_cache_file):
+        try:
+            with open(self._token_cache_file, "r") as f:
+                cache_data = json.load(f)
+        except FileNotFoundError:
             _LOGGER.debug("Token cache file does not exist: %s", self._token_cache_file)
             return False
-
-        with open(self._token_cache_file, "r") as f:
-            cache_data = json.load(f)
 
         if not cache_data or "token" not in cache_data or "expiry" not in cache_data:
             _LOGGER.warning("Invalid token cache data format")
@@ -499,9 +499,6 @@ class VacasaApiClient:
         """
         try:
             return await self._run_blocking_io(self._load_token_from_cache_sync)
-        except json.JSONDecodeError:
-            _LOGGER.warning("Failed to parse token cache file (invalid JSON)")
-            return False
         except Exception as e:
             _LOGGER.warning("Failed to load token from cache file: %s", e)
             return False
@@ -511,12 +508,13 @@ class VacasaApiClient:
         self._token = None
         self._token_expiry = None
 
-        if os.path.exists(self._token_cache_file):
-            try:
-                await self._run_blocking_io(os.remove, self._token_cache_file)
-                _LOGGER.debug("Token cache file removed: %s", self._token_cache_file)
-            except Exception as e:
-                _LOGGER.warning("Failed to remove token cache file: %s", e)
+        try:
+            await self._run_blocking_io(os.remove, self._token_cache_file)
+            _LOGGER.debug("Token cache file removed: %s", self._token_cache_file)
+        except FileNotFoundError:
+            pass  # File already absent — nothing to remove
+        except Exception as e:
+            _LOGGER.warning("Failed to remove token cache file: %s", e)
 
     async def ensure_token(self) -> str:
         """Ensure we have a valid token, refreshing if necessary."""
@@ -926,7 +924,7 @@ class VacasaApiClient:
             # Extract owner ID from the response
             if "data" in data and "contactIds" in data["data"] and data["data"]["contactIds"]:
                 contact_ids = data["data"]["contactIds"]
-                if contact_ids and len(contact_ids) > 0:
+                if contact_ids:
                     self._owner_id = str(contact_ids[0])
                     _LOGGER.debug("Retrieved owner ID from verify-token: %s", self._owner_id)
                     return self._owner_id
@@ -936,8 +934,8 @@ class VacasaApiClient:
             _LOGGER.error("Unexpected verify-token response format: %s", data)
             raise ApiError(f"Unexpected verify-token response format: {data}")
 
-        except AuthenticationError as err:
-            raise err
+        except AuthenticationError:
+            raise
         except Exception as e:
             _LOGGER.error("Error getting owner ID: %s", e)
             raise ApiError(f"Error getting owner ID: {e}")
@@ -1228,7 +1226,7 @@ class VacasaApiClient:
         # Categorize each reservation
         for reservation in reservations:
             stay_type = self.categorize_reservation(reservation)
-            categorized.setdefault(stay_type, []).append(reservation)
+            categorized[stay_type].append(reservation)
 
         # Log counts for debugging
         _LOGGER.debug(

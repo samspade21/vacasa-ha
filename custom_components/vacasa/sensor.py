@@ -12,7 +12,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from . import VacasaConfigEntry
+from . import VacasaConfigEntry, VacasaReservationStateMixin
 from .api_client import ApiError, AuthenticationError
 from .const import (
     CONF_USERNAME,
@@ -37,7 +37,7 @@ from .const import (
     STAY_TYPE_TO_CATEGORY,
     STAY_TYPE_TO_NAME,
 )
-from .models import ReservationState, ReservationWindow
+from .models import ReservationWindow
 
 # Removed CoordinatorEntity import - these sensors contain static property data
 
@@ -113,7 +113,7 @@ class VacasaApiUpdateMixin:
         """Update entity state from API."""
         task = self._ensure_refresh_task()
         if task is not None:
-            _ = await task  # Wait for refresh task completion (returns None)
+            await task
 
     async def async_will_remove_from_hass(self) -> None:
         """Clean up refresh task when removed from hass."""
@@ -694,7 +694,7 @@ class VacasaMaintenanceSensor(VacasaApiUpdateMixin, VacasaBaseSensor):
             if not isinstance(ticket, dict):
                 continue
             ticket_ids.append(ticket.get("id"))
-            attributes = ticket.get("attributes", {}) if isinstance(ticket, dict) else {}
+            attributes = ticket.get("attributes", {})
             summaries.append(
                 {
                     "id": ticket.get("id"),
@@ -806,7 +806,7 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
         }
 
 
-class VacasaNextStaySensor(VacasaBaseSensor):
+class VacasaNextStaySensor(VacasaReservationStateMixin, VacasaBaseSensor):
     """Sensor representing the next upcoming stay/reservation."""
 
     def __init__(
@@ -853,28 +853,6 @@ class VacasaNextStaySensor(VacasaBaseSensor):
         self._refresh_from_coordinator()
         self.async_write_ha_state()
 
-    def _refresh_from_coordinator(self) -> None:
-        """Load reservation state from the shared coordinator cache."""
-        state = self._coordinator.reservation_states.get(self._unit_id)
-        if state is None:
-            return
-        self._update_from_state(state)
-
-    @callback
-    def _handle_reservation_state(self, unit_id: str, state: ReservationState) -> None:
-        """Handle reservation updates sent by the calendar entities."""
-        if unit_id != self._unit_id:
-            return
-
-        self._update_from_state(state)
-        self.async_write_ha_state()
-
-    def _update_from_state(self, state: ReservationState) -> None:
-        """Store reservation windows and mark availability."""
-        self._current_reservation = state.current
-        self._next_reservation = state.upcoming
-        self._attr_available = True
-
     @staticmethod
     def _as_local(value: datetime | None) -> datetime | None:
         """Ensure datetime objects are timezone-aware and local."""
@@ -893,9 +871,6 @@ class VacasaNextStaySensor(VacasaBaseSensor):
         now_local = (
             now.astimezone(target_local.tzinfo) if target_local and target_local.tzinfo else now
         )
-
-        if target_local is None:
-            return None
 
         return (target_local.date() - now_local.date()).days
 
