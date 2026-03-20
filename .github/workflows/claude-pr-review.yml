@@ -1,0 +1,39 @@
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+  issue_comment:
+    types: [created]
+
+jobs:
+  claude-review:
+    if: |
+      (github.event_name == 'pull_request' && !github.event.pull_request.draft) ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request != null &&
+       contains(github.event.comment.body, '@claude'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          direct_prompt: |
+            Review this pull request thoroughly. Analyze the diff and provide feedback on:
+            1. **Bugs & correctness** – logic errors, edge cases, off-by-one errors
+            2. **Security** – injection, auth issues, secrets in code, unsafe dependencies
+            3. **Test coverage** – missing tests for new logic, edge cases uncovered
+            4. **Code quality** – readability, naming, unnecessary complexity
+            5. **Performance** – obvious bottlenecks or inefficiencies
+
+            Format your review as a PR comment using markdown. Be concise and actionable.
+            Only flag real issues — avoid nitpicking style that doesn't affect correctness or maintainability.
+          trigger_phrase: "@claude"
