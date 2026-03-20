@@ -881,6 +881,10 @@ class VacasaApiClient:
         _LOGGER.warning("Exceeded maximum redirects without finding token")
         return None
 
+    async def _ensure_authenticated(self) -> str:
+        """Ensure a valid token exists and return the owner ID."""
+        return await self.get_owner_id()
+
     async def get_owner_id(self) -> str:
         """Get the owner ID using the verify-token endpoint.
 
@@ -964,8 +968,7 @@ class VacasaApiClient:
         """
 
         async def _fetch():
-            await self.ensure_token()
-            owner_id = await self.get_owner_id()
+            owner_id = await self._ensure_authenticated()
             _LOGGER.debug("Getting units for owner ID: %s", owner_id)
             data = await self._request("GET", f"/owners/{owner_id}/units")
             _LOGGER.debug("Received units response: %s", data)
@@ -1007,9 +1010,7 @@ class VacasaApiClient:
         Raises:
             ApiError: If the API request fails
         """
-        # Ensure we have a valid token and owner ID
-        await self.ensure_token()
-        owner_id = await self.get_owner_id()
+        owner_id = await self._ensure_authenticated()
 
         params = {
             "startDate": start_date,
@@ -1075,8 +1076,7 @@ class VacasaApiClient:
         """
 
         async def _fetch():
-            await self.ensure_token()
-            owner_id = await self.get_owner_id()
+            owner_id = await self._ensure_authenticated()
             _LOGGER.debug("Getting details for unit %s", unit_id)
             data = await self._request("GET", f"/owners/{owner_id}/units/{unit_id}")
             _LOGGER.debug("Received unit details response: %s", data)
@@ -1092,8 +1092,7 @@ class VacasaApiClient:
         self, year: int | None = None, month: int | None = None
     ) -> list[dict[str, Any]]:
         """Fetch owner statements, optionally scoped to a specific month."""
-        await self.ensure_token()
-        owner_id = await self.get_owner_id()
+        owner_id = await self._ensure_authenticated()
 
         path = f"/owners/{owner_id}/statements"
         if year is not None and month is not None:
@@ -1113,8 +1112,7 @@ class VacasaApiClient:
         self, unit_id: str, status: str | None = "open"
     ) -> list[dict[str, Any]]:
         """Fetch maintenance tickets for a unit."""
-        await self.ensure_token()
-        owner_id = await self.get_owner_id()
+        owner_id = await self._ensure_authenticated()
 
         params = {"status": status} if status else None
         data = await self._request(

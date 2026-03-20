@@ -100,6 +100,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         self._reservation_windows: dict[str, ReservationWindow] = {}
         self._current_event: CalendarEvent | None = None
         self._next_event: CalendarEvent | None = None
+        self._events_loaded: bool = False
         self._unsubscribe_start_timer: Callable[[], None] | None = None
         self._unsubscribe_end_timer: Callable[[], None] | None = None
 
@@ -176,12 +177,13 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
     async def _update_current_event(self) -> None:
         """Update cached current and next events."""
         self._current_event, self._next_event = await self._determine_current_and_next_events()
+        self._events_loaded = True
         self._schedule_boundary_timers()
         self._broadcast_reservation_state()
 
     async def _ensure_events_loaded(self) -> None:
         """Lazily populate current and next events if not already loaded."""
-        if self._current_event is None and self._next_event is None:
+        if not self._events_loaded:
             await self._update_current_event()
 
     async def async_get_current_event(self) -> CalendarEvent | None:
@@ -217,6 +219,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             # Clear event cache to ensure fresh data
             self._event_cache.clear()
             self._reservation_windows.clear()
+            self._events_loaded = False
 
             # Update current and next events based on fresh data
             await self._update_current_event()
@@ -579,16 +582,11 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
 
             description_parts.append("")
 
-            if stay_type == STAY_TYPE_GUEST:
-                description_parts.append("Type: Guest booking")
-            elif stay_type == STAY_TYPE_OWNER:
-                description_parts.append("Type: Owner stay")
-            elif stay_type == STAY_TYPE_MAINTENANCE:
-                description_parts.append("Type: Maintenance")
-            elif stay_type == STAY_TYPE_BLOCK:
-                description_parts.append("Type: Block")
-                if hold_type:
-                    description_parts.append(f"Block type: {hold_type}")
+            type_name = STAY_TYPE_TO_NAME.get(stay_type)
+            if type_name:
+                description_parts.append(f"Type: {type_name}")
+            if stay_type == STAY_TYPE_BLOCK and hold_type:
+                description_parts.append(f"Block type: {hold_type}")
 
             if hold_who_booked and stay_type != STAY_TYPE_OWNER:
                 description_parts.append(f"Booked by: {hold_who_booked}")
