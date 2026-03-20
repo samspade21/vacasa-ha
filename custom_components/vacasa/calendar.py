@@ -556,17 +556,16 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                 hold_who_booked = owner_hold.get("holdWhoBooked", "")
                 hold_note = owner_hold.get("holdExternalNote", "")
 
-            # Create summary based on stay type
+            # Create summary using the same name resolution as ReservationWindow
             summary_prefix = STAY_TYPE_TO_NAME[stay_type]
-
-            if stay_type == STAY_TYPE_GUEST and first_name and last_name:
-                summary = f"{summary_prefix}: {first_name} {last_name}"
-            elif stay_type == STAY_TYPE_OWNER and hold_who_booked:
-                summary = f"{summary_prefix}: {hold_who_booked}"
-            elif hold_type:
-                summary = f"{summary_prefix}: {hold_type}"
-            else:
-                summary = summary_prefix
+            guest_name = self._resolve_guest_name(
+                stay_type,
+                first_name=first_name,
+                last_name=last_name,
+                hold_who_booked=hold_who_booked,
+                hold_type=hold_type,
+            )
+            summary = f"{summary_prefix}: {guest_name}" if guest_name else summary_prefix
 
             # Create description
             description_parts = []

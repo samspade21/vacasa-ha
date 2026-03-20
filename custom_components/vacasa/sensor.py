@@ -97,7 +97,6 @@ class VacasaApiUpdateMixin:
 
     def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002,ANN003
         """Initialize API update mixin."""
-        self._update_lock = asyncio.Lock()
         self._refresh_task = None
         super().__init__(*args, **kwargs)
         self._attr_should_poll = False
@@ -132,8 +131,7 @@ class VacasaApiUpdateMixin:
     async def _async_refresh_from_api(self) -> None:
         current_task = asyncio.current_task()
         try:
-            async with self._update_lock:
-                await self._async_update_from_api()
+            await self._async_update_from_api()
         finally:
             if self._refresh_task is current_task:
                 self._refresh_task = None
@@ -296,33 +294,28 @@ class VacasaBathroomsSensor(VacasaBaseSensor):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = "rooms"
 
+    def _get_bathrooms_data(self) -> dict[str, Any]:
+        rooms = self._unit_attributes.get("amenities", {}).get("rooms", {})
+        return rooms.get("bathrooms", {}) if rooms else {}
+
     @property
     def native_value(self) -> float | None:
         """Return the bathrooms value."""
-        amenities = self._unit_attributes.get("amenities", {})
-        rooms = amenities.get("rooms", {})
-        bathrooms = rooms.get("bathrooms", {}) if rooms else {}
-
+        bathrooms = self._get_bathrooms_data()
         if bathrooms:
-            full = bathrooms.get("full", 0)
-            half = bathrooms.get("half", 0)
-            return full + (half * 0.5)
-
+            return bathrooms.get("full", 0) + bathrooms.get("half", 0) * 0.5
         return None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
-        amenities = self._unit_attributes.get("amenities", {})
-        rooms = amenities.get("rooms", {})
-        bathrooms = rooms.get("bathrooms", {}) if rooms else {}
-
-        attributes = {}
+        bathrooms = self._get_bathrooms_data()
         if bathrooms:
-            attributes["full_bathrooms"] = bathrooms.get("full", 0)
-            attributes["half_bathrooms"] = bathrooms.get("half", 0)
-
-        return attributes
+            return {
+                "full_bathrooms": bathrooms.get("full", 0),
+                "half_bathrooms": bathrooms.get("half", 0),
+            }
+        return {}
 
 
 class VacasaHotTubSensor(VacasaBaseSensor):
@@ -632,8 +625,6 @@ class VacasaNextStaySensor(VacasaReservationStateMixin, VacasaBaseSensor):
         )
         self._attr_should_poll = False
         self._attr_available = False
-        self._current_reservation: ReservationWindow | None = None
-        self._next_reservation: ReservationWindow | None = None
 
     async def async_added_to_hass(self) -> None:
         """Register listeners when added to Home Assistant."""

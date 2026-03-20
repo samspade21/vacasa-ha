@@ -75,8 +75,8 @@ class VacasaReservationStateMixin:
 
     _unit_id: str
     _coordinator: "VacasaDataUpdateCoordinator"
-    _current_reservation: ReservationWindow | None
-    _next_reservation: ReservationWindow | None
+    _current_reservation: ReservationWindow | None = None
+    _next_reservation: ReservationWindow | None = None
 
     def _refresh_from_coordinator(self) -> None:
         """Load reservation state from the shared coordinator cache."""

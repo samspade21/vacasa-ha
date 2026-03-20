@@ -98,8 +98,6 @@ class VacasaOccupancySensor(
         self._name = name
         self._code = code
         self._unit_attributes = unit_attributes
-        self._current_reservation: ReservationWindow | None = None
-        self._next_reservation: ReservationWindow | None = None
 
         self._attr_unique_id = f"vacasa_occupancy_{unit_id}"
         self._attr_name = f"Vacasa {name} Occupancy"
