@@ -83,13 +83,18 @@ class VacasaReservationStateMixin:
 class VacasaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Class to manage fetching data from the Vacasa API."""
 
-    def __init__(self, hass: HomeAssistant, client: VacasaApiClient) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        client: VacasaApiClient,
+        refresh_interval: int = DEFAULT_REFRESH_INTERVAL,
+    ) -> None:
         """Initialize coordinator."""
         super().__init__(
             hass,
             _LOGGER,
             name="Vacasa",
-            update_interval=timedelta(hours=DEFAULT_REFRESH_INTERVAL),
+            update_interval=timedelta(hours=refresh_interval),
         )
         self.client = client
         self.reservation_states: dict[str, ReservationState] = {}
@@ -147,11 +152,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: VacasaConfigEntry) -> bo
         _LOGGER.error("API error during setup: %s", err)
         raise ConfigEntryNotReady from err
 
-    # Create update coordinator with proper class
-    coordinator = VacasaDataUpdateCoordinator(hass, client)
-
-    # Update coordinator with options refresh interval
-    coordinator.update_interval = timedelta(hours=refresh_interval)
+    # Create update coordinator with configured refresh interval
+    coordinator = VacasaDataUpdateCoordinator(hass, client, refresh_interval)
 
     # Fetch initial data
     await coordinator.async_config_entry_first_refresh()
@@ -167,6 +169,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: VacasaConfigEntry) -> bo
     async def handle_clear_cache(call: ServiceCall) -> None:
         """Handle the clear_cache service call."""
         await client.clear_cache()
+        await client.clear_property_cache()
         await coordinator.async_refresh()
 
     hass.services.async_register(

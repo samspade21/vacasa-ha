@@ -193,10 +193,6 @@ class VacasaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class VacasaOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle Vacasa options."""
 
-    def __init__(self) -> None:
-        """Initialize options flow."""
-        super().__init__()
-
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Manage the options."""
         errors: dict[str, str] = {}

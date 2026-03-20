@@ -581,15 +581,9 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             # Create description
             description_parts = []
 
-            # Add check-in and check-out information
-            checkin_display = self._resolve_time(
-                checkin_time, property_checkin_time, DEFAULT_CHECKIN_TIME
-            )
-            checkout_display = self._resolve_time(
-                checkout_time, property_checkout_time, DEFAULT_CHECKOUT_TIME
-            )
-            description_parts.append(f"Check-in: {start_date} {checkin_display[:5]}")
-            description_parts.append(f"Check-out: {end_date} {checkout_display[:5]}")
+            # Add check-in and check-out information (reuse already-resolved values)
+            description_parts.append(f"Check-in: {start_date} {checkin_time_resolved[:5]}")
+            description_parts.append(f"Check-out: {end_date} {checkout_time_resolved[:5]}")
 
             description_parts.append("")
 

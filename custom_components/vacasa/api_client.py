@@ -147,6 +147,8 @@ class VacasaApiClient:
 
         # Semaphore to cap concurrent API requests and avoid rate-limit errors
         self._request_semaphore = asyncio.Semaphore(DEFAULT_MAX_CONCURRENT_REQUESTS)
+        # Lock to prevent concurrent owner_id fetches from making duplicate API calls
+        self._owner_id_lock = asyncio.Lock()
 
         # Set up retry handler
         self._retry_handler = RetryWithBackoff(
@@ -564,33 +566,13 @@ class VacasaApiClient:
 
         return headers
 
-    def _format_params(self, params: dict) -> str:
-        """Format parameters for URL.
-
-        Args:
-            params: Dictionary of parameters
-
-        Returns:
-            Formatted parameters string
-        """
-        return urlencode(params)
-
-    def _base64_url_decode(self, input: str) -> str:
-        """Decode base64url-encoded string.
-
-        Args:
-            input: The base64url-encoded string
-
-        Returns:
-            The decoded string
-        """
-        # Use the standard library's base64 module with proper URL-safe decoding
+    def _base64_url_decode(self, encoded: str) -> str:
+        """Decode base64url-encoded string."""
         # Add padding if needed
-        padding = len(input) % 4
+        padding = len(encoded) % 4
         if padding:
-            input += "=" * (4 - padding)
-
-        return base64.urlsafe_b64decode(input).decode("utf-8")
+            encoded += "=" * (4 - padding)
+        return base64.urlsafe_b64decode(encoded).decode("utf-8")
 
     def _sanitize_url_for_log(self, url: str) -> str:
         """Remove sensitive tokens from URLs before logging."""
@@ -700,7 +682,7 @@ class VacasaApiClient:
                 _LOGGER.debug(
                     "Auth URL with params: %s?%s",
                     AUTH_URL,
-                    self._format_params(auth_params),
+                    urlencode(auth_params),
                 )
 
                 async with session.get(
@@ -747,7 +729,7 @@ class VacasaApiClient:
                 }
 
                 headers = {
-                    "Referer": f"{AUTH_URL}?{self._format_params(auth_params)}",
+                    "Referer": f"{AUTH_URL}?{urlencode(auth_params)}",
                     "Content-Type": "application/x-www-form-urlencoded",
                 }
 
@@ -908,33 +890,39 @@ class VacasaApiClient:
         Raises:
             ApiError: If the owner ID cannot be determined
         """
-        # If we already have the owner ID cached, return it
+        # Fast path: return cached value without acquiring lock
         if self._owner_id:
             _LOGGER.debug("Using cached owner ID: %s", self._owner_id)
             return self._owner_id
 
-        # Ensure we have a valid token
-        await self.ensure_token()
-
-        try:
-            _LOGGER.debug("Getting owner ID from verify-token endpoint")
-            data = await self._request("POST", "/verify-token")
-            _LOGGER.debug("Received response from verify-token endpoint: %s", data)
-
-            # Extract owner ID from the response
-            if "data" in data and "contactIds" in data["data"] and data["data"]["contactIds"]:
-                self._owner_id = str(data["data"]["contactIds"][0])
-                _LOGGER.debug("Retrieved owner ID from verify-token: %s", self._owner_id)
+        # Serialize concurrent fetches so only one API call is made
+        async with self._owner_id_lock:
+            # Re-check after acquiring lock (another task may have populated it)
+            if self._owner_id:
                 return self._owner_id
 
-            _LOGGER.error("Unexpected verify-token response format: %s", data)
-            raise ApiError(f"Unexpected verify-token response format: {data}")
+            # Ensure we have a valid token
+            await self.ensure_token()
 
-        except AuthenticationError:
-            raise
-        except Exception as e:
-            _LOGGER.error("Error getting owner ID: %s", e)
-            raise ApiError(f"Error getting owner ID: {e}")
+            try:
+                _LOGGER.debug("Getting owner ID from verify-token endpoint")
+                data = await self._request("POST", "/verify-token")
+                _LOGGER.debug("Received response from verify-token endpoint: %s", data)
+
+                # Extract owner ID from the response
+                if "data" in data and "contactIds" in data["data"] and data["data"]["contactIds"]:
+                    self._owner_id = str(data["data"]["contactIds"][0])
+                    _LOGGER.debug("Retrieved owner ID from verify-token: %s", self._owner_id)
+                    return self._owner_id
+
+                _LOGGER.error("Unexpected verify-token response format: %s", data)
+                raise ApiError(f"Unexpected verify-token response format: {data}")
+
+            except AuthenticationError:
+                raise
+            except Exception as e:
+                _LOGGER.error("Error getting owner ID: %s", e)
+                raise ApiError(f"Error getting owner ID: {e}")
 
     async def get_units(self) -> list[dict[str, Any]]:
         """Get all units for the owner with caching support.

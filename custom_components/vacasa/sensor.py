@@ -817,7 +817,6 @@ class VacasaNextStaySensor(VacasaReservationStateMixin, VacasaBaseSensor):
         unit_attributes: dict[str, Any],
     ) -> None:
         """Initialize the next stay sensor."""
-        _LOGGER.debug("Initializing VacasaNextStaySensor for unit %s (%s)", unit_id, name)
         super().__init__(
             coordinator=coordinator,
             unit_id=unit_id,
@@ -830,7 +829,6 @@ class VacasaNextStaySensor(VacasaReservationStateMixin, VacasaBaseSensor):
         self._attr_available = False
         self._current_reservation: ReservationWindow | None = None
         self._next_reservation: ReservationWindow | None = None
-        _LOGGER.debug("VacasaNextStaySensor initialized successfully for unit %s", unit_id)
 
     async def async_added_to_hass(self) -> None:
         """Register listeners when added to Home Assistant."""
@@ -976,16 +974,9 @@ def _create_unit_sensors(
     attributes: dict[str, Any],
 ) -> list[VacasaBaseSensor]:
     """Build the entity list for a single Vacasa unit."""
-    _LOGGER.debug(
-        "Creating sensors for unit %s (%s) - %s sensor classes",
-        unit_id,
-        name,
-        len(UNIT_SENSOR_CLASSES),
-    )
     sensors = []
     for sensor_class in UNIT_SENSOR_CLASSES:
         try:
-            _LOGGER.debug("Creating %s for unit %s", sensor_class.__name__, unit_id)
             sensor = sensor_class(
                 coordinator=coordinator,
                 unit_id=unit_id,
@@ -993,7 +984,6 @@ def _create_unit_sensors(
                 unit_attributes=attributes,
             )
             sensors.append(sensor)
-            _LOGGER.debug("Successfully created %s for unit %s", sensor_class.__name__, unit_id)
         except (ValueError, KeyError, TypeError) as err:
             _LOGGER.error(
                 "Failed to create %s for unit %s: %s",
