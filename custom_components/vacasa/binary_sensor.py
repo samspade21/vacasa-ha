@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import traceback
 from datetime import datetime
 from typing import Any
 
@@ -72,7 +71,7 @@ async def async_setup_entry(
         async_add_entities(entities, True)
     except Exception as err:  # pragma: no cover - defensive logging
         _LOGGER.error("Error setting up Vacasa binary sensors: %s", err)
-        _LOGGER.debug("Full traceback: %s", traceback.format_exc())
+        _LOGGER.debug("Full traceback:", exc_info=True)
 
 
 class VacasaOccupancySensor(

@@ -82,6 +82,13 @@ class VacasaBaseSensor(SensorEntity):
         self._attr_has_entity_name = True
         self._attr_device_info = _make_unit_device_info(unit_id, name)
 
+    @staticmethod
+    def _bool_to_yes_no(value: bool | None) -> str | None:
+        """Convert a boolean attribute to a Yes/No string, or None if absent."""
+        if value is None:
+            return None
+        return "Yes" if value else "No"
+
 
 class VacasaApiUpdateMixin:
     """Mixin to throttle API-backed sensors to the coordinator refresh."""
@@ -327,13 +334,7 @@ class VacasaHotTubSensor(VacasaBaseSensor):
     @property
     def native_value(self) -> str | None:
         """Return the hot tub value."""
-        amenities = self._unit_attributes.get("amenities", {})
-        hot_tub = amenities.get("hotTub")
-
-        if hot_tub is not None:
-            return "Yes" if hot_tub else "No"
-
-        return None
+        return self._bool_to_yes_no(self._unit_attributes.get("amenities", {}).get("hotTub"))
 
 
 class VacasaPetFriendlySensor(VacasaBaseSensor):
@@ -345,13 +346,7 @@ class VacasaPetFriendlySensor(VacasaBaseSensor):
     @property
     def native_value(self) -> str | None:
         """Return the pet friendly value."""
-        amenities = self._unit_attributes.get("amenities", {})
-        pet_friendly = amenities.get("petsFriendly")
-
-        if pet_friendly is not None:
-            return "Yes" if pet_friendly else "No"
-
-        return None
+        return self._bool_to_yes_no(self._unit_attributes.get("amenities", {}).get("petsFriendly"))
 
 
 class VacasaParkingSensor(VacasaBaseSensor):

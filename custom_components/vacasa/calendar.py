@@ -95,6 +95,8 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         self._unit_attributes = unit_attributes
         self._checkin_time = unit_attributes.get("checkInTime")
         self._checkout_time = unit_attributes.get("checkOutTime")
+        self._property_checkin_time = self._normalize_time_value(self._checkin_time)
+        self._property_checkout_time = self._normalize_time_value(self._checkout_time)
         self._timezone = unit_attributes.get("timezone")
         self._event_cache: dict[str, list[CalendarEvent]] = {}
         self._reservation_windows: dict[str, ReservationWindow] = {}
@@ -371,11 +373,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                 )
 
     def _handle_boundary_timer(self, scheduled_time: datetime, *, boundary: str) -> None:
-        """Handle a scheduled reservation boundary timer.
-
-        This callback is executed on a worker thread by Home Assistant's timer system,
-        so we must use call_soon_threadsafe to schedule work on the event loop.
-        """
+        """Handle a scheduled reservation boundary timer."""
         if not self.hass:
             return
 
@@ -387,19 +385,8 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             dt_util.utcnow().isoformat(),
         )
 
-        # Schedule dispatcher send on event loop thread
-        self.hass.loop.call_soon_threadsafe(
-            async_dispatcher_send,
-            self.hass,
-            SIGNAL_RESERVATION_BOUNDARY,
-            self._unit_id,
-            boundary,
-        )
-
-        # Schedule boundary refresh on event loop thread
-        self.hass.loop.call_soon_threadsafe(
-            lambda: self.hass.async_create_task(self._boundary_refresh(boundary))
-        )
+        async_dispatcher_send(self.hass, SIGNAL_RESERVATION_BOUNDARY, self._unit_id, boundary)
+        self.hass.async_create_task(self._boundary_refresh(boundary))
 
     async def _boundary_refresh(self, boundary: str) -> None:
         """Refresh coordinator and calendar state at reservation boundaries."""
@@ -506,8 +493,8 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             # Get check-in and check-out times from the reservation or property
             checkin_time = self._normalize_time_value(attributes.get("checkinTime"))
             checkout_time = self._normalize_time_value(attributes.get("checkoutTime"))
-            property_checkin_time = self._normalize_time_value(self._checkin_time)
-            property_checkout_time = self._normalize_time_value(self._checkout_time)
+            property_checkin_time = self._property_checkin_time
+            property_checkout_time = self._property_checkout_time
 
             # Build datetime strings using first available time source
             checkin_time_resolved = self._resolve_time(

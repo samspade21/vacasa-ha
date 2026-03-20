@@ -55,13 +55,12 @@ class CachedData:
 
         return (current_time - entry_time) > ttl
 
-    async def get(self, key: str, default: T | None = None, ttl: int | None = None) -> T | None:
+    async def get(self, key: str, default: T | None = None) -> T | None:
         """Get a value from cache.
 
         Args:
             key: Cache key
             default: Default value if not found or expired
-            ttl: Optional TTL override
 
         Returns:
             Cached value or default
