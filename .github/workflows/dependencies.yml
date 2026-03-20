@@ -20,7 +20,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.14"
 
       - name: Install tooling and project dependencies
         run: |
@@ -48,8 +48,8 @@ jobs:
         run: |
           python -c "
           import json
-          import pkg_resources
           import sys
+          from packaging.requirements import Requirement, InvalidRequirement
 
           # Load manifest
           with open('custom_components/vacasa/manifest.json', 'r') as f:
@@ -61,8 +61,8 @@ jobs:
 
           for req in requirements:
               try:
-                  pkg_resources.Requirement.parse(req)
-              except Exception as e:
+                  Requirement(req)
+              except InvalidRequirement as e:
                   invalid_deps.append(f'{req}: {e}')
 
           if invalid_deps:

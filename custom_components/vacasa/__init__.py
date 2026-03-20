@@ -8,8 +8,6 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
-import async_timeout
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ConfigEntryNotReady
@@ -101,7 +99,7 @@ class VacasaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             # Fetch and cache the list of units so all platforms can reuse it
             # without hammering the Vacasa API on every setup or refresh.
-            async with async_timeout.timeout(30):
+            async with asyncio.timeout(30):
                 await self.client.ensure_token()
                 units = await self.client.get_units()
             return {"last_update": self.client.token_expiry, "units": units}

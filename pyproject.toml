@@ -1,7 +1,7 @@
 # Ruff configuration - replaces black, flake8, and isort
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = [
