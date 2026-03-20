@@ -924,6 +924,35 @@ class VacasaApiClient:
                 _LOGGER.error("Error getting owner ID: %s", e)
                 raise ApiError(f"Error getting owner ID: {e}")
 
+    async def _cached_api_get(self, cache_key: str, fetch_func, log_name: str) -> Any:
+        """Fetch a value from the property cache, or call fetch_func and cache the result.
+
+        Args:
+            cache_key: Key for the property cache lookup
+            fetch_func: Async callable that fetches fresh data when the cache misses
+            log_name: Human-readable label used in log messages
+
+        Returns:
+            Cached or freshly fetched data
+
+        Raises:
+            ApiError: If fetch_func raises or returns no data after all retries
+        """
+        cached = await self._property_cache.get(cache_key)
+        if cached is not None:
+            _LOGGER.debug("Using cached %s", log_name)
+            return cached
+
+        try:
+            result = await self._retry_handler.retry(fetch_func)
+            if result:
+                await self._property_cache.set(cache_key, result)
+                _LOGGER.debug("Cached %s", log_name)
+            return result
+        except Exception as e:
+            _LOGGER.error("Error getting %s: %s", log_name, e)
+            raise ApiError(f"Error getting {log_name}: {e}")
+
     async def get_units(self) -> list[dict[str, Any]]:
         """Get all units for the owner with caching support.
 
@@ -933,20 +962,10 @@ class VacasaApiClient:
         Raises:
             ApiError: If the API request fails
         """
-        # Try to get from cache first
-        cache_key = "units"
-        cached_units = await self._property_cache.get(cache_key)
 
-        if cached_units is not None:
-            _LOGGER.debug("Using cached units data (%s units)", len(cached_units))
-            return cached_units
-
-        # If not cached, fetch from API with retry logic
-        async def _fetch_units():
-            # Ensure we have a valid token and owner ID
+        async def _fetch():
             await self.ensure_token()
             owner_id = await self.get_owner_id()
-
             _LOGGER.debug("Getting units for owner ID: %s", owner_id)
             data = await self._request("GET", f"/owners/{owner_id}/units")
             _LOGGER.debug("Received units response: %s", data)
@@ -957,28 +976,11 @@ class VacasaApiClient:
 
             units = data["data"]
             _LOGGER.debug("Retrieved %s units", len(units))
-
-            # Log unit IDs for debugging
             if units:
-                unit_ids = [unit.get("id") for unit in units]
-                _LOGGER.debug("Unit IDs: %s", unit_ids)
-
+                _LOGGER.debug("Unit IDs: %s", [unit.get("id") for unit in units])
             return units
 
-        try:
-            # Use retry wrapper for the API call
-            units = await self._retry_handler.retry(_fetch_units)
-
-            # Cache the result
-            if units:
-                await self._property_cache.set(cache_key, units)
-                _LOGGER.debug("Cached %s units", len(units))
-
-            return units
-
-        except Exception as e:
-            _LOGGER.error("Error getting units: %s", e)
-            raise ApiError(f"Error getting units: {e}")
+        return await self._cached_api_get("units", _fetch, "units")
 
     async def get_reservations(
         self,
@@ -1071,48 +1073,20 @@ class VacasaApiClient:
         Raises:
             ApiError: If the API request fails
         """
-        # Try to get from cache first
-        cache_key = f"unit_details_{unit_id}"
-        cached_details = await self._property_cache.get(cache_key)
 
-        if cached_details is not None:
-            _LOGGER.debug("Using cached unit details for unit %s", unit_id)
-            return cached_details
-
-        # If not cached, fetch from API with retry logic
-        async def _fetch_unit_details():
-            # Ensure we have a valid token and owner ID
+        async def _fetch():
             await self.ensure_token()
             owner_id = await self.get_owner_id()
-
             _LOGGER.debug("Getting details for unit %s", unit_id)
-            data = await self._request(
-                "GET",
-                f"/owners/{owner_id}/units/{unit_id}",
-            )
+            data = await self._request("GET", f"/owners/{owner_id}/units/{unit_id}")
             _LOGGER.debug("Received unit details response: %s", data)
-
-            # Log unit name for debugging
             if "data" in data and "attributes" in data["data"]:
-                unit_name = data["data"]["attributes"].get("name")
-                _LOGGER.debug("Unit name: %s", unit_name)
-
+                _LOGGER.debug("Unit name: %s", data["data"]["attributes"].get("name"))
             return data
 
-        try:
-            # Use retry wrapper for the API call
-            unit_details = await self._retry_handler.retry(_fetch_unit_details)
-
-            # Cache the result
-            if unit_details:
-                await self._property_cache.set(cache_key, unit_details)
-                _LOGGER.debug("Cached unit details for unit %s", unit_id)
-
-            return unit_details
-
-        except Exception as e:
-            _LOGGER.error("Error getting unit details: %s", e)
-            raise ApiError(f"Error getting unit details: {e}")
+        return await self._cached_api_get(
+            f"unit_details_{unit_id}", _fetch, f"unit details for {unit_id}"
+        )
 
     async def get_statements(
         self, year: int | None = None, month: int | None = None

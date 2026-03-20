@@ -46,7 +46,14 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class VacasaBaseSensor(SensorEntity):
-    """Base class for Vacasa sensors."""
+    """Base class for Vacasa sensors.
+
+    Subclasses must declare _sensor_type as a class attribute, and may override
+    _attr_icon, _attr_state_class, and _attr_native_unit_of_measurement.
+    """
+
+    _sensor_type: str  # must be declared by each subclass
+    _attr_icon: str = "mdi:home"
 
     def __init__(
         self,
@@ -54,10 +61,6 @@ class VacasaBaseSensor(SensorEntity):
         unit_id: str,
         name: str,
         unit_attributes: dict[str, Any],
-        sensor_type: str,
-        icon: str = "mdi:home",
-        device_class: str | None = None,
-        state_class: str | None = None,
     ) -> None:
         """Initialize the Vacasa sensor."""
         super().__init__()
@@ -67,18 +70,10 @@ class VacasaBaseSensor(SensorEntity):
         self._unit_id = unit_id
         self._name = name
         self._unit_attributes = unit_attributes
-        self._sensor_type = sensor_type
-        self._attr_icon = icon
-
-        if device_class:
-            self._attr_device_class = device_class
-
-        if state_class:
-            self._attr_state_class = state_class
 
         # Entity properties
-        self._attr_unique_id = f"vacasa_{sensor_type}_{unit_id}"
-        self._attr_name = sensor_type.replace("_", " ").title()
+        self._attr_unique_id = f"vacasa_{self._sensor_type}_{unit_id}"
+        self._attr_name = self._sensor_type.replace("_", " ").title()
         self._attr_has_entity_name = True
 
         # Set device info
@@ -154,24 +149,10 @@ class VacasaApiUpdateMixin:
 class VacasaRatingSensor(VacasaBaseSensor):
     """Sensor for Vacasa property rating."""
 
-    def __init__(
-        self,
-        coordinator,
-        unit_id: str,
-        name: str,
-        unit_attributes: dict[str, Any],
-    ) -> None:
-        """Initialize the rating sensor."""
-        super().__init__(
-            coordinator=coordinator,
-            unit_id=unit_id,
-            name=name,
-            unit_attributes=unit_attributes,
-            sensor_type=SENSOR_RATING,
-            icon="mdi:star",
-            state_class=SensorStateClass.MEASUREMENT,
-        )
-        self._attr_native_unit_of_measurement = "★"
+    _sensor_type = SENSOR_RATING
+    _attr_icon = "mdi:star"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "★"
 
     @property
     def native_value(self) -> float | None:
@@ -182,22 +163,8 @@ class VacasaRatingSensor(VacasaBaseSensor):
 class VacasaLocationSensor(VacasaBaseSensor):
     """Sensor for Vacasa property location."""
 
-    def __init__(
-        self,
-        coordinator,
-        unit_id: str,
-        name: str,
-        unit_attributes: dict[str, Any],
-    ) -> None:
-        """Initialize the location sensor."""
-        super().__init__(
-            coordinator=coordinator,
-            unit_id=unit_id,
-            name=name,
-            unit_attributes=unit_attributes,
-            sensor_type=SENSOR_LOCATION,
-            icon="mdi:map-marker",
-        )
+    _sensor_type = SENSOR_LOCATION
+    _attr_icon = "mdi:map-marker"
 
     @property
     def native_value(self) -> str | None:
@@ -222,22 +189,8 @@ class VacasaLocationSensor(VacasaBaseSensor):
 class VacasaTimezoneSensor(VacasaBaseSensor):
     """Sensor for Vacasa property timezone."""
 
-    def __init__(
-        self,
-        coordinator,
-        unit_id: str,
-        name: str,
-        unit_attributes: dict[str, Any],
-    ) -> None:
-        """Initialize the timezone sensor."""
-        super().__init__(
-            coordinator=coordinator,
-            unit_id=unit_id,
-            name=name,
-            unit_attributes=unit_attributes,
-            sensor_type=SENSOR_TIMEZONE,
-            icon="mdi:clock-time-eight-outline",
-        )
+    _sensor_type = SENSOR_TIMEZONE
+    _attr_icon = "mdi:clock-time-eight-outline"
 
     @property
     def native_value(self) -> str | None:
@@ -248,24 +201,10 @@ class VacasaTimezoneSensor(VacasaBaseSensor):
 class VacasaMaxOccupancySensor(VacasaBaseSensor):
     """Sensor for Vacasa property max occupancy."""
 
-    def __init__(
-        self,
-        coordinator,
-        unit_id: str,
-        name: str,
-        unit_attributes: dict[str, Any],
-    ) -> None:
-        """Initialize the max occupancy sensor."""
-        super().__init__(
-            coordinator=coordinator,
-            unit_id=unit_id,
-            name=name,
-            unit_attributes=unit_attributes,
-            sensor_type=SENSOR_MAX_OCCUPANCY,
-            icon="mdi:account-group",
-            state_class=SensorStateClass.MEASUREMENT,
-        )
-        self._attr_native_unit_of_measurement = "people"
+    _sensor_type = SENSOR_MAX_OCCUPANCY
+    _attr_icon = "mdi:account-group"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "people"
 
     @property
     def native_value(self) -> int | None:
@@ -276,24 +215,10 @@ class VacasaMaxOccupancySensor(VacasaBaseSensor):
 class VacasaMaxAdultsSensor(VacasaBaseSensor):
     """Sensor for Vacasa property max adults."""
 
-    def __init__(
-        self,
-        coordinator,
-        unit_id: str,
-        name: str,
-        unit_attributes: dict[str, Any],
-    ) -> None:
-        """Initialize the max adults sensor."""
-        super().__init__(
-            coordinator=coordinator,
-            unit_id=unit_id,
-            name=name,
-            unit_attributes=unit_attributes,
-            sensor_type=SENSOR_MAX_ADULTS,
-            icon="mdi:account",
-            state_class=SensorStateClass.MEASUREMENT,
-        )
-        self._attr_native_unit_of_measurement = "people"
+    _sensor_type = SENSOR_MAX_ADULTS
+    _attr_icon = "mdi:account"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "people"
 
     @property
     def native_value(self) -> int | None:
@@ -304,24 +229,10 @@ class VacasaMaxAdultsSensor(VacasaBaseSensor):
 class VacasaMaxChildrenSensor(VacasaBaseSensor):
     """Sensor for Vacasa property max children."""
 
-    def __init__(
-        self,
-        coordinator,
-        unit_id: str,
-        name: str,
-        unit_attributes: dict[str, Any],
-    ) -> None:
-        """Initialize the max children sensor."""
-        super().__init__(
-            coordinator=coordinator,
-            unit_id=unit_id,
-            name=name,
-            unit_attributes=unit_attributes,
-            sensor_type=SENSOR_MAX_CHILDREN,
-            icon="mdi:account-child",
-            state_class=SensorStateClass.MEASUREMENT,
-        )
-        self._attr_native_unit_of_measurement = "people"
+    _sensor_type = SENSOR_MAX_CHILDREN
+    _attr_icon = "mdi:account-child"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "people"
 
     @property
     def native_value(self) -> int | None:
@@ -332,24 +243,10 @@ class VacasaMaxChildrenSensor(VacasaBaseSensor):
 class VacasaMaxPetsSensor(VacasaBaseSensor):
     """Sensor for Vacasa property max pets."""
 
-    def __init__(
-        self,
-        coordinator,
-        unit_id: str,
-        name: str,
-        unit_attributes: dict[str, Any],
-    ) -> None:
-        """Initialize the max pets sensor."""
-        super().__init__(
-            coordinator=coordinator,
-            unit_id=unit_id,
-            name=name,
-            unit_attributes=unit_attributes,
-            sensor_type=SENSOR_MAX_PETS,
-            icon="mdi:paw",
-            state_class=SensorStateClass.MEASUREMENT,
-        )
-        self._attr_native_unit_of_measurement = "pets"
+    _sensor_type = SENSOR_MAX_PETS
+    _attr_icon = "mdi:paw"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "pets"
 
     @property
     def native_value(self) -> int | None:
@@ -360,24 +257,10 @@ class VacasaMaxPetsSensor(VacasaBaseSensor):
 class VacasaBedroomsSensor(VacasaBaseSensor):
     """Sensor for Vacasa property bedrooms."""
 
-    def __init__(
-        self,
-        coordinator,
-        unit_id: str,
-        name: str,
-        unit_attributes: dict[str, Any],
-    ) -> None:
-        """Initialize the bedrooms sensor."""
-        super().__init__(
-            coordinator=coordinator,
-            unit_id=unit_id,
-            name=name,
-            unit_attributes=unit_attributes,
-            sensor_type=SENSOR_BEDROOMS,
-            icon="mdi:bed",
-            state_class=SensorStateClass.MEASUREMENT,
-        )
-        self._attr_native_unit_of_measurement = "rooms"
+    _sensor_type = SENSOR_BEDROOMS
+    _attr_icon = "mdi:bed"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "rooms"
 
     @property
     def native_value(self) -> int | None:
@@ -404,24 +287,10 @@ class VacasaBedroomsSensor(VacasaBaseSensor):
 class VacasaBathroomsSensor(VacasaBaseSensor):
     """Sensor for Vacasa property bathrooms."""
 
-    def __init__(
-        self,
-        coordinator,
-        unit_id: str,
-        name: str,
-        unit_attributes: dict[str, Any],
-    ) -> None:
-        """Initialize the bathrooms sensor."""
-        super().__init__(
-            coordinator=coordinator,
-            unit_id=unit_id,
-            name=name,
-            unit_attributes=unit_attributes,
-            sensor_type=SENSOR_BATHROOMS,
-            icon="mdi:shower",
-            state_class=SensorStateClass.MEASUREMENT,
-        )
-        self._attr_native_unit_of_measurement = "rooms"
+    _sensor_type = SENSOR_BATHROOMS
+    _attr_icon = "mdi:shower"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "rooms"
 
     @property
     def native_value(self) -> float | None:
@@ -455,22 +324,8 @@ class VacasaBathroomsSensor(VacasaBaseSensor):
 class VacasaHotTubSensor(VacasaBaseSensor):
     """Sensor for Vacasa property hot tub."""
 
-    def __init__(
-        self,
-        coordinator,
-        unit_id: str,
-        name: str,
-        unit_attributes: dict[str, Any],
-    ) -> None:
-        """Initialize the hot tub sensor."""
-        super().__init__(
-            coordinator=coordinator,
-            unit_id=unit_id,
-            name=name,
-            unit_attributes=unit_attributes,
-            sensor_type=SENSOR_HOT_TUB,
-            icon="mdi:hot-tub",
-        )
+    _sensor_type = SENSOR_HOT_TUB
+    _attr_icon = "mdi:hot-tub"
 
     @property
     def native_value(self) -> str | None:
@@ -487,22 +342,8 @@ class VacasaHotTubSensor(VacasaBaseSensor):
 class VacasaPetFriendlySensor(VacasaBaseSensor):
     """Sensor for Vacasa property pet friendly status."""
 
-    def __init__(
-        self,
-        coordinator,
-        unit_id: str,
-        name: str,
-        unit_attributes: dict[str, Any],
-    ) -> None:
-        """Initialize the pet friendly sensor."""
-        super().__init__(
-            coordinator=coordinator,
-            unit_id=unit_id,
-            name=name,
-            unit_attributes=unit_attributes,
-            sensor_type=SENSOR_PET_FRIENDLY,
-            icon="mdi:paw",
-        )
+    _sensor_type = SENSOR_PET_FRIENDLY
+    _attr_icon = "mdi:paw"
 
     @property
     def native_value(self) -> str | None:
@@ -519,24 +360,10 @@ class VacasaPetFriendlySensor(VacasaBaseSensor):
 class VacasaParkingSensor(VacasaBaseSensor):
     """Sensor for Vacasa property parking."""
 
-    def __init__(
-        self,
-        coordinator,
-        unit_id: str,
-        name: str,
-        unit_attributes: dict[str, Any],
-    ) -> None:
-        """Initialize the parking sensor."""
-        super().__init__(
-            coordinator=coordinator,
-            unit_id=unit_id,
-            name=name,
-            unit_attributes=unit_attributes,
-            sensor_type=SENSOR_PARKING,
-            icon="mdi:car",
-            state_class=SensorStateClass.MEASUREMENT,
-        )
-        self._attr_native_unit_of_measurement = "spaces"
+    _sensor_type = SENSOR_PARKING
+    _attr_icon = "mdi:car"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "spaces"
 
     @property
     def native_value(self) -> int | None:
@@ -574,22 +401,8 @@ class VacasaParkingSensor(VacasaBaseSensor):
 class VacasaAddressSensor(VacasaBaseSensor):
     """Sensor for Vacasa property address."""
 
-    def __init__(
-        self,
-        coordinator,
-        unit_id: str,
-        name: str,
-        unit_attributes: dict[str, Any],
-    ) -> None:
-        """Initialize the address sensor."""
-        super().__init__(
-            coordinator=coordinator,
-            unit_id=unit_id,
-            name=name,
-            unit_attributes=unit_attributes,
-            sensor_type=SENSOR_ADDRESS,
-            icon="mdi:map-marker",
-        )
+    _sensor_type = SENSOR_ADDRESS
+    _attr_icon = "mdi:map-marker"
 
     @property
     def native_value(self) -> str | None:
@@ -648,6 +461,11 @@ class VacasaAddressSensor(VacasaBaseSensor):
 class VacasaMaintenanceSensor(VacasaApiUpdateMixin, VacasaBaseSensor):
     """Sensor representing open maintenance tickets for a unit."""
 
+    _sensor_type = SENSOR_MAINTENANCE_OPEN
+    _attr_icon = "mdi:tools"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "tickets"
+
     def __init__(
         self,
         coordinator,
@@ -662,13 +480,9 @@ class VacasaMaintenanceSensor(VacasaApiUpdateMixin, VacasaBaseSensor):
             unit_id=unit_id,
             name=name,
             unit_attributes=unit_attributes,
-            sensor_type=SENSOR_MAINTENANCE_OPEN,
-            icon="mdi:tools",
-            state_class=SensorStateClass.MEASUREMENT,
         )
         self._status = status
         self._tickets: list[dict[str, Any]] = []
-        self._attr_native_unit_of_measurement = "tickets"
 
     async def _async_update_from_api(self) -> None:
         """Refresh the maintenance ticket list."""
@@ -809,6 +623,9 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
 class VacasaNextStaySensor(VacasaReservationStateMixin, VacasaBaseSensor):
     """Sensor representing the next upcoming stay/reservation."""
 
+    _sensor_type = SENSOR_NEXT_STAY
+    _attr_icon = "mdi:calendar-clock"
+
     def __init__(
         self,
         coordinator,
@@ -822,8 +639,6 @@ class VacasaNextStaySensor(VacasaReservationStateMixin, VacasaBaseSensor):
             unit_id=unit_id,
             name=name,
             unit_attributes=unit_attributes,
-            sensor_type=SENSOR_NEXT_STAY,
-            icon="mdi:calendar-clock",
         )
         self._attr_should_poll = False
         self._attr_available = False
