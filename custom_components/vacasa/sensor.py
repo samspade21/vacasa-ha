@@ -694,7 +694,7 @@ class VacasaMaintenanceSensor(VacasaApiUpdateMixin, VacasaBaseSensor):
             if not isinstance(ticket, dict):
                 continue
             ticket_ids.append(ticket.get("id"))
-            attributes = ticket.get("attributes", {}) if isinstance(ticket, dict) else {}
+            attributes = ticket.get("attributes", {})
             summaries.append(
                 {
                     "id": ticket.get("id"),

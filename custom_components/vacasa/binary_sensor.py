@@ -37,7 +37,6 @@ async def async_setup_entry(
     _LOGGER.debug("Setting up Vacasa binary sensor platform")
 
     data = config_entry.runtime_data
-    client = data.client
     coordinator = data.coordinator
 
     units = coordinator.data.get("units") if coordinator.data else None
@@ -58,7 +57,6 @@ async def async_setup_entry(
             entities.append(
                 VacasaOccupancySensor(
                     coordinator=coordinator,
-                    client=client,
                     unit_id=unit_id,
                     name=name,
                     code=code,
@@ -82,7 +80,6 @@ class VacasaOccupancySensor(CoordinatorEntity[VacasaDataUpdateCoordinator], Bina
     def __init__(
         self,
         coordinator: VacasaDataUpdateCoordinator,
-        client,
         unit_id,
         name,
         code,
@@ -90,7 +87,6 @@ class VacasaOccupancySensor(CoordinatorEntity[VacasaDataUpdateCoordinator], Bina
     ) -> None:
         """Initialize the Vacasa occupancy sensor."""
         super().__init__(coordinator)
-        self._client = client
         self._unit_id = unit_id
         self._name = name
         self._code = code

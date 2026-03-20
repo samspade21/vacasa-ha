@@ -129,12 +129,6 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         This is critical for the binary sensor occupancy detection to work properly.
         """
         state = "on" if self._current_event is not None else "off"
-        _LOGGER.debug(
-            "Calendar %s state: %s (current_event: %s)",
-            self._name,
-            state,
-            self._current_event.summary if self._current_event else "None",
-        )
         return state
 
     @property
