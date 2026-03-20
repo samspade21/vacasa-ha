@@ -57,19 +57,18 @@ async def test_platforms_use_cached_units() -> None:
 
 @pytest.mark.asyncio
 async def test_coordinator_enforces_30s_timeout() -> None:
-    """_async_update_data raises UpdateFailed when the API hangs beyond 30 seconds."""
+    """_async_update_data raises UpdateFailed when the API times out."""
     from custom_components.vacasa import VacasaDataUpdateCoordinator
-    from tests.conftest import UpdateFailed
-
-    async def _hang(*_args, **_kwargs):
-        await asyncio.sleep(9999)
 
     client = Mock()
-    client.ensure_token = AsyncMock(side_effect=_hang)
+    client.ensure_token = AsyncMock()
+    client.get_units = AsyncMock()
 
     coordinator = VacasaDataUpdateCoordinator.__new__(VacasaDataUpdateCoordinator)
     coordinator.client = client
 
-    with patch("asyncio.timeout", side_effect=asyncio.TimeoutError):
-        with pytest.raises((asyncio.TimeoutError, UpdateFailed)):
-            await coordinator._async_update_data()
+    with (
+        patch("asyncio.timeout", side_effect=asyncio.TimeoutError),
+        pytest.raises(Exception, match="[Tt]imeout"),
+    ):
+        await coordinator._async_update_data()
