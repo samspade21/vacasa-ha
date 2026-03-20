@@ -16,12 +16,12 @@ from . import (
     VacasaConfigEntry,
     VacasaDataUpdateCoordinator,
     VacasaReservationStateMixin,
+    _make_owner_device_info,
     _make_unit_device_info,
 )
 from .api_client import ApiError, AuthenticationError
 from .const import (
     CONF_USERNAME,
-    DOMAIN,
     SENSOR_ADDRESS,
     SENSOR_BATHROOMS,
     SENSOR_BEDROOMS,
@@ -533,11 +533,7 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
         self._attr_native_unit_of_measurement = "$"
 
         username = config_entry.data.get(CONF_USERNAME, "Vacasa Account")
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, f"owner_{config_entry.entry_id}")},
-            "name": f"Vacasa {username}",
-            "manufacturer": "Vacasa",
-        }
+        self._attr_device_info = _make_owner_device_info(config_entry.entry_id, username)
 
     async def _async_update_from_api(self) -> None:
         """Refresh statement totals."""

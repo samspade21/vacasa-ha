@@ -13,7 +13,7 @@ from urllib.parse import urlencode
 
 import aiohttp
 
-from .cached_data import CachedData, RetryWithBackoff
+from .cached_data import CachedData, RetryWithBackoff, run_blocking_io
 from .const import (
     API_BASE_TEMPLATE,
     AUTH_URL,
@@ -46,6 +46,7 @@ from .const import (
 T = TypeVar("T")
 
 _LOGGER = logging.getLogger(__name__)
+_DEFAULT_CLIENT_TIMEOUT = aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT)
 
 
 class VacasaApiError(Exception):
@@ -204,7 +205,7 @@ class VacasaApiClient:
         session = await self.ensure_session()
 
         try:
-            async with session.get(AUTH_URL, timeout=DEFAULT_TIMEOUT) as response:
+            async with session.get(AUTH_URL, timeout=_DEFAULT_CLIENT_TIMEOUT) as response:
                 if response.status != 200:
                     _LOGGER.warning("Failed to fetch login page for client ID: %s", response.status)
                     return None
@@ -292,9 +293,7 @@ class VacasaApiClient:
 
     async def _run_blocking_io(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Execute a blocking IO function safely in the event loop."""
-        if self._hass:
-            return await self._hass.async_add_executor_job(func, *args, **kwargs)
-        return func(*args, **kwargs)
+        return await run_blocking_io(self._hass, func, *args, **kwargs)
 
     def _set_api_version(self, version: str) -> None:
         """Persist the API version that successfully responded."""
@@ -350,7 +349,7 @@ class VacasaApiClient:
                         params=params,
                         json=json_data,
                         headers=self._get_headers(),
-                        timeout=DEFAULT_TIMEOUT,
+                        timeout=_DEFAULT_CLIENT_TIMEOUT,
                     ) as response:
                         if response.status in acceptable_status:
                             self._set_api_version(version)
@@ -686,7 +685,7 @@ class VacasaApiClient:
                 )
 
                 async with session.get(
-                    AUTH_URL, params=auth_params, timeout=DEFAULT_TIMEOUT
+                    AUTH_URL, params=auth_params, timeout=_DEFAULT_CLIENT_TIMEOUT
                 ) as response:
                     if response.status != 200:
                         response_text = await response.text()
@@ -738,7 +737,7 @@ class VacasaApiClient:
                     data=login_data,
                     headers=headers,
                     allow_redirects=False,
-                    timeout=DEFAULT_TIMEOUT,
+                    timeout=_DEFAULT_CLIENT_TIMEOUT,
                 ) as response:
                     # Check for redirect (successful login)
                     if response.status not in (302, 303):
@@ -837,7 +836,7 @@ class VacasaApiClient:
             # Follow the redirect
             try:
                 async with session.get(
-                    current_url, allow_redirects=False, timeout=DEFAULT_TIMEOUT
+                    current_url, allow_redirects=False, timeout=_DEFAULT_CLIENT_TIMEOUT
                 ) as response:
                     if response.status in (301, 302, 303, 307, 308):
                         # Handle redirect
@@ -954,7 +953,7 @@ class VacasaApiClient:
             raise ApiError(f"Error getting {log_name}: {e}")
 
     async def get_units(self) -> list[dict[str, Any]]:
-        """Get all units for the owner with caching support.
+        """Get all units for the owner.
 
         Returns:
             List of unit dictionaries
@@ -979,7 +978,11 @@ class VacasaApiClient:
                 _LOGGER.debug("Unit IDs: %s", [unit.get("id") for unit in units])
             return units
 
-        return await self._cached_api_get("units", _fetch, "units")
+        try:
+            return await self._retry_handler.retry(_fetch)
+        except Exception as e:
+            _LOGGER.error("Error getting units: %s", e)
+            raise ApiError(f"Error getting units: {e}")
 
     async def get_reservations(
         self,

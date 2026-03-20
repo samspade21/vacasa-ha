@@ -41,6 +41,15 @@ def _make_unit_device_info(unit_id: str, name: str) -> dict[str, Any]:
     }
 
 
+def _make_owner_device_info(entry_id: str, username: str) -> dict[str, Any]:
+    """Return the standard device info dict for a Vacasa owner account."""
+    return {
+        "identifiers": {(DOMAIN, f"owner_{entry_id}")},
+        "name": f"Vacasa {username}",
+        "manufacturer": "Vacasa",
+    }
+
+
 @dataclass
 class VacasaData:
     """Runtime data for Vacasa integration."""

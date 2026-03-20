@@ -97,7 +97,21 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         self._checkout_time = unit_attributes.get("checkOutTime")
         self._property_checkin_time = self._normalize_time_value(self._checkin_time)
         self._property_checkout_time = self._normalize_time_value(self._checkout_time)
-        self._timezone = unit_attributes.get("timezone")
+
+        tz_str = unit_attributes.get("timezone")
+        if tz_str:
+            try:
+                ZoneInfo(tz_str)
+                self._timezone: str | None = tz_str
+            except Exception:
+                _LOGGER.warning(
+                    "Invalid timezone %r for unit %s; falling back to local time",
+                    tz_str,
+                    unit_id,
+                )
+                self._timezone = None
+        else:
+            self._timezone = None
         self._event_cache: dict[str, list[CalendarEvent]] = {}
         self._reservation_windows: dict[str, ReservationWindow] = {}
         self._current_event: CalendarEvent | None = None
@@ -261,14 +275,11 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         next_event: CalendarEvent | None = None
 
         def _as_utc(value: datetime | None) -> datetime | None:
-            if value is None:
-                return None
-            return dt_util.as_utc(value)
+            return dt_util.as_utc(value) if value is not None else None
 
-        for event in sorted(events, key=lambda evt: _as_utc(evt.start) or now_utc):
-            start_utc = _as_utc(event.start)
-            end_utc = _as_utc(event.end)
+        event_tuples = [(event, _as_utc(event.start), _as_utc(event.end)) for event in events]
 
+        for event, start_utc, end_utc in sorted(event_tuples, key=lambda t: t[1] or now_utc):
             if start_utc is None or end_utc is None:
                 continue
 
@@ -470,10 +481,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         if is_all_day:
             return dt
         if self._timezone:
-            try:
-                return dt.replace(tzinfo=None).replace(tzinfo=ZoneInfo(self._timezone))
-            except Exception as e:
-                _LOGGER.warning("Error applying timezone %s: %s", self._timezone, e)
+            return dt.replace(tzinfo=None).replace(tzinfo=ZoneInfo(self._timezone))
         return dt_util.as_local(dt)
 
     def _reservation_to_event(
