@@ -923,13 +923,9 @@ class VacasaApiClient:
 
             # Extract owner ID from the response
             if "data" in data and "contactIds" in data["data"] and data["data"]["contactIds"]:
-                contact_ids = data["data"]["contactIds"]
-                if contact_ids:
-                    self._owner_id = str(contact_ids[0])
-                    _LOGGER.debug("Retrieved owner ID from verify-token: %s", self._owner_id)
-                    return self._owner_id
-                _LOGGER.error("No contact IDs found in verify-token response")
-                raise ApiError("No contact IDs found in verify-token response")
+                self._owner_id = str(data["data"]["contactIds"][0])
+                _LOGGER.debug("Retrieved owner ID from verify-token: %s", self._owner_id)
+                return self._owner_id
 
             _LOGGER.error("Unexpected verify-token response format: %s", data)
             raise ApiError(f"Unexpected verify-token response format: {data}")

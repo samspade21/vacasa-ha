@@ -1,7 +1,7 @@
 """Calendar platform for Vacasa integration."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from functools import partial
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
@@ -187,23 +187,20 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         self._schedule_boundary_timers()
         self._broadcast_reservation_state()
 
+    async def _ensure_events_loaded(self) -> None:
+        """Lazily populate current and next events if not already loaded."""
+        if self._current_event is None and self._next_event is None:
+            await self._update_current_event()
+
     async def async_get_current_event(self) -> CalendarEvent | None:
         """Get the current event if active right now, otherwise None."""
-        if self._current_event is None and self._next_event is None:
-            self._current_event, self._next_event = await self._determine_current_and_next_events()
-            self._schedule_boundary_timers()
-            self._broadcast_reservation_state()
+        await self._ensure_events_loaded()
         return self._current_event
 
     async def async_get_next_event(self) -> CalendarEvent | None:
         """Get the next upcoming event (for display purposes)."""
-        if self._current_event is None and self._next_event is None:
-            self._current_event, self._next_event = await self._determine_current_and_next_events()
-            self._schedule_boundary_timers()
-            self._broadcast_reservation_state()
-        if self._current_event:
-            return self._current_event
-        return self._next_event
+        await self._ensure_events_loaded()
+        return self._current_event or self._next_event
 
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
@@ -281,33 +278,13 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             in_progress = start_utc <= now_utc < end_utc
             upcoming = start_utc > now_utc
 
-            # Enhanced debug logging to diagnose timing issues
             _LOGGER.debug(
-                "Event %s: start=%s, end=%s, now=%s, in_progress=%s, upcoming=%s",
+                "Event %s: start=%s, end=%s, in_progress=%s, upcoming=%s",
                 event.summary,
                 start_utc.isoformat(),
                 end_utc.isoformat(),
-                now_utc.isoformat(),
                 in_progress,
                 upcoming,
-            )
-            _LOGGER.debug(
-                "  Comparison details: start_utc_ts=%s, end_utc_ts=%s, now_utc_ts=%s",
-                start_utc.timestamp(),
-                end_utc.timestamp(),
-                now_utc.timestamp(),
-            )
-            _LOGGER.debug(
-                "  Original event times: start=%s (tzinfo=%s), end=%s (tzinfo=%s)",
-                event.start.isoformat() if event.start else "None",
-                event.start.tzinfo if event.start else "None",
-                event.end.isoformat() if event.end else "None",
-                event.end.tzinfo if event.end else "None",
-            )
-            _LOGGER.debug(
-                "  Boolean checks: (start_utc <= now_utc)=%s, (now_utc < end_utc)=%s",
-                start_utc <= now_utc,
-                now_utc < end_utc,
             )
 
             if in_progress:
@@ -492,12 +469,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         if parsed_dt is None:
             return normalized
 
-        if (
-            parsed_dt.hour == 0
-            and parsed_dt.minute == 0
-            and parsed_dt.second == 0
-            and parsed_dt.microsecond == 0
-        ):
+        if parsed_dt.time() == time(0, 0, 0):
             return None
 
         return normalized
