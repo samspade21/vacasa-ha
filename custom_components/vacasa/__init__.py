@@ -30,6 +30,17 @@ from .models import ReservationState, ReservationWindow
 _LOGGER = logging.getLogger(__name__)
 
 
+def _make_unit_device_info(unit_id: str, name: str) -> dict[str, Any]:
+    """Return the standard device info dict for a Vacasa rental unit."""
+    return {
+        "identifiers": {(DOMAIN, unit_id)},
+        "name": f"Vacasa {name}",
+        "manufacturer": "Vacasa",
+        "model": "Vacation Rental",
+        "sw_version": "1.0",
+    }
+
+
 @dataclass
 class VacasaData:
     """Runtime data for Vacasa integration."""

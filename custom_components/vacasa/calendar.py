@@ -14,14 +14,13 @@ from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from . import VacasaConfigEntry, VacasaDataUpdateCoordinator
+from . import VacasaConfigEntry, VacasaDataUpdateCoordinator, _make_unit_device_info
 from .api_client import VacasaApiClient
 from .const import (
     CALENDAR_LOOKAHEAD_DAYS,
     CALENDAR_LOOKBACK_DAYS,
     DEFAULT_CHECKIN_TIME,
     DEFAULT_CHECKOUT_TIME,
-    DOMAIN,
     SIGNAL_RESERVATION_BOUNDARY,
     SIGNAL_RESERVATION_STATE,
     STAY_TYPE_BLOCK,
@@ -108,14 +107,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         self._attr_unique_id = f"vacasa_calendar_{unit_id}"
         self._attr_name = f"Vacasa {name}"
 
-        # Set device info
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, unit_id)},
-            "name": f"Vacasa {name}",
-            "manufacturer": "Vacasa",
-            "model": "Vacation Rental",
-            "sw_version": "1.0",
-        }
+        self._attr_device_info = _make_unit_device_info(unit_id, name)
 
     @property
     def event(self) -> CalendarEvent | None:

@@ -12,7 +12,12 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from . import VacasaConfigEntry, VacasaReservationStateMixin
+from . import (
+    VacasaConfigEntry,
+    VacasaDataUpdateCoordinator,
+    VacasaReservationStateMixin,
+    _make_unit_device_info,
+)
 from .api_client import ApiError, AuthenticationError
 from .const import (
     CONF_USERNAME,
@@ -57,7 +62,7 @@ class VacasaBaseSensor(SensorEntity):
 
     def __init__(
         self,
-        coordinator,
+        coordinator: VacasaDataUpdateCoordinator,
         unit_id: str,
         name: str,
         unit_attributes: dict[str, Any],
@@ -75,15 +80,7 @@ class VacasaBaseSensor(SensorEntity):
         self._attr_unique_id = f"vacasa_{self._sensor_type}_{unit_id}"
         self._attr_name = self._sensor_type.replace("_", " ").title()
         self._attr_has_entity_name = True
-
-        # Set device info
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, unit_id)},
-            "name": f"Vacasa {name}",
-            "manufacturer": "Vacasa",
-            "model": "Vacation Rental",
-            "sw_version": "1.0",
-        }
+        self._attr_device_info = _make_unit_device_info(unit_id, name)
 
 
 class VacasaApiUpdateMixin:
@@ -783,7 +780,7 @@ UNIT_SENSOR_CLASSES: tuple[type[VacasaBaseSensor], ...] = (
 
 
 def _create_unit_sensors(
-    coordinator,
+    coordinator: VacasaDataUpdateCoordinator,
     unit_id: str,
     name: str,
     attributes: dict[str, Any],

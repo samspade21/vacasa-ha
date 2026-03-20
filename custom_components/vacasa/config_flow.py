@@ -65,6 +65,17 @@ def validate_password_optional(value: str) -> str:
     return validate_password(value)
 
 
+def _map_validation_error(err: vol.Invalid, errors: dict[str, str]) -> None:
+    """Map a voluptuous validation error to the appropriate form field key."""
+    err_msg = str(err).lower()
+    if "email" in err_msg:
+        errors[CONF_USERNAME] = "invalid_email"
+    elif "password" in err_msg:
+        errors[CONF_PASSWORD] = "invalid_password"
+    else:
+        errors["base"] = "invalid_input"
+
+
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect.
 
@@ -132,12 +143,7 @@ class VacasaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     validate_email(user_input[CONF_USERNAME])
                     validate_password(user_input[CONF_PASSWORD])
                 except vol.Invalid as err:
-                    if "email" in str(err).lower():
-                        errors[CONF_USERNAME] = "invalid_email"
-                    elif "password" in str(err).lower():
-                        errors[CONF_PASSWORD] = "invalid_password"
-                    else:
-                        errors["base"] = "invalid_input"
+                    _map_validation_error(err, errors)
                     raise
 
                 info = await validate_input(self.hass, user_input)
@@ -218,12 +224,7 @@ class VacasaOptionsFlowHandler(config_entries.OptionsFlow):
                         if new_password:  # Only validate password if provided
                             validate_password(new_password)
                     except vol.Invalid as err:
-                        if "email" in str(err).lower():
-                            errors[CONF_USERNAME] = "invalid_email"
-                        elif "password" in str(err).lower():
-                            errors[CONF_PASSWORD] = "invalid_password"
-                        else:
-                            errors["base"] = "invalid_input"
+                        _map_validation_error(err, errors)
                         raise
 
                     # Create a validation dict with the new credentials
