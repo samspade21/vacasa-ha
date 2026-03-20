@@ -167,10 +167,7 @@ class CachedData:
 
     async def _save_to_disk(self) -> None:
         """Save cache to disk."""
-        try:
-            await self._run_io_task(self._save_to_disk_sync)
-        except Exception as e:
-            _LOGGER.warning("Failed to save cache to disk: %s", e)
+        await self._run_io_task(self._save_to_disk_sync)
 
     def _load_from_disk_sync(self) -> bool:
         """Load cache from disk (synchronous helper).

@@ -465,12 +465,12 @@ class VacasaApiClient:
         Returns:
             True if the token was loaded successfully, False otherwise
         """
-        if not os.path.exists(self._token_cache_file):
+        try:
+            with open(self._token_cache_file, "r") as f:
+                cache_data = json.load(f)
+        except FileNotFoundError:
             _LOGGER.debug("Token cache file does not exist: %s", self._token_cache_file)
             return False
-
-        with open(self._token_cache_file, "r") as f:
-            cache_data = json.load(f)
 
         if not cache_data or "token" not in cache_data or "expiry" not in cache_data:
             _LOGGER.warning("Invalid token cache data format")
@@ -499,9 +499,6 @@ class VacasaApiClient:
         """
         try:
             return await self._run_blocking_io(self._load_token_from_cache_sync)
-        except json.JSONDecodeError:
-            _LOGGER.warning("Failed to parse token cache file (invalid JSON)")
-            return False
         except Exception as e:
             _LOGGER.warning("Failed to load token from cache file: %s", e)
             return False
@@ -937,8 +934,8 @@ class VacasaApiClient:
             _LOGGER.error("Unexpected verify-token response format: %s", data)
             raise ApiError(f"Unexpected verify-token response format: {data}")
 
-        except AuthenticationError as err:
-            raise err
+        except AuthenticationError:
+            raise
         except Exception as e:
             _LOGGER.error("Error getting owner ID: %s", e)
             raise ApiError(f"Error getting owner ID: {e}")

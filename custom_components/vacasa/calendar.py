@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timedelta
 from functools import partial
 from typing import Any, Callable
+from zoneinfo import ZoneInfo
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.core import HomeAssistant
@@ -128,8 +129,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         Returns 'on' if there's a current event happening now, 'off' otherwise.
         This is critical for the binary sensor occupancy detection to work properly.
         """
-        state = "on" if self._current_event is not None else "off"
-        return state
+        return "on" if self._current_event is not None else "off"
 
     @property
     def event_types(self) -> list[str]:
@@ -567,8 +567,6 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             else:
                 # This is a timed event, apply timezone
                 if self._timezone:
-                    from zoneinfo import ZoneInfo
-
                     try:
                         tz = ZoneInfo(self._timezone)
                         _LOGGER.debug("Using property timezone: %s", self._timezone)
