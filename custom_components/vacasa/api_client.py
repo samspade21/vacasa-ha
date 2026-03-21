@@ -28,6 +28,7 @@ from .const import (
     DEFAULT_MAX_CONNECTIONS,
     DEFAULT_READ_TIMEOUT,
     DEFAULT_TIMEOUT,
+    MAX_AUTH_REDIRECTS,
     MAX_RETRIES,
     PROPERTY_CACHE_FILE,
     RETRY_BACKOFF_MULTIPLIER,
@@ -790,7 +791,7 @@ class VacasaApiClient:
         """
         session = await self.ensure_session()
         current_url = initial_url
-        max_redirects = 10
+        max_redirects = MAX_AUTH_REDIRECTS
         redirect_count = 0
 
         _LOGGER.debug("Following auth redirects starting with: %s", current_url)

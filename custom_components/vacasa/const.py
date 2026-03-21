@@ -33,6 +33,7 @@ TOKEN_CACHE_FILE = ".vacasa_token.json"
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
 RETRY_BACKOFF_MULTIPLIER = 2
+MAX_AUTH_REDIRECTS = 10  # maximum redirect hops when following OAuth token flow
 
 # Stay types
 STAY_TYPE_GUEST = "guest"
@@ -95,6 +96,7 @@ SIGNAL_RESERVATION_STATE = "vacasa_reservation_state"
 # Calendar event window constants
 CALENDAR_LOOKBACK_DAYS = 60  # days to look back for active reservations
 CALENDAR_LOOKAHEAD_DAYS = 365  # days to look ahead for future reservations
+CALENDAR_EVENT_CACHE_MAX_SIZE = 20  # max cached date-range queries per calendar entity
 
 # Default reservation times when none are provided by the API
 DEFAULT_CHECKIN_TIME = "16:00:00"  # 4:00 PM

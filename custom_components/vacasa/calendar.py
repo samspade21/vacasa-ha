@@ -22,6 +22,7 @@ from . import (
 )
 from .api_client import VacasaApiClient
 from .const import (
+    CALENDAR_EVENT_CACHE_MAX_SIZE,
     CALENDAR_LOOKAHEAD_DAYS,
     CALENDAR_LOOKBACK_DAYS,
     DEFAULT_CHECKIN_TIME,
@@ -163,7 +164,9 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                     if event:
                         events.append(event)
 
-            # Cache the events
+            # Cache the events; evict oldest entry when at capacity
+            if len(self._event_cache) >= CALENDAR_EVENT_CACHE_MAX_SIZE:
+                self._event_cache.pop(next(iter(self._event_cache)))
             self._event_cache[cache_key] = events
 
             return events

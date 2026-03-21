@@ -564,17 +564,21 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
                 return None
         return None
 
+    def _latest_attributes(self) -> dict[str, Any]:
+        """Return the attributes dict from the latest statement, or {} if unavailable."""
+        latest = self._latest
+        if not isinstance(latest, dict):
+            return {}
+        attrs = latest.get("attributes", {})
+        return attrs if isinstance(attrs, dict) else {}
+
     @property
     def native_value(self) -> float | int:
         """Return the latest statement total."""
-        latest = self._latest
-        if not latest:
+        if not self._latest:
             return 0
 
-        attributes = latest.get("attributes", {}) if isinstance(latest, dict) else {}
-        if not isinstance(attributes, dict):
-            attributes = {}
-
+        attributes = self._latest_attributes()
         for field in ("totalAmount", "netAmount", "balance", "amountDue"):
             amount = self._coerce_amount(attributes.get(field))
             if amount is not None:
@@ -586,9 +590,7 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Expose detailed statement attributes."""
         latest = self._latest
-        attributes = latest.get("attributes", {}) if isinstance(latest, dict) else {}
-        if not isinstance(attributes, dict):
-            attributes = {}
+        attributes = self._latest_attributes()
 
         return {
             "statement_count": len(self._statements),
@@ -643,8 +645,11 @@ class VacasaNextStaySensor(VacasaReservationStateMixin, VacasaBaseSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Update reservation data when the coordinator refreshes."""
+        prev_current = self._current_reservation
+        prev_next = self._next_reservation
         self._refresh_from_coordinator()
-        self.async_write_ha_state()
+        if self._current_reservation is not prev_current or self._next_reservation is not prev_next:
+            self.async_write_ha_state()
 
     @staticmethod
     def _as_local(value: datetime | None) -> datetime | None:
