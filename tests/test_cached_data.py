@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from custom_components.vacasa.cached_data import CachedData, RetryWithBackoff
+from custom_components.vacasa.cached_data import CachedData, RetryWithBackoff, run_blocking_io
 
 
 @pytest.mark.asyncio
@@ -209,3 +209,19 @@ async def test_retry_with_backoff_raises_after_exhaustion(monkeypatch: pytest.Mo
 
     with pytest.raises(ValueError):
         await retry.retry(always_fail)
+
+
+@pytest.mark.asyncio
+async def test_run_blocking_io_with_hass_uses_executor() -> None:
+    """run_blocking_io delegates to hass.async_add_executor_job when hass is available."""
+    hass = SimpleNamespace(async_add_executor_job=AsyncMock(return_value=42))
+    result = await run_blocking_io(hass, lambda: 99)
+    assert result == 42
+    hass.async_add_executor_job.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_blocking_io_without_hass_calls_directly() -> None:
+    """run_blocking_io calls the function directly when hass is None."""
+    result = await run_blocking_io(None, lambda x: x * 2, 7)
+    assert result == 14
