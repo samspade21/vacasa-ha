@@ -2,15 +2,16 @@
 
 # Vacasa Home Assistant Integration - Release Deployment
 #
-# Creates a versioned release branch, bumps VERSION + manifest.json,
-# validates CHANGELOG.md has an entry, then opens a PR to main.
-# GitHub Actions auto-tag and auto-release on merge.
+# Bumps VERSION + manifest.json, opens a short-lived PR to main,
+# and merges it. GitHub Actions detects the VERSION change, creates
+# the git tag, builds the release archive, and publishes to GitHub
+# Releases. The temporary PR branch is deleted after merge.
 #
 # Usage:   ./new-prod-release.sh <version>
-# Example: ./new-prod-release.sh 1.8.0
+# Example: ./new-prod-release.sh 1.9.0
 #
 # Prerequisites:
-#   - Must be on main branch (clean working directory)
+#   - Must be on main branch (clean, up to date)
 #   - CHANGELOG.md must have a ## [<version>] entry
 #   - GitHub CLI (gh) must be authenticated
 
@@ -19,7 +20,6 @@ set -e
 # ── Colors ────────────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
 RED='\033[0;31m'
-YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
@@ -34,13 +34,13 @@ log_step()    { echo -e "\n${BOLD}${CYAN}🚀 $1${NC}"; }
 if [ -z "$1" ]; then
     log_error "Version argument required."
     echo "  Usage:   $0 <version>"
-    echo "  Example: $0 1.8.0"
+    echo "  Example: $0 1.9.0"
     exit 1
 fi
 
 VERSION="$1"
 TAG="v$VERSION"
-RELEASE_BRANCH="release/$TAG"
+BUMP_BRANCH="bump/version-$VERSION"
 
 # ── Prerequisites ──────────────────────────────────────────────────────────────
 check_prerequisites() {
@@ -63,18 +63,22 @@ check_prerequisites() {
         exit 1
     fi
 
-    # Allow only release-related files to be modified
+    # Allow only release-related files to be pre-modified
     local unexpected
     unexpected=$(git status --porcelain | grep -v '^ M CHANGELOG.md' | grep -v '^ M new-prod-release.sh' | grep -v '^??' || true)
     if [ -n "$unexpected" ]; then
-        log_error "Unexpected uncommitted changes. Commit or stash non-release changes first."
+        log_error "Unexpected uncommitted changes. Commit or stash them first."
         echo "$unexpected"
         exit 1
     fi
 
-    # Pull latest main
     git pull origin main --quiet
-    log_success "Prerequisites validated (on main, up to date)"
+    log_success "On main, clean, up to date"
+
+    if git tag -l | grep -q "^$TAG$"; then
+        log_error "Tag $TAG already exists — already released?"
+        exit 1
+    fi
 }
 
 # ── Validate CHANGELOG ─────────────────────────────────────────────────────────
@@ -84,12 +88,6 @@ validate_changelog() {
     if ! grep -q "## \[$VERSION\]" CHANGELOG.md; then
         log_error "CHANGELOG.md has no entry for [$VERSION]."
         log_info  "Add an entry starting with: ## [$VERSION] - $(date +%Y-%m-%d)"
-        exit 1
-    fi
-
-    # Warn if tag already exists
-    if git tag -l | grep -q "^$TAG$"; then
-        log_error "Tag $TAG already exists. Has this version already been released?"
         exit 1
     fi
 
@@ -116,21 +114,20 @@ PYEOF
     log_success "manifest.json → $VERSION"
 }
 
-# ── Create release branch, commit, push, open PR ──────────────────────────────
-create_release_pr() {
-    log_step "Creating Release PR"
+# ── PR, wait for checks, merge, delete branch ─────────────────────────────────
+create_and_merge_pr() {
+    log_step "Creating Version Bump PR"
 
-    git checkout -b "$RELEASE_BRANCH"
+    git checkout -b "$BUMP_BRANCH"
     git add VERSION custom_components/vacasa/manifest.json CHANGELOG.md new-prod-release.sh
-    git commit -m "chore: bump version to $VERSION"
-
-    git push -u origin "$RELEASE_BRANCH"
-    log_success "Pushed $RELEASE_BRANCH"
+    git commit -m "chore: release $TAG"
+    git push -u origin "$BUMP_BRANCH"
+    log_success "Pushed $BUMP_BRANCH"
 
     # Extract changelog section for PR body
     local notes
     notes=$(python3 - <<PYEOF
-import re, sys
+import re
 with open("CHANGELOG.md") as f:
     content = f.read()
 m = re.search(r'## \[$VERSION\][^\n]*\n(.*?)(?=\n## \[|\Z)', content, re.DOTALL)
@@ -138,52 +135,61 @@ print(m.group(1).strip() if m else "See CHANGELOG.md")
 PYEOF
 )
 
-    gh pr create \
+    local pr_url
+    pr_url=$(gh pr create \
         --base main \
-        --head "$RELEASE_BRANCH" \
-        --title "Release $TAG" \
+        --head "$BUMP_BRANCH" \
+        --title "chore: release $TAG" \
         --body "$(cat <<EOF
 ## Release $TAG
 
-### Changes
 $notes
 
-### Automated steps on merge
-- GitHub Actions creates tag \`$TAG\`
-- Release workflow builds archive and publishes GitHub Release
-- HACS notified for distribution
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+---
+*On merge: GitHub Actions creates tag \`$TAG\`, builds archive, and publishes the GitHub Release.*
 EOF
-)"
+)" | tail -1)
 
-    local pr_url
-    pr_url=$(gh pr list --base main --head "$RELEASE_BRANCH" --json url -q '.[0].url')
-    log_success "PR created: $pr_url"
+    log_success "PR: $pr_url"
+    log_info "Waiting for CI checks..."
+
+    # Wait for all checks to pass (up to 10 min)
+    local pr_number
+    pr_number=$(gh pr list --base main --head "$BUMP_BRANCH" --json number -q '.[0].number')
+    gh pr checks "$pr_number" --watch --fail-fast
+
+    log_step "Merging PR and Deleting Branch"
+    gh pr merge "$pr_number" --squash --delete-branch
+    log_success "Merged and branch deleted"
+
+    # Update local main
+    git checkout main
+    git pull origin main --quiet
+    log_success "Local main updated"
 }
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 main() {
     echo -e "${BOLD}${CYAN}"
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║           Vacasa Integration — Create Release PR             ║"
+    echo "║             Vacasa Integration — Release $TAG               ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 
     check_prerequisites
     validate_changelog
     bump_versions
-    create_release_pr
+    create_and_merge_pr
 
     echo -e "\n${BOLD}${GREEN}"
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║              🎉 Release PR Ready! 🎉                        ║"
+    echo "║              🎉 Release Triggered! 🎉                       ║"
     echo "║                                                              ║"
-    echo "║  Review the PR, confirm all checks pass, then merge.        ║"
     echo "║  GitHub Actions will tag, build, and publish automatically. ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
     echo "  Monitor: https://github.com/samspade21/vacasa-ha/actions"
+    echo "  Release: https://github.com/samspade21/vacasa-ha/releases/tag/$TAG"
     echo ""
 }
 
