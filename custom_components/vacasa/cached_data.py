@@ -320,4 +320,4 @@ class RetryWithBackoff:
                         e,
                     )
 
-        raise last_exception
+        raise last_exception or RuntimeError("Retry loop completed without raising an exception")
