@@ -334,10 +334,16 @@ class VacasaHotTubSensor(VacasaBaseSensor):
     _sensor_type = SENSOR_HOT_TUB
     _attr_icon = "mdi:hot-tub"
 
+    def __init__(self, **kwargs: Any) -> None:
+        """Pre-compute hot tub value from immutable unit_attributes."""
+        super().__init__(**kwargs)
+        amenities = self._unit_attributes.get("amenities", {})
+        self._hot_tub_value = self._bool_to_yes_no(amenities.get("hotTub") if amenities else None)
+
     @property
     def native_value(self) -> str | None:
         """Return the hot tub value."""
-        return self._bool_to_yes_no(self._unit_attributes.get("amenities", {}).get("hotTub"))
+        return self._hot_tub_value
 
 
 class VacasaPetFriendlySensor(VacasaBaseSensor):
@@ -346,10 +352,18 @@ class VacasaPetFriendlySensor(VacasaBaseSensor):
     _sensor_type = SENSOR_PET_FRIENDLY
     _attr_icon = "mdi:paw"
 
+    def __init__(self, **kwargs: Any) -> None:
+        """Pre-compute pet friendly value from immutable unit_attributes."""
+        super().__init__(**kwargs)
+        amenities = self._unit_attributes.get("amenities", {})
+        self._pet_friendly_value = self._bool_to_yes_no(
+            amenities.get("petsFriendly") if amenities else None
+        )
+
     @property
     def native_value(self) -> str | None:
         """Return the pet friendly value."""
-        return self._bool_to_yes_no(self._unit_attributes.get("amenities", {}).get("petsFriendly"))
+        return self._pet_friendly_value
 
 
 class VacasaParkingSensor(VacasaBaseSensor):
@@ -542,12 +556,8 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
             return None
 
         def _sort_key(statement: dict[str, Any]) -> str:
-            if not isinstance(statement, dict):
-                return ""
             attributes = statement.get("attributes", {})
-            if isinstance(attributes, dict):
-                return attributes.get("updatedAt") or attributes.get("periodEndDate") or ""
-            return ""
+            return attributes.get("updatedAt") or attributes.get("periodEndDate") or ""
 
         return max(self._statements, key=_sort_key)
 

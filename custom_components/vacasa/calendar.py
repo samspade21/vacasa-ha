@@ -337,7 +337,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
 
         now_utc = dt_util.utcnow()
 
-        if self._current_event and getattr(self._current_event, "end", None):
+        if self._current_event and self._current_event.end:
             end_utc = dt_util.as_utc(self._current_event.end)
             if end_utc and end_utc > now_utc:
                 self._unsubscribe_end_timer = async_track_point_in_time(

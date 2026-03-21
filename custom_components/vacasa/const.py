@@ -96,7 +96,7 @@ SIGNAL_RESERVATION_STATE = "vacasa_reservation_state"
 # Calendar event window constants
 CALENDAR_LOOKBACK_DAYS = 60  # days to look back for active reservations
 CALENDAR_LOOKAHEAD_DAYS = 365  # days to look ahead for future reservations
-CALENDAR_EVENT_CACHE_MAX_SIZE = 20  # max cached date-range queries per calendar entity
+CALENDAR_EVENT_CACHE_MAX_SIZE = 50  # max cached date-range queries per calendar entity
 
 # Default reservation times when none are provided by the API
 DEFAULT_CHECKIN_TIME = "16:00:00"  # 4:00 PM

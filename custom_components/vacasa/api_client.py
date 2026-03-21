@@ -942,6 +942,14 @@ class VacasaApiClient:
             _LOGGER.error("Error getting %s: %s", log_name, e)
             raise ApiError(f"Error getting {log_name}: {e}")
 
+    async def _retry(self, fetch_func: Callable, label: str) -> Any:
+        """Run fetch_func through the retry handler, wrapping failures as ApiError."""
+        try:
+            return await self._retry_handler.retry(fetch_func)
+        except Exception as e:
+            _LOGGER.error("Error getting %s: %s", label, e)
+            raise ApiError(f"Error getting {label}: {e}") from e
+
     async def get_units(self) -> list[dict[str, Any]]:
         """Get all units for the owner.
 
@@ -964,11 +972,7 @@ class VacasaApiClient:
                 _LOGGER.debug("Unit IDs: %s", [unit.get("id") for unit in units])
             return units
 
-        try:
-            return await self._retry_handler.retry(_fetch)
-        except Exception as e:
-            _LOGGER.error("Error getting units: %s", e)
-            raise ApiError(f"Error getting units: {e}")
+        return await self._retry(_fetch, "units")
 
     async def get_reservations(
         self,
@@ -1035,11 +1039,7 @@ class VacasaApiClient:
 
             return reservations
 
-        try:
-            return await self._retry_handler.retry(_fetch)
-        except Exception as e:
-            _LOGGER.error("Error getting reservations: %s", e)
-            raise ApiError(f"Error getting reservations: {e}")
+        return await self._retry(_fetch, "reservations")
 
     async def get_unit_details(self, unit_id: str) -> dict[str, Any]:
         """Get details for a specific unit with caching support.
@@ -1080,11 +1080,7 @@ class VacasaApiClient:
             data = await self._request("GET", path)
             return self._extract_list_response(data, "statements")
 
-        try:
-            return await self._retry_handler.retry(_fetch)
-        except Exception as e:
-            _LOGGER.error("Error getting statements: %s", e)
-            raise ApiError(f"Error getting statements: {e}")
+        return await self._retry(_fetch, "statements")
 
     async def get_maintenance(
         self, unit_id: str, status: str | None = "open"
@@ -1101,11 +1097,7 @@ class VacasaApiClient:
             )
             return self._extract_list_response(data, f"maintenance for unit {unit_id}")
 
-        try:
-            return await self._retry_handler.retry(_fetch)
-        except Exception as e:
-            _LOGGER.error("Error getting maintenance: %s", e)
-            raise ApiError(f"Error getting maintenance: {e}")
+        return await self._retry(_fetch, "maintenance")
 
     async def clear_property_cache(self) -> None:
         """Clear all cached property data."""
