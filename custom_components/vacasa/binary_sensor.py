@@ -16,9 +16,13 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from . import VacasaConfigEntry, VacasaDataUpdateCoordinator, VacasaReservationStateMixin
+from . import (
+    VacasaConfigEntry,
+    VacasaDataUpdateCoordinator,
+    VacasaReservationStateMixin,
+    _make_unit_device_info,
+)
 from .const import (
-    DOMAIN,
     SENSOR_OCCUPANCY,
     SIGNAL_RESERVATION_STATE,
     STAY_TYPE_TO_NAME,
@@ -67,9 +71,7 @@ async def async_setup_entry(
         async_add_entities(entities, True)
     except Exception as err:  # pragma: no cover - defensive logging
         _LOGGER.error("Error setting up Vacasa binary sensors: %s", err)
-        import traceback
-
-        _LOGGER.debug("Full traceback: %s", traceback.format_exc())
+        _LOGGER.debug("Full traceback:", exc_info=True)
 
 
 class VacasaOccupancySensor(
@@ -84,10 +86,10 @@ class VacasaOccupancySensor(
     def __init__(
         self,
         coordinator: VacasaDataUpdateCoordinator,
-        unit_id,
-        name,
-        code,
-        unit_attributes,
+        unit_id: str,
+        name: str,
+        code: str,
+        unit_attributes: dict[str, Any],
     ) -> None:
         """Initialize the Vacasa occupancy sensor."""
         super().__init__(coordinator)
@@ -96,21 +98,12 @@ class VacasaOccupancySensor(
         self._name = name
         self._code = code
         self._unit_attributes = unit_attributes
-        self._current_reservation: ReservationWindow | None = None
-        self._next_reservation: ReservationWindow | None = None
 
         self._attr_unique_id = f"vacasa_occupancy_{unit_id}"
         self._attr_name = f"Vacasa {name} Occupancy"
         self._attr_translation_key = SENSOR_OCCUPANCY
         self._attr_available = False
-
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, unit_id)},
-            "name": f"Vacasa {name}",
-            "manufacturer": "Vacasa",
-            "model": "Vacation Rental",
-            "sw_version": "1.0",
-        }
+        self._attr_device_info = _make_unit_device_info(unit_id, name)
 
     @property
     def is_on(self) -> bool:

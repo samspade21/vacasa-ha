@@ -158,9 +158,6 @@ def test_boundary_timer_dispatches_signal():
         next_end_delta=timedelta(days=3),
     )
 
-    # Mock the event loop's call_soon_threadsafe
-    mock_call_soon = Mock()
-    calendar.hass.loop.call_soon_threadsafe = mock_call_soon
     calendar.hass.async_create_task = Mock()
 
     with patch("custom_components.vacasa.calendar.async_dispatcher_send") as mock_send:
@@ -169,20 +166,13 @@ def test_boundary_timer_dispatches_signal():
             boundary="checkin",
         )
 
-    # Verify call_soon_threadsafe was called twice (once for dispatcher, once for refresh)
-    assert mock_call_soon.call_count == 2
+    # Verify dispatcher was called directly (no call_soon_threadsafe)
+    mock_send.assert_called_once_with(
+        calendar.hass, SIGNAL_RESERVATION_BOUNDARY, "unit123", "checkin"
+    )
 
-    # Verify the first call was for async_dispatcher_send
-    first_call_args = mock_call_soon.call_args_list[0][0]
-    assert first_call_args[0] == mock_send
-    assert first_call_args[1] == calendar.hass
-    assert first_call_args[2] == SIGNAL_RESERVATION_BOUNDARY
-    assert first_call_args[3] == "unit123"
-    assert first_call_args[4] == "checkin"
-
-    # Verify the second call was for refresh (wrapped in a lambda)
-    second_call_args = mock_call_soon.call_args_list[1][0]
-    assert callable(second_call_args[0])  # Should be a lambda or callable
+    # Verify a refresh task was scheduled
+    assert calendar.hass.async_create_task.call_count == 1
 
 
 def test_midnight_times_use_default_checkin_and_checkout():

@@ -45,6 +45,7 @@ tts/
 
 # Vacasa token cache and sensitive files
 .vacasa_token.json
+.vacasa_property_cache.json
 .env
 .env.*
 !.env.example

@@ -224,22 +224,17 @@ logger:
 git clone https://github.com/samspade21/vacasa-ha.git
 cd vacasa-ha
 
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-pip install -r requirements-test.txt
+# Install dependencies (creates .venv automatically)
+uv sync --group dev --group test
 
 # Install pre-commit hooks
-pre-commit install
+uv run pre-commit install
 ```
 
 ### Running Tests
 
 ```bash
-pytest
+uv run pytest
 ```
 
 ### Code Standards

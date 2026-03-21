@@ -1,7 +1,7 @@
 """Calendar platform for Vacasa integration."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from functools import partial
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
@@ -14,14 +14,13 @@ from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from . import VacasaConfigEntry, VacasaDataUpdateCoordinator
+from . import VacasaConfigEntry, VacasaDataUpdateCoordinator, _make_unit_device_info
 from .api_client import VacasaApiClient
 from .const import (
     CALENDAR_LOOKAHEAD_DAYS,
     CALENDAR_LOOKBACK_DAYS,
     DEFAULT_CHECKIN_TIME,
     DEFAULT_CHECKOUT_TIME,
-    DOMAIN,
     SIGNAL_RESERVATION_BOUNDARY,
     SIGNAL_RESERVATION_STATE,
     STAY_TYPE_BLOCK,
@@ -96,11 +95,28 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         self._unit_attributes = unit_attributes
         self._checkin_time = unit_attributes.get("checkInTime")
         self._checkout_time = unit_attributes.get("checkOutTime")
-        self._timezone = unit_attributes.get("timezone")
+        self._property_checkin_time = self._normalize_time_value(self._checkin_time)
+        self._property_checkout_time = self._normalize_time_value(self._checkout_time)
+
+        tz_str = unit_attributes.get("timezone")
+        if tz_str:
+            try:
+                ZoneInfo(tz_str)
+                self._timezone: str | None = tz_str
+            except Exception:
+                _LOGGER.warning(
+                    "Invalid timezone %r for unit %s; falling back to local time",
+                    tz_str,
+                    unit_id,
+                )
+                self._timezone = None
+        else:
+            self._timezone = None
         self._event_cache: dict[str, list[CalendarEvent]] = {}
         self._reservation_windows: dict[str, ReservationWindow] = {}
         self._current_event: CalendarEvent | None = None
         self._next_event: CalendarEvent | None = None
+        self._events_loaded: bool = False
         self._unsubscribe_start_timer: Callable[[], None] | None = None
         self._unsubscribe_end_timer: Callable[[], None] | None = None
 
@@ -108,14 +124,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         self._attr_unique_id = f"vacasa_calendar_{unit_id}"
         self._attr_name = f"Vacasa {name}"
 
-        # Set device info
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, unit_id)},
-            "name": f"Vacasa {name}",
-            "manufacturer": "Vacasa",
-            "model": "Vacation Rental",
-            "sw_version": "1.0",
-        }
+        self._attr_device_info = _make_unit_device_info(unit_id, name)
 
     @property
     def event(self) -> CalendarEvent | None:
@@ -184,26 +193,24 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
     async def _update_current_event(self) -> None:
         """Update cached current and next events."""
         self._current_event, self._next_event = await self._determine_current_and_next_events()
+        self._events_loaded = True
         self._schedule_boundary_timers()
         self._broadcast_reservation_state()
 
+    async def _ensure_events_loaded(self) -> None:
+        """Lazily populate current and next events if not already loaded."""
+        if not self._events_loaded:
+            await self._update_current_event()
+
     async def async_get_current_event(self) -> CalendarEvent | None:
         """Get the current event if active right now, otherwise None."""
-        if self._current_event is None and self._next_event is None:
-            self._current_event, self._next_event = await self._determine_current_and_next_events()
-            self._schedule_boundary_timers()
-            self._broadcast_reservation_state()
+        await self._ensure_events_loaded()
         return self._current_event
 
     async def async_get_next_event(self) -> CalendarEvent | None:
         """Get the next upcoming event (for display purposes)."""
-        if self._current_event is None and self._next_event is None:
-            self._current_event, self._next_event = await self._determine_current_and_next_events()
-            self._schedule_boundary_timers()
-            self._broadcast_reservation_state()
-        if self._current_event:
-            return self._current_event
-        return self._next_event
+        await self._ensure_events_loaded()
+        return self._current_event or self._next_event
 
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
@@ -228,6 +235,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             # Clear event cache to ensure fresh data
             self._event_cache.clear()
             self._reservation_windows.clear()
+            self._events_loaded = False
 
             # Update current and next events based on fresh data
             await self._update_current_event()
@@ -267,47 +275,24 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         next_event: CalendarEvent | None = None
 
         def _as_utc(value: datetime | None) -> datetime | None:
-            if value is None:
-                return None
-            return dt_util.as_utc(value)
+            return dt_util.as_utc(value) if value is not None else None
 
-        for event in sorted(events, key=lambda evt: _as_utc(evt.start) or now_utc):
-            start_utc = _as_utc(event.start)
-            end_utc = _as_utc(event.end)
+        event_tuples = [(event, _as_utc(event.start), _as_utc(event.end)) for event in events]
 
+        for event, start_utc, end_utc in sorted(event_tuples, key=lambda t: t[1] or now_utc):
             if start_utc is None or end_utc is None:
                 continue
 
             in_progress = start_utc <= now_utc < end_utc
             upcoming = start_utc > now_utc
 
-            # Enhanced debug logging to diagnose timing issues
             _LOGGER.debug(
-                "Event %s: start=%s, end=%s, now=%s, in_progress=%s, upcoming=%s",
+                "Event %s: start=%s, end=%s, in_progress=%s, upcoming=%s",
                 event.summary,
                 start_utc.isoformat(),
                 end_utc.isoformat(),
-                now_utc.isoformat(),
                 in_progress,
                 upcoming,
-            )
-            _LOGGER.debug(
-                "  Comparison details: start_utc_ts=%s, end_utc_ts=%s, now_utc_ts=%s",
-                start_utc.timestamp(),
-                end_utc.timestamp(),
-                now_utc.timestamp(),
-            )
-            _LOGGER.debug(
-                "  Original event times: start=%s (tzinfo=%s), end=%s (tzinfo=%s)",
-                event.start.isoformat() if event.start else "None",
-                event.start.tzinfo if event.start else "None",
-                event.end.isoformat() if event.end else "None",
-                event.end.tzinfo if event.end else "None",
-            )
-            _LOGGER.debug(
-                "  Boolean checks: (start_utc <= now_utc)=%s, (now_utc < end_utc)=%s",
-                start_utc <= now_utc,
-                now_utc < end_utc,
             )
 
             if in_progress:
@@ -399,11 +384,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                 )
 
     def _handle_boundary_timer(self, scheduled_time: datetime, *, boundary: str) -> None:
-        """Handle a scheduled reservation boundary timer.
-
-        This callback is executed on a worker thread by Home Assistant's timer system,
-        so we must use call_soon_threadsafe to schedule work on the event loop.
-        """
+        """Handle a scheduled reservation boundary timer."""
         if not self.hass:
             return
 
@@ -415,19 +396,8 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             dt_util.utcnow().isoformat(),
         )
 
-        # Schedule dispatcher send on event loop thread
-        self.hass.loop.call_soon_threadsafe(
-            async_dispatcher_send,
-            self.hass,
-            SIGNAL_RESERVATION_BOUNDARY,
-            self._unit_id,
-            boundary,
-        )
-
-        # Schedule boundary refresh on event loop thread
-        self.hass.loop.call_soon_threadsafe(
-            lambda: self.hass.async_create_task(self._boundary_refresh(boundary))
-        )
+        async_dispatcher_send(self.hass, SIGNAL_RESERVATION_BOUNDARY, self._unit_id, boundary)
+        self.hass.async_create_task(self._boundary_refresh(boundary))
 
     async def _boundary_refresh(self, boundary: str) -> None:
         """Refresh coordinator and calendar state at reservation boundaries."""
@@ -492,12 +462,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         if parsed_dt is None:
             return normalized
 
-        if (
-            parsed_dt.hour == 0
-            and parsed_dt.minute == 0
-            and parsed_dt.second == 0
-            and parsed_dt.microsecond == 0
-        ):
+        if parsed_dt.time() == time(0, 0, 0):
             return None
 
         return normalized
@@ -516,10 +481,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         if is_all_day:
             return dt
         if self._timezone:
-            try:
-                return dt.replace(tzinfo=None).replace(tzinfo=ZoneInfo(self._timezone))
-            except Exception as e:
-                _LOGGER.warning("Error applying timezone %s: %s", self._timezone, e)
+            return dt.replace(tzinfo=None).replace(tzinfo=ZoneInfo(self._timezone))
         return dt_util.as_local(dt)
 
     def _reservation_to_event(
@@ -539,8 +501,8 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             # Get check-in and check-out times from the reservation or property
             checkin_time = self._normalize_time_value(attributes.get("checkinTime"))
             checkout_time = self._normalize_time_value(attributes.get("checkoutTime"))
-            property_checkin_time = self._normalize_time_value(self._checkin_time)
-            property_checkout_time = self._normalize_time_value(self._checkout_time)
+            property_checkin_time = self._property_checkin_time
+            property_checkout_time = self._property_checkout_time
 
             # Build datetime strings using first available time source
             checkin_time_resolved = self._resolve_time(
@@ -594,43 +556,31 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                 hold_who_booked = owner_hold.get("holdWhoBooked", "")
                 hold_note = owner_hold.get("holdExternalNote", "")
 
-            # Create summary based on stay type
+            # Create summary using the same name resolution as ReservationWindow
             summary_prefix = STAY_TYPE_TO_NAME[stay_type]
-
-            if stay_type == STAY_TYPE_GUEST and first_name and last_name:
-                summary = f"{summary_prefix}: {first_name} {last_name}"
-            elif stay_type == STAY_TYPE_OWNER and hold_who_booked:
-                summary = f"{summary_prefix}: {hold_who_booked}"
-            elif hold_type:
-                summary = f"{summary_prefix}: {hold_type}"
-            else:
-                summary = summary_prefix
+            guest_name = self._resolve_guest_name(
+                stay_type,
+                first_name=first_name,
+                last_name=last_name,
+                hold_who_booked=hold_who_booked,
+                hold_type=hold_type,
+            )
+            summary = f"{summary_prefix}: {guest_name}" if guest_name else summary_prefix
 
             # Create description
             description_parts = []
 
-            # Add check-in and check-out information
-            checkin_display = self._resolve_time(
-                checkin_time, property_checkin_time, DEFAULT_CHECKIN_TIME
-            )
-            checkout_display = self._resolve_time(
-                checkout_time, property_checkout_time, DEFAULT_CHECKOUT_TIME
-            )
-            description_parts.append(f"Check-in: {start_date} {checkin_display[:5]}")
-            description_parts.append(f"Check-out: {end_date} {checkout_display[:5]}")
+            # Add check-in and check-out information (reuse already-resolved values)
+            description_parts.append(f"Check-in: {start_date} {checkin_time_resolved[:5]}")
+            description_parts.append(f"Check-out: {end_date} {checkout_time_resolved[:5]}")
 
             description_parts.append("")
 
-            if stay_type == STAY_TYPE_GUEST:
-                description_parts.append("Type: Guest booking")
-            elif stay_type == STAY_TYPE_OWNER:
-                description_parts.append("Type: Owner stay")
-            elif stay_type == STAY_TYPE_MAINTENANCE:
-                description_parts.append("Type: Maintenance")
-            elif stay_type == STAY_TYPE_BLOCK:
-                description_parts.append("Type: Block")
-                if hold_type:
-                    description_parts.append(f"Block type: {hold_type}")
+            type_name = STAY_TYPE_TO_NAME.get(stay_type)
+            if type_name:
+                description_parts.append(f"Type: {type_name}")
+            if stay_type == STAY_TYPE_BLOCK and hold_type:
+                description_parts.append(f"Block type: {hold_type}")
 
             if hold_who_booked and stay_type != STAY_TYPE_OWNER:
                 description_parts.append(f"Booked by: {hold_who_booked}")

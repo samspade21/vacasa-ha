@@ -13,7 +13,7 @@ from urllib.parse import urlencode
 
 import aiohttp
 
-from .cached_data import CachedData, RetryWithBackoff
+from .cached_data import CachedData, RetryWithBackoff, run_blocking_io
 from .const import (
     API_BASE_TEMPLATE,
     AUTH_URL,
@@ -46,6 +46,7 @@ from .const import (
 T = TypeVar("T")
 
 _LOGGER = logging.getLogger(__name__)
+_DEFAULT_CLIENT_TIMEOUT = aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT)
 
 
 class VacasaApiError(Exception):
@@ -147,6 +148,8 @@ class VacasaApiClient:
 
         # Semaphore to cap concurrent API requests and avoid rate-limit errors
         self._request_semaphore = asyncio.Semaphore(DEFAULT_MAX_CONCURRENT_REQUESTS)
+        # Lock to prevent concurrent owner_id fetches from making duplicate API calls
+        self._owner_id_lock = asyncio.Lock()
 
         # Set up retry handler
         self._retry_handler = RetryWithBackoff(
@@ -202,7 +205,7 @@ class VacasaApiClient:
         session = await self.ensure_session()
 
         try:
-            async with session.get(AUTH_URL, timeout=DEFAULT_TIMEOUT) as response:
+            async with session.get(AUTH_URL, timeout=_DEFAULT_CLIENT_TIMEOUT) as response:
                 if response.status != 200:
                     _LOGGER.warning("Failed to fetch login page for client ID: %s", response.status)
                     return None
@@ -290,9 +293,7 @@ class VacasaApiClient:
 
     async def _run_blocking_io(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Execute a blocking IO function safely in the event loop."""
-        if self._hass:
-            return await self._hass.async_add_executor_job(func, *args, **kwargs)
-        return func(*args, **kwargs)
+        return await run_blocking_io(self._hass, func, *args, **kwargs)
 
     def _set_api_version(self, version: str) -> None:
         """Persist the API version that successfully responded."""
@@ -348,7 +349,7 @@ class VacasaApiClient:
                         params=params,
                         json=json_data,
                         headers=self._get_headers(),
-                        timeout=DEFAULT_TIMEOUT,
+                        timeout=_DEFAULT_CLIENT_TIMEOUT,
                     ) as response:
                         if response.status in acceptable_status:
                             self._set_api_version(version)
@@ -564,33 +565,13 @@ class VacasaApiClient:
 
         return headers
 
-    def _format_params(self, params: dict) -> str:
-        """Format parameters for URL.
-
-        Args:
-            params: Dictionary of parameters
-
-        Returns:
-            Formatted parameters string
-        """
-        return urlencode(params)
-
-    def _base64_url_decode(self, input: str) -> str:
-        """Decode base64url-encoded string.
-
-        Args:
-            input: The base64url-encoded string
-
-        Returns:
-            The decoded string
-        """
-        # Use the standard library's base64 module with proper URL-safe decoding
+    def _base64_url_decode(self, encoded: str) -> str:
+        """Decode base64url-encoded string."""
         # Add padding if needed
-        padding = len(input) % 4
+        padding = len(encoded) % 4
         if padding:
-            input += "=" * (4 - padding)
-
-        return base64.urlsafe_b64decode(input).decode("utf-8")
+            encoded += "=" * (4 - padding)
+        return base64.urlsafe_b64decode(encoded).decode("utf-8")
 
     def _sanitize_url_for_log(self, url: str) -> str:
         """Remove sensitive tokens from URLs before logging."""
@@ -646,180 +627,147 @@ class VacasaApiClient:
         )
         return STAY_TYPE_OTHER
 
-    async def authenticate(self) -> str:
-        """Authenticate with Vacasa and get a token.
-
-        This method implements the authentication flow without using Selenium,
-        by making direct HTTP requests to simulate the browser-based auth flow.
+    async def _authenticate_once(self) -> str:
+        """Perform a single authentication attempt.
 
         Returns:
             The authentication token
 
         Raises:
-            AuthenticationError: If authentication fails
+            AuthenticationError: If the attempt fails for any reason
         """
         session = await self.ensure_session()
 
-        # Implement retry logic
-        retry_count = 0
-        last_error = None
+        # Step 1: Get the login page to obtain CSRF token
+        _LOGGER.debug("Fetching login page")
 
-        while retry_count < MAX_RETRIES:
-            try:
-                if retry_count > 0:
-                    # Wait before retrying
-                    wait_time = RETRY_DELAY * (2 ** (retry_count - 1))  # Exponential backoff
-                    _LOGGER.debug(
-                        "Retrying authentication (attempt %s/%s) after %ss",
-                        retry_count + 1,
-                        MAX_RETRIES,
-                        wait_time,
-                    )
-                    await asyncio.sleep(wait_time)
+        client_id = await self._ensure_client_id()
 
-                # Step 1: Get the login page to obtain CSRF token
-                _LOGGER.debug("Fetching login page (attempt %s/%s)", retry_count + 1, MAX_RETRIES)
+        auth_params = {
+            "next": "/authorize",
+            "directory_hint": "email",
+            "owner_migration_needed": "true",
+            "client_id": client_id,
+            "response_type": "token",
+            "redirect_uri": "https://owners.vacasa.com",
+            "scope": "owners:read employees:read",
+            "audience": "owner.vacasa.io",
+            "state": f"{int(time.time())}",
+            "nonce": f"{int(time.time())}-nonce",
+            "mode": "owner",
+        }
 
-                client_id = await self._ensure_client_id()
+        _LOGGER.debug("Auth URL with params: %s?%s", AUTH_URL, urlencode(auth_params))
 
-                # Try with response_type=token to avoid unsupported_response_type error
-                auth_params = {
-                    "next": "/authorize",
-                    "directory_hint": "email",
-                    "owner_migration_needed": "true",
-                    "client_id": client_id,
-                    "response_type": "token",  # Use token instead of token,id_token
-                    "redirect_uri": "https://owners.vacasa.com",
-                    "scope": "owners:read employees:read",
-                    "audience": "owner.vacasa.io",
-                    "state": f"{int(time.time())}",  # Use timestamp as state
-                    "nonce": f"{int(time.time())}-nonce",  # Use timestamp as nonce
-                    "mode": "owner",
-                }
-
-                _LOGGER.debug(
-                    "Auth URL with params: %s?%s",
-                    AUTH_URL,
-                    self._format_params(auth_params),
+        async with session.get(
+            AUTH_URL, params=auth_params, timeout=_DEFAULT_CLIENT_TIMEOUT
+        ) as response:
+            if response.status != 200:
+                response_text = await response.text()
+                _LOGGER.error(
+                    "Failed to load login page: %s - Response: %s...",
+                    response.status,
+                    response_text[:200],
                 )
+                raise AuthenticationError(f"Failed to load login page: {response.status}")
 
-                async with session.get(
-                    AUTH_URL, params=auth_params, timeout=DEFAULT_TIMEOUT
-                ) as response:
-                    if response.status != 200:
-                        response_text = await response.text()
-                        _LOGGER.error(
-                            "Failed to load login page: %s - Response: %s...",
-                            response.status,
-                            response_text[:200],
-                        )
-                        raise AuthenticationError(f"Failed to load login page: {response.status}")
+            login_page = await response.text()
 
-                    login_page = await response.text()
-
-                    # Extract CSRF token from the login page
-                    csrf_match = re.search(
-                        r'name="csrfmiddlewaretoken" value="([^"]+)"', login_page
-                    )
-                    if not csrf_match:
-                        _LOGGER.error(
-                            "Could not find CSRF token on login page. Page snippet: %s...",
-                            login_page[:200],
-                        )
-                        raise AuthenticationError("Could not find CSRF token on login page")
-
-                    csrf_token = csrf_match.group(1)
-                    _LOGGER.debug("Found CSRF token: %s...", csrf_token[:10])
-
-                # Step 2: Submit login credentials
-                _LOGGER.debug("Submitting login credentials")
-                login_data = {
-                    "csrfmiddlewaretoken": csrf_token,
-                    "username": self._username,
-                    "password": self._password,
-                    "next": (
-                        f"/authorize?directory_hint=email&owner_migration_needed=true"
-                        f"&client_id={client_id}&response_type=token"
-                        f"&redirect_uri=https://owners.vacasa.com"
-                        f"&scope=owners:read%20employees:read&audience=owner.vacasa.io"
-                        f"&state={auth_params['state']}&nonce={auth_params['nonce']}&mode=owner"
-                    ),
-                }
-
-                headers = {
-                    "Referer": f"{AUTH_URL}?{self._format_params(auth_params)}",
-                    "Content-Type": "application/x-www-form-urlencoded",
-                }
-
-                async with session.post(
-                    AUTH_URL,
-                    data=login_data,
-                    headers=headers,
-                    allow_redirects=False,
-                    timeout=DEFAULT_TIMEOUT,
-                ) as response:
-                    # Check for redirect (successful login)
-                    if response.status not in (302, 303):
-                        _LOGGER.error(
-                            "Login failed with status %s. Expected redirect (302/303).",
-                            response.status,
-                        )
-                        raise AuthenticationError(f"Login failed with status {response.status}")
-
-                    # Get redirect location
-                    redirect_url = response.headers.get("Location")
-                    if not redirect_url:
-                        _LOGGER.error("No redirect URL after login")
-                        raise AuthenticationError("No redirect URL after login")
-
-                    _LOGGER.debug("Login successful, redirecting to: %s", redirect_url)
-
-                # Step 3: Follow redirects until we get the token
-                _LOGGER.debug("Following auth redirects")
-                token = await self._follow_auth_redirects(redirect_url)
-
-                if not token:
-                    _LOGGER.error("Failed to obtain token after authentication")
-                    raise AuthenticationError("Failed to obtain token after authentication")
-
-                self._token = token
-                _LOGGER.debug("Successfully obtained authentication token")
-
-                # Extract token expiry from JWT
-                try:
-                    # JWT tokens have 3 parts separated by dots
-                    token_parts = token.split(".")
-                    if len(token_parts) >= 2:
-                        # Decode the payload (middle part)
-                        padded_payload = token_parts[1] + "=" * (4 - len(token_parts[1]) % 4)
-                        payload = json.loads(self._base64_url_decode(padded_payload))
-
-                        # Extract expiry timestamp
-                        if "exp" in payload:
-                            self._token_expiry = self._timestamp_to_datetime(payload["exp"])
-                            _LOGGER.debug("Token expires at %s", self._token_expiry)
-                        else:
-                            _LOGGER.warning("No expiry found in token payload")
-                except Exception as e:
-                    _LOGGER.warning("Failed to parse JWT token: %s", e)
-
-                return self._token
-
-            except Exception as e:
-                last_error = e
-                _LOGGER.warning(
-                    "Authentication attempt %s/%s failed: %s",
-                    retry_count + 1,
-                    MAX_RETRIES,
-                    e,
+            csrf_match = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', login_page)
+            if not csrf_match:
+                _LOGGER.error(
+                    "Could not find CSRF token on login page. Page snippet: %s...",
+                    login_page[:200],
                 )
-                retry_count += 1
+                raise AuthenticationError("Could not find CSRF token on login page")
 
-        # If we've exhausted all retries, raise the last error
-        _LOGGER.error("Authentication failed after %s attempts: %s", MAX_RETRIES, last_error)
-        raise AuthenticationError(
-            f"Authentication failed after {MAX_RETRIES} attempts: {last_error}"
-        )
+            csrf_token = csrf_match.group(1)
+            _LOGGER.debug("Found CSRF token: %s...", csrf_token[:10])
+
+        # Step 2: Submit login credentials
+        _LOGGER.debug("Submitting login credentials")
+        login_data = {
+            "csrfmiddlewaretoken": csrf_token,
+            "username": self._username,
+            "password": self._password,
+            "next": (
+                f"/authorize?directory_hint=email&owner_migration_needed=true"
+                f"&client_id={client_id}&response_type=token"
+                f"&redirect_uri=https://owners.vacasa.com"
+                f"&scope=owners:read%20employees:read&audience=owner.vacasa.io"
+                f"&state={auth_params['state']}&nonce={auth_params['nonce']}&mode=owner"
+            ),
+        }
+
+        headers = {
+            "Referer": f"{AUTH_URL}?{urlencode(auth_params)}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+
+        async with session.post(
+            AUTH_URL,
+            data=login_data,
+            headers=headers,
+            allow_redirects=False,
+            timeout=_DEFAULT_CLIENT_TIMEOUT,
+        ) as response:
+            if response.status not in (302, 303):
+                _LOGGER.error(
+                    "Login failed with status %s. Expected redirect (302/303).",
+                    response.status,
+                )
+                raise AuthenticationError(f"Login failed with status {response.status}")
+
+            redirect_url = response.headers.get("Location")
+            if not redirect_url:
+                _LOGGER.error("No redirect URL after login")
+                raise AuthenticationError("No redirect URL after login")
+
+            _LOGGER.debug("Login successful, redirecting to: %s", redirect_url)
+
+        # Step 3: Follow redirects until we get the token
+        _LOGGER.debug("Following auth redirects")
+        token = await self._follow_auth_redirects(redirect_url)
+
+        if not token:
+            _LOGGER.error("Failed to obtain token after authentication")
+            raise AuthenticationError("Failed to obtain token after authentication")
+
+        self._token = token
+        _LOGGER.debug("Successfully obtained authentication token")
+
+        # Extract token expiry from JWT
+        try:
+            token_parts = token.split(".")
+            if len(token_parts) >= 2:
+                padded_payload = token_parts[1] + "=" * (4 - len(token_parts[1]) % 4)
+                payload = json.loads(self._base64_url_decode(padded_payload))
+
+                if "exp" in payload:
+                    self._token_expiry = self._timestamp_to_datetime(payload["exp"])
+                    _LOGGER.debug("Token expires at %s", self._token_expiry)
+                else:
+                    _LOGGER.warning("No expiry found in token payload")
+        except Exception as e:
+            _LOGGER.warning("Failed to parse JWT token: %s", e)
+
+        return self._token
+
+    async def authenticate(self) -> str:
+        """Authenticate with Vacasa and get a token.
+
+        Returns:
+            The authentication token
+
+        Raises:
+            AuthenticationError: If authentication fails after all retries
+        """
+        try:
+            return await self._retry_handler.retry(self._authenticate_once)
+        except AuthenticationError:
+            raise
+        except Exception as e:
+            raise AuthenticationError(f"Authentication failed: {e}") from e
 
     async def _follow_auth_redirects(self, initial_url: str) -> str | None:
         """Follow authentication redirects to extract the token.
@@ -855,7 +803,7 @@ class VacasaApiClient:
             # Follow the redirect
             try:
                 async with session.get(
-                    current_url, allow_redirects=False, timeout=DEFAULT_TIMEOUT
+                    current_url, allow_redirects=False, timeout=_DEFAULT_CLIENT_TIMEOUT
                 ) as response:
                     if response.status in (301, 302, 303, 307, 308):
                         # Handle redirect
@@ -908,40 +856,71 @@ class VacasaApiClient:
         Raises:
             ApiError: If the owner ID cannot be determined
         """
-        # If we already have the owner ID cached, return it
+        # Fast path: return cached value without acquiring lock
         if self._owner_id:
             _LOGGER.debug("Using cached owner ID: %s", self._owner_id)
             return self._owner_id
 
-        # Ensure we have a valid token
-        await self.ensure_token()
+        # Serialize concurrent fetches so only one API call is made
+        async with self._owner_id_lock:
+            # Re-check after acquiring lock (another task may have populated it)
+            if self._owner_id:
+                return self._owner_id
 
-        try:
-            _LOGGER.debug("Getting owner ID from verify-token endpoint")
-            data = await self._request("POST", "/verify-token")
-            _LOGGER.debug("Received response from verify-token endpoint: %s", data)
+            # Ensure we have a valid token
+            await self.ensure_token()
 
-            # Extract owner ID from the response
-            if "data" in data and "contactIds" in data["data"] and data["data"]["contactIds"]:
-                contact_ids = data["data"]["contactIds"]
-                if contact_ids:
-                    self._owner_id = str(contact_ids[0])
+            try:
+                _LOGGER.debug("Getting owner ID from verify-token endpoint")
+                data = await self._request("POST", "/verify-token")
+                _LOGGER.debug("Received response from verify-token endpoint: %s", data)
+
+                # Extract owner ID from the response
+                if "data" in data and "contactIds" in data["data"] and data["data"]["contactIds"]:
+                    self._owner_id = str(data["data"]["contactIds"][0])
                     _LOGGER.debug("Retrieved owner ID from verify-token: %s", self._owner_id)
                     return self._owner_id
-                _LOGGER.error("No contact IDs found in verify-token response")
-                raise ApiError("No contact IDs found in verify-token response")
 
-            _LOGGER.error("Unexpected verify-token response format: %s", data)
-            raise ApiError(f"Unexpected verify-token response format: {data}")
+                _LOGGER.error("Unexpected verify-token response format: %s", data)
+                raise ApiError(f"Unexpected verify-token response format: {data}")
 
-        except AuthenticationError:
-            raise
+            except AuthenticationError:
+                raise
+            except Exception as e:
+                _LOGGER.error("Error getting owner ID: %s", e)
+                raise ApiError(f"Error getting owner ID: {e}")
+
+    async def _cached_api_get(self, cache_key: str, fetch_func, log_name: str) -> Any:
+        """Fetch a value from the property cache, or call fetch_func and cache the result.
+
+        Args:
+            cache_key: Key for the property cache lookup
+            fetch_func: Async callable that fetches fresh data when the cache misses
+            log_name: Human-readable label used in log messages
+
+        Returns:
+            Cached or freshly fetched data
+
+        Raises:
+            ApiError: If fetch_func raises or returns no data after all retries
+        """
+        cached = await self._property_cache.get(cache_key)
+        if cached is not None:
+            _LOGGER.debug("Using cached %s", log_name)
+            return cached
+
+        try:
+            result = await self._retry_handler.retry(fetch_func)
+            if result:
+                await self._property_cache.set(cache_key, result)
+                _LOGGER.debug("Cached %s", log_name)
+            return result
         except Exception as e:
-            _LOGGER.error("Error getting owner ID: %s", e)
-            raise ApiError(f"Error getting owner ID: {e}")
+            _LOGGER.error("Error getting %s: %s", log_name, e)
+            raise ApiError(f"Error getting {log_name}: {e}")
 
     async def get_units(self) -> list[dict[str, Any]]:
-        """Get all units for the owner with caching support.
+        """Get all units for the owner.
 
         Returns:
             List of unit dictionaries
@@ -949,20 +928,9 @@ class VacasaApiClient:
         Raises:
             ApiError: If the API request fails
         """
-        # Try to get from cache first
-        cache_key = "units"
-        cached_units = await self._property_cache.get(cache_key)
 
-        if cached_units is not None:
-            _LOGGER.debug("Using cached units data (%s units)", len(cached_units))
-            return cached_units
-
-        # If not cached, fetch from API with retry logic
-        async def _fetch_units():
-            # Ensure we have a valid token and owner ID
-            await self.ensure_token()
+        async def _fetch():
             owner_id = await self.get_owner_id()
-
             _LOGGER.debug("Getting units for owner ID: %s", owner_id)
             data = await self._request("GET", f"/owners/{owner_id}/units")
             _LOGGER.debug("Received units response: %s", data)
@@ -973,25 +941,12 @@ class VacasaApiClient:
 
             units = data["data"]
             _LOGGER.debug("Retrieved %s units", len(units))
-
-            # Log unit IDs for debugging
             if units:
-                unit_ids = [unit.get("id") for unit in units]
-                _LOGGER.debug("Unit IDs: %s", unit_ids)
-
+                _LOGGER.debug("Unit IDs: %s", [unit.get("id") for unit in units])
             return units
 
         try:
-            # Use retry wrapper for the API call
-            units = await self._retry_handler.retry(_fetch_units)
-
-            # Cache the result
-            if units:
-                await self._property_cache.set(cache_key, units)
-                _LOGGER.debug("Cached %s units", len(units))
-
-            return units
-
+            return await self._retry_handler.retry(_fetch)
         except Exception as e:
             _LOGGER.error("Error getting units: %s", e)
             raise ApiError(f"Error getting units: {e}")
@@ -1021,8 +976,6 @@ class VacasaApiClient:
         Raises:
             ApiError: If the API request fails
         """
-        # Ensure we have a valid token and owner ID
-        await self.ensure_token()
         owner_id = await self.get_owner_id()
 
         params = {
@@ -1038,7 +991,7 @@ class VacasaApiClient:
         if end_date:
             params["endDate"] = end_date
 
-        try:
+        async def _fetch():
             _LOGGER.debug(
                 "Getting reservations for unit %s from %s to %s",
                 unit_id,
@@ -1059,8 +1012,7 @@ class VacasaApiClient:
             reservations = data["data"]
             _LOGGER.debug("Retrieved %s reservations", len(reservations))
 
-            # Log reservation dates for debugging
-            if reservations:
+            if reservations and _LOGGER.isEnabledFor(logging.DEBUG):
                 dates = [
                     (
                         res.get("attributes", {}).get("startDate"),
@@ -1071,6 +1023,9 @@ class VacasaApiClient:
                 _LOGGER.debug("Reservation dates: %s", dates)
 
             return reservations
+
+        try:
+            return await self._retry_handler.retry(_fetch)
         except Exception as e:
             _LOGGER.error("Error getting reservations: %s", e)
             raise ApiError(f"Error getting reservations: {e}")
@@ -1087,54 +1042,24 @@ class VacasaApiClient:
         Raises:
             ApiError: If the API request fails
         """
-        # Try to get from cache first
-        cache_key = f"unit_details_{unit_id}"
-        cached_details = await self._property_cache.get(cache_key)
 
-        if cached_details is not None:
-            _LOGGER.debug("Using cached unit details for unit %s", unit_id)
-            return cached_details
-
-        # If not cached, fetch from API with retry logic
-        async def _fetch_unit_details():
-            # Ensure we have a valid token and owner ID
-            await self.ensure_token()
+        async def _fetch():
             owner_id = await self.get_owner_id()
-
             _LOGGER.debug("Getting details for unit %s", unit_id)
-            data = await self._request(
-                "GET",
-                f"/owners/{owner_id}/units/{unit_id}",
-            )
+            data = await self._request("GET", f"/owners/{owner_id}/units/{unit_id}")
             _LOGGER.debug("Received unit details response: %s", data)
-
-            # Log unit name for debugging
             if "data" in data and "attributes" in data["data"]:
-                unit_name = data["data"]["attributes"].get("name")
-                _LOGGER.debug("Unit name: %s", unit_name)
-
+                _LOGGER.debug("Unit name: %s", data["data"]["attributes"].get("name"))
             return data
 
-        try:
-            # Use retry wrapper for the API call
-            unit_details = await self._retry_handler.retry(_fetch_unit_details)
-
-            # Cache the result
-            if unit_details:
-                await self._property_cache.set(cache_key, unit_details)
-                _LOGGER.debug("Cached unit details for unit %s", unit_id)
-
-            return unit_details
-
-        except Exception as e:
-            _LOGGER.error("Error getting unit details: %s", e)
-            raise ApiError(f"Error getting unit details: {e}")
+        return await self._cached_api_get(
+            f"unit_details_{unit_id}", _fetch, f"unit details for {unit_id}"
+        )
 
     async def get_statements(
         self, year: int | None = None, month: int | None = None
     ) -> list[dict[str, Any]]:
         """Fetch owner statements, optionally scoped to a specific month."""
-        await self.ensure_token()
         owner_id = await self.get_owner_id()
 
         path = f"/owners/{owner_id}/statements"
@@ -1155,7 +1080,6 @@ class VacasaApiClient:
         self, unit_id: str, status: str | None = "open"
     ) -> list[dict[str, Any]]:
         """Fetch maintenance tickets for a unit."""
-        await self.ensure_token()
         owner_id = await self.get_owner_id()
 
         params = {"status": status} if status else None

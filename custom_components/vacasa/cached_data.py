@@ -16,6 +16,13 @@ _LOGGER = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+async def run_blocking_io(hass, func: Callable[..., T], *args, **kwargs) -> T:
+    """Execute a blocking IO function safely when hass is available."""
+    if hass:
+        return await hass.async_add_executor_job(func, *args, **kwargs)
+    return func(*args, **kwargs)
+
+
 class CachedData:
     """Manages cached data with TTL (Time To Live) support."""
 
@@ -55,13 +62,12 @@ class CachedData:
 
         return (current_time - entry_time) > ttl
 
-    async def get(self, key: str, default: T | None = None, ttl: int | None = None) -> T | None:
+    async def get(self, key: str, default: T | None = None) -> T | None:
         """Get a value from cache.
 
         Args:
             key: Cache key
             default: Default value if not found or expired
-            ttl: Optional TTL override
 
         Returns:
             Cached value or default
@@ -148,9 +154,7 @@ class CachedData:
 
     async def _run_io_task(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Execute a blocking IO task safely when hass is available."""
-        if self._hass:
-            return await self._hass.async_add_executor_job(func, *args, **kwargs)
-        return func(*args, **kwargs)
+        return await run_blocking_io(self._hass, func, *args, **kwargs)
 
     def _save_to_disk_sync(self) -> None:
         """Save cache to disk (synchronous helper)."""
@@ -316,9 +320,4 @@ class RetryWithBackoff:
                         e,
                     )
 
-        # Re-raise the last exception if all retries failed
-        if last_exception is not None:
-            raise last_exception
-        else:
-            # This should not happen in normal operation, but provides safety
-            raise RuntimeError("All retry attempts failed, but no exception was captured")
+        raise last_exception or RuntimeError("Retry loop completed without raising an exception")

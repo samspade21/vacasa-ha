@@ -1,3 +1,27 @@
+[project]
+name = "vacasa-ha"
+version = "0.0.0"
+requires-python = ">=3.14"
+dependencies = [
+    "aiohttp>=3.8.0",
+    "voluptuous>=0.13",
+]
+
+[dependency-groups]
+dev = [
+    "colorlog==6.10.1",
+    "mypy==1.19.1",
+    "pre-commit==4.5.1",
+    "types-requests>=2.0.0",
+    "types-setuptools>=65.0.0",
+]
+test = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.1.0",
+    "pytest-homeassistant-custom-component>=0.0.6",
+]
+
 # Ruff configuration - replaces black, flake8, and isort
 [tool.ruff]
 line-length = 100
