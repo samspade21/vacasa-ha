@@ -175,6 +175,29 @@ def test_boundary_timer_dispatches_signal():
     assert calendar.hass.async_create_task.call_count == 1
 
 
+def test_boundary_timer_checkout_dispatches_signal():
+    """Checkout boundary timer sends the checkout signal and schedules a refresh."""
+    calendar, _ = _build_calendar(
+        start_delta=timedelta(days=-2),
+        end_delta=timedelta(seconds=1),
+        next_start_delta=timedelta(days=1),
+        next_end_delta=timedelta(days=2),
+    )
+
+    calendar.hass.async_create_task = Mock()
+
+    with patch("custom_components.vacasa.calendar.async_dispatcher_send") as mock_send:
+        calendar._handle_boundary_timer(
+            dt_util.utcnow(),
+            boundary="checkout",
+        )
+
+    mock_send.assert_called_once_with(
+        calendar.hass, SIGNAL_RESERVATION_BOUNDARY, "unit123", "checkout"
+    )
+    assert calendar.hass.async_create_task.call_count == 1
+
+
 def test_midnight_times_use_default_checkin_and_checkout():
     """Midnight check-in/out values should fall back to default times."""
     coordinator = Mock()
