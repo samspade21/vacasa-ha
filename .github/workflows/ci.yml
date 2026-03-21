@@ -112,9 +112,6 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Install Home Assistant
-        run: uv pip install --system homeassistant colorlog
-
       - name: Run hassfest validation
         uses: "home-assistant/actions/hassfest@master"
 
@@ -167,7 +164,7 @@ jobs:
       - name: Validate Home Assistant config
         run: |
           cd test_config
-          hass --script check_config --config . --info all
+          uv run --with homeassistant --with colorlog hass --script check_config --config . --info all
 
   hacs-validate:
     name: "HACS Validation"
