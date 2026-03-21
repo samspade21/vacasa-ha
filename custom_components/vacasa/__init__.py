@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
@@ -56,6 +57,28 @@ def _extract_unit_info(unit: dict[str, Any]) -> tuple[str, dict[str, Any], str]:
     attributes = unit.get("attributes", {})
     name = attributes.get("name", f"Vacasa Unit {unit_id}")
     return unit_id, attributes, name
+
+
+def _iter_coordinator_units(
+    coordinator: "VacasaDataUpdateCoordinator",
+    platform: str,
+) -> Iterator[tuple[str, dict[str, Any], str]]:
+    """Yield (unit_id, attributes, name) for each unit in the coordinator.
+
+    Logs a warning and yields nothing when unit data is unavailable.
+    Silently skips any unit that has no id.
+    """
+    units = coordinator.data.get("units") if coordinator.data else None
+    if units is None:
+        _LOGGER.warning("Vacasa unit data unavailable while setting up %s", platform)
+        return
+    _LOGGER.debug("Found %d Vacasa units for %s", len(units), platform)
+    for unit in units:
+        unit_id, attributes, name = _extract_unit_info(unit)
+        if not unit_id:
+            _LOGGER.debug("Skipping Vacasa unit without an id: %s", unit)
+            continue
+        yield unit_id, attributes, name
 
 
 @dataclass

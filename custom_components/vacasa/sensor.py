@@ -16,7 +16,7 @@ from . import (
     VacasaConfigEntry,
     VacasaDataUpdateCoordinator,
     VacasaReservationStateMixin,
-    _extract_unit_info,
+    _iter_coordinator_units,
     _make_owner_device_info,
     _make_unit_device_info,
 )
@@ -89,6 +89,11 @@ class VacasaBaseSensor(SensorEntity):
         if value is None:
             return None
         return "Yes" if value else "No"
+
+    def _get_amenity_bool(self, key: str) -> str | None:
+        """Return Yes/No for a boolean amenity flag, or None if the key is absent."""
+        amenities = self._unit_attributes.get("amenities", {})
+        return self._bool_to_yes_no(amenities.get(key) if amenities else None)
 
 
 class VacasaApiUpdateMixin:
@@ -169,24 +174,29 @@ class VacasaLocationSensor(VacasaBaseSensor):
     _sensor_type = SENSOR_LOCATION
     _attr_icon = "mdi:map-marker"
 
+    def __init__(self, **kwargs: Any) -> None:
+        """Pre-compute location value and attributes from immutable unit_attributes."""
+        super().__init__(**kwargs)
+        location = self._unit_attributes.get("location", {})
+        if location and "lat" in location and "lng" in location:
+            self._location_value: str | None = f"{location['lat']},{location['lng']}"
+            self._location_attrs: dict[str, Any] = {
+                "latitude": location["lat"],
+                "longitude": location["lng"],
+            }
+        else:
+            self._location_value = None
+            self._location_attrs = {}
+
     @property
     def native_value(self) -> str | None:
         """Return the location value."""
-        location = self._unit_attributes.get("location", {})
-        if location and "lat" in location and "lng" in location:
-            return f"{location['lat']},{location['lng']}"
-        return None
+        return self._location_value
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
-        location = self._unit_attributes.get("location", {})
-        if location and "lat" in location and "lng" in location:
-            return {
-                "latitude": location["lat"],
-                "longitude": location["lng"],
-            }
-        return {}
+        return self._location_attrs
 
 
 class VacasaTimezoneSensor(VacasaBaseSensor):
@@ -265,26 +275,27 @@ class VacasaBedroomsSensor(VacasaBaseSensor):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = "rooms"
 
+    def __init__(self, **kwargs: Any) -> None:
+        """Pre-compute bedroom count and bed-type attributes from immutable unit_attributes."""
+        super().__init__(**kwargs)
+        amenities = self._unit_attributes.get("amenities", {})
+        rooms = amenities.get("rooms", {})
+        self._bedrooms: int | None = rooms.get("bedrooms") if rooms else None
+        self._bed_attrs: dict[str, Any] = {
+            f"{bed_type}_beds": count
+            for bed_type, count in amenities.get("beds", {}).items()
+            if count and bed_type != "child"  # Skip child beds as they're not real beds
+        }
+
     @property
     def native_value(self) -> int | None:
         """Return the bedrooms value."""
-        amenities = self._unit_attributes.get("amenities", {})
-        rooms = amenities.get("rooms", {})
-        return rooms.get("bedrooms") if rooms else None
+        return self._bedrooms
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
-        amenities = self._unit_attributes.get("amenities", {})
-        beds = amenities.get("beds", {})
-
-        attributes = {}
-        if beds:
-            for bed_type, count in beds.items():
-                if count and bed_type != "child":  # Skip child beds as they're not real beds
-                    attributes[f"{bed_type}_beds"] = count
-
-        return attributes
+        return self._bed_attrs
 
 
 class VacasaBathroomsSensor(VacasaBaseSensor):
@@ -295,28 +306,31 @@ class VacasaBathroomsSensor(VacasaBaseSensor):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = "rooms"
 
-    def _get_bathrooms_data(self) -> dict[str, Any]:
-        rooms = self._unit_attributes.get("amenities", {}).get("rooms", {})
-        return rooms.get("bathrooms", {}) if rooms else {}
+    def __init__(self, **kwargs: Any) -> None:
+        """Pre-compute bathroom value and attributes from immutable unit_attributes."""
+        super().__init__(**kwargs)
+        bathrooms = self._unit_attributes.get("amenities", {}).get("rooms", {}).get("bathrooms", {})
+        if bathrooms:
+            self._bathrooms_value: float | None = (
+                bathrooms.get("full", 0) + bathrooms.get("half", 0) * 0.5
+            )
+            self._bathrooms_attrs: dict[str, Any] = {
+                "full_bathrooms": bathrooms.get("full", 0),
+                "half_bathrooms": bathrooms.get("half", 0),
+            }
+        else:
+            self._bathrooms_value = None
+            self._bathrooms_attrs = {}
 
     @property
     def native_value(self) -> float | None:
         """Return the bathrooms value."""
-        bathrooms = self._get_bathrooms_data()
-        if bathrooms:
-            return bathrooms.get("full", 0) + bathrooms.get("half", 0) * 0.5
-        return None
+        return self._bathrooms_value
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
-        bathrooms = self._get_bathrooms_data()
-        if bathrooms:
-            return {
-                "full_bathrooms": bathrooms.get("full", 0),
-                "half_bathrooms": bathrooms.get("half", 0),
-            }
-        return {}
+        return self._bathrooms_attrs
 
 
 class VacasaHotTubSensor(VacasaBaseSensor):
@@ -325,10 +339,15 @@ class VacasaHotTubSensor(VacasaBaseSensor):
     _sensor_type = SENSOR_HOT_TUB
     _attr_icon = "mdi:hot-tub"
 
+    def __init__(self, **kwargs: Any) -> None:
+        """Pre-compute hot tub value from immutable unit_attributes."""
+        super().__init__(**kwargs)
+        self._hot_tub_value = self._get_amenity_bool("hotTub")
+
     @property
     def native_value(self) -> str | None:
         """Return the hot tub value."""
-        return self._bool_to_yes_no(self._unit_attributes.get("amenities", {}).get("hotTub"))
+        return self._hot_tub_value
 
 
 class VacasaPetFriendlySensor(VacasaBaseSensor):
@@ -337,10 +356,15 @@ class VacasaPetFriendlySensor(VacasaBaseSensor):
     _sensor_type = SENSOR_PET_FRIENDLY
     _attr_icon = "mdi:paw"
 
+    def __init__(self, **kwargs: Any) -> None:
+        """Pre-compute pet friendly value from immutable unit_attributes."""
+        super().__init__(**kwargs)
+        self._pet_friendly_value = self._get_amenity_bool("petsFriendly")
+
     @property
     def native_value(self) -> str | None:
         """Return the pet friendly value."""
-        return self._bool_to_yes_no(self._unit_attributes.get("amenities", {}).get("petsFriendly"))
+        return self._pet_friendly_value
 
 
 class VacasaParkingSensor(VacasaBaseSensor):
@@ -351,37 +375,30 @@ class VacasaParkingSensor(VacasaBaseSensor):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = "spaces"
 
+    def __init__(self, **kwargs: Any) -> None:
+        """Pre-compute parking value and attributes from immutable unit_attributes."""
+        super().__init__(**kwargs)
+        parking = self._unit_attributes.get("parking", {})
+        self._parking_total: int | None = parking.get("total") if parking else None
+        attrs: dict[str, Any] = {}
+        if parking:
+            if parking.get("notes"):
+                attrs["notes"] = parking["notes"]
+            for key in ["accessible", "fourWheelDriveRequired", "paid", "street", "valet"]:
+                if key in parking:
+                    value = parking[key]
+                    attrs[key] = None if value == -1 else value  # Convert -1 to None for display
+        self._parking_attrs = attrs
+
     @property
     def native_value(self) -> int | None:
         """Return the parking value."""
-        parking = self._unit_attributes.get("parking", {})
-        return parking.get("total") if parking else None
+        return self._parking_total
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
-        parking = self._unit_attributes.get("parking", {})
-
-        attributes = {}
-        if parking:
-            if "notes" in parking and parking["notes"]:
-                attributes["notes"] = parking["notes"]
-
-            for key in [
-                "accessible",
-                "fourWheelDriveRequired",
-                "paid",
-                "street",
-                "valet",
-            ]:
-                if key in parking:
-                    # Convert -1 to None for better display
-                    value = parking[key]
-                    if value == -1:
-                        value = None
-                    attributes[key] = value
-
-        return attributes
+        return self._parking_attrs
 
 
 class VacasaAddressSensor(VacasaBaseSensor):
@@ -540,12 +557,8 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
             return None
 
         def _sort_key(statement: dict[str, Any]) -> str:
-            if not isinstance(statement, dict):
-                return ""
             attributes = statement.get("attributes", {})
-            if isinstance(attributes, dict):
-                return attributes.get("updatedAt") or attributes.get("periodEndDate") or ""
-            return ""
+            return attributes.get("updatedAt") or attributes.get("periodEndDate") or ""
 
         return max(self._statements, key=_sort_key)
 
@@ -562,17 +575,19 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
                 return None
         return None
 
+    def _latest_attributes(self) -> dict[str, Any]:
+        """Return the attributes dict from the latest statement, or {} if unavailable."""
+        if self._latest is None:
+            return {}
+        return self._latest.get("attributes", {}) or {}
+
     @property
     def native_value(self) -> float | int:
         """Return the latest statement total."""
-        latest = self._latest
-        if not latest:
+        if not self._latest:
             return 0
 
-        attributes = latest.get("attributes", {}) if isinstance(latest, dict) else {}
-        if not isinstance(attributes, dict):
-            attributes = {}
-
+        attributes = self._latest_attributes()
         for field in ("totalAmount", "netAmount", "balance", "amountDue"):
             amount = self._coerce_amount(attributes.get(field))
             if amount is not None:
@@ -583,14 +598,11 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Expose detailed statement attributes."""
-        latest = self._latest
-        attributes = latest.get("attributes", {}) if isinstance(latest, dict) else {}
-        if not isinstance(attributes, dict):
-            attributes = {}
+        attributes = self._latest_attributes()
 
         return {
             "statement_count": len(self._statements),
-            "latest_statement_id": latest.get("id") if isinstance(latest, dict) else None,
+            "latest_statement_id": self._latest.get("id") if self._latest is not None else None,
             "period_start": attributes.get("periodStartDate"),
             "period_end": attributes.get("periodEndDate"),
             "status": attributes.get("status"),
@@ -641,8 +653,11 @@ class VacasaNextStaySensor(VacasaReservationStateMixin, VacasaBaseSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Update reservation data when the coordinator refreshes."""
+        prev_current = self._current_reservation
+        prev_next = self._next_reservation
         self._refresh_from_coordinator()
-        self.async_write_ha_state()
+        if self._current_reservation != prev_current or self._next_reservation != prev_next:
+            self.async_write_ha_state()
 
     @staticmethod
     def _as_local(value: datetime | None) -> datetime | None:
@@ -797,22 +812,10 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Vacasa sensor platform."""
-    data = config_entry.runtime_data
-    coordinator = data.coordinator
-
-    units = coordinator.data.get("units") if coordinator.data else None
-    if units is None:
-        _LOGGER.warning("Vacasa unit data unavailable while setting up sensors")
-        return
-
-    _LOGGER.debug("Found %s Vacasa units for sensors", len(units))
+    coordinator = config_entry.runtime_data.coordinator
 
     entities: list[SensorEntity] = []
-    for unit in units:
-        unit_id, attributes, name = _extract_unit_info(unit)
-        if not unit_id:
-            _LOGGER.debug("Skipping Vacasa unit without an id: %s", unit)
-            continue
+    for unit_id, attributes, name in _iter_coordinator_units(coordinator, "sensors"):
         entities.extend(_create_unit_sensors(coordinator, unit_id, name, attributes))
 
     # Add owner-level statements sensor once per config entry

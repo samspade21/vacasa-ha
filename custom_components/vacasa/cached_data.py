@@ -250,6 +250,7 @@ class RetryWithBackoff:
         base_delay: float = 1.0,
         backoff_multiplier: float = 2.0,
         max_jitter: float = 1.0,
+        no_retry_exceptions: tuple[type[BaseException], ...] = (),
     ):
         """Initialize retry handler.
 
@@ -258,11 +259,13 @@ class RetryWithBackoff:
             base_delay: Base delay in seconds
             backoff_multiplier: Multiplier for exponential backoff
             max_jitter: Maximum jitter to add in seconds
+            no_retry_exceptions: Exception types that are re-raised immediately without retry
         """
         self.max_retries = max_retries
         self.base_delay = base_delay
         self.backoff_multiplier = backoff_multiplier
         self.max_jitter = max_jitter
+        self.no_retry_exceptions = no_retry_exceptions
 
     def calculate_delay(self, attempt: int) -> float:
         """Calculate delay for a given attempt with exponential backoff and jitter.
@@ -301,6 +304,8 @@ class RetryWithBackoff:
             try:
                 return await func(*args, **kwargs)
             except Exception as e:
+                if self.no_retry_exceptions and isinstance(e, self.no_retry_exceptions):
+                    raise
                 last_exception = e
 
                 if attempt < self.max_retries:

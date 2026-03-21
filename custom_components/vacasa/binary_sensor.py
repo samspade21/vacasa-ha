@@ -20,7 +20,7 @@ from . import (
     VacasaConfigEntry,
     VacasaDataUpdateCoordinator,
     VacasaReservationStateMixin,
-    _extract_unit_info,
+    _iter_coordinator_units,
     _make_unit_device_info,
 )
 from .const import (
@@ -39,38 +39,18 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Vacasa binary sensor platform."""
-    _LOGGER.debug("Setting up Vacasa binary sensor platform")
-
-    data = config_entry.runtime_data
-    coordinator = data.coordinator
-
-    units = coordinator.data.get("units") if coordinator.data else None
-    if units is None:
-        _LOGGER.warning("Vacasa unit data unavailable while setting up binary sensors")
-        return
-
-    try:
-        _LOGGER.info("Found %d Vacasa units for binary sensors", len(units))
-
-        entities: list[VacasaOccupancySensor] = []
-        for unit in units:
-            unit_id, attributes, name = _extract_unit_info(unit)
-            code = attributes.get("code", "")
-
-            entities.append(
-                VacasaOccupancySensor(
-                    coordinator=coordinator,
-                    unit_id=unit_id,
-                    name=name,
-                    code=code,
-                    unit_attributes=attributes,
-                )
-            )
-
-        async_add_entities(entities, True)
-    except Exception as err:  # pragma: no cover - defensive logging
-        _LOGGER.error("Error setting up Vacasa binary sensors: %s", err)
-        _LOGGER.debug("Full traceback:", exc_info=True)
+    coordinator = config_entry.runtime_data.coordinator
+    entities = [
+        VacasaOccupancySensor(
+            coordinator=coordinator,
+            unit_id=unit_id,
+            name=name,
+            code=attributes.get("code", ""),
+            unit_attributes=attributes,
+        )
+        for unit_id, attributes, name in _iter_coordinator_units(coordinator, "binary sensors")
+    ]
+    async_add_entities(entities, True)
 
 
 class VacasaOccupancySensor(
@@ -158,8 +138,11 @@ class VacasaOccupancySensor(
     @callback
     def _handle_coordinator_update(self) -> None:
         """Update reservation data from the coordinator."""
+        prev_current = self._current_reservation
+        prev_next = self._next_reservation
         self._refresh_from_coordinator()
-        super()._handle_coordinator_update()
+        if self._current_reservation != prev_current or self._next_reservation != prev_next:
+            super()._handle_coordinator_update()
 
     def _update_from_state(self, state: ReservationState) -> None:
         """Store reservation state and mark availability."""

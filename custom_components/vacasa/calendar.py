@@ -17,11 +17,12 @@ from homeassistant.util import dt as dt_util
 from . import (
     VacasaConfigEntry,
     VacasaDataUpdateCoordinator,
-    _extract_unit_info,
+    _iter_coordinator_units,
     _make_unit_device_info,
 )
 from .api_client import VacasaApiClient
 from .const import (
+    CALENDAR_EVENT_CACHE_MAX_SIZE,
     CALENDAR_LOOKAHEAD_DAYS,
     CALENDAR_LOOKBACK_DAYS,
     DEFAULT_CHECKIN_TIME,
@@ -49,31 +50,17 @@ async def async_setup_entry(
     data = config_entry.runtime_data
     client = data.client
     coordinator = data.coordinator
-
-    # Get all units from the coordinator cache
-    units = coordinator.data.get("units") if coordinator.data else None
-    if units is None:
-        _LOGGER.warning("Vacasa unit data unavailable while setting up calendars")
-        return
-
-    _LOGGER.info("Found %d Vacasa units for calendars", len(units))
-
-    # Create a calendar entity for each unit
-    entities = []
-    for unit in units:
-        unit_id, attributes, name = _extract_unit_info(unit)
-        code = attributes.get("code", "")
-
-        entity = VacasaCalendar(
+    entities = [
+        VacasaCalendar(
             coordinator=coordinator,
             client=client,
             unit_id=unit_id,
             name=name,
-            code=code,
+            code=attributes.get("code", ""),
             unit_attributes=attributes,
         )
-        entities.append(entity)
-
+        for unit_id, attributes, name in _iter_coordinator_units(coordinator, "calendars")
+    ]
     async_add_entities(entities, True)
 
 
@@ -177,7 +164,9 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                     if event:
                         events.append(event)
 
-            # Cache the events
+            # Cache the events; evict oldest entry when at capacity
+            if len(self._event_cache) >= CALENDAR_EVENT_CACHE_MAX_SIZE:
+                self._event_cache.pop(next(iter(self._event_cache)))
             self._event_cache[cache_key] = events
 
             return events
@@ -235,6 +224,9 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
     async def _async_coordinator_update(self) -> None:
         """Handle coordinator update asynchronously."""
         try:
+            prev_current = self._current_event
+            prev_next = self._next_event
+
             # Clear event cache to ensure fresh data
             self._event_cache.clear()
             self._reservation_windows.clear()
@@ -243,8 +235,9 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             # Update current and next events based on fresh data
             await self._update_current_event()
 
-            # Write the state to Home Assistant
-            self.async_write_ha_state()
+            # Only write state if the current or upcoming event changed
+            if self._current_event != prev_current or self._next_event != prev_next:
+                self.async_write_ha_state()
 
             _LOGGER.debug(
                 "Successfully updated calendar state for %s - current event: %s, state: %s",
@@ -348,7 +341,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
 
         now_utc = dt_util.utcnow()
 
-        if self._current_event and getattr(self._current_event, "end", None):
+        if self._current_event and self._current_event.end:
             end_utc = dt_util.as_utc(self._current_event.end)
             if end_utc and end_utc > now_utc:
                 self._unsubscribe_end_timer = async_track_point_in_time(
@@ -367,7 +360,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                     self._current_event.summary,
                 )
 
-        if self._next_event and getattr(self._next_event, "start", None):
+        if self._next_event and self._next_event.start:
             start_utc = dt_util.as_utc(self._next_event.start)
             if start_utc and start_utc > now_utc:
                 self._unsubscribe_start_timer = async_track_point_in_time(
@@ -616,10 +609,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                 stay_type=stay_type,
                 reservation_id=reservation.get("id"),
                 guest_count=attributes.get("guestCount"),
-                first_name=first_name,
-                last_name=last_name,
-                hold_who_booked=hold_who_booked,
-                hold_type=hold_type,
+                guest_name=guest_name,
             )
 
             self._reservation_windows[event.uid] = window
@@ -638,20 +628,9 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         stay_type: str,
         reservation_id: str | None,
         guest_count: int | None,
-        first_name: str | None,
-        last_name: str | None,
-        hold_who_booked: str | None,
-        hold_type: str | None,
+        guest_name: str | None,
     ) -> ReservationWindow:
         """Create a structured reservation window for dispatcher consumers."""
-        guest_name = self._resolve_guest_name(
-            stay_type,
-            first_name=first_name,
-            last_name=last_name,
-            hold_who_booked=hold_who_booked,
-            hold_type=hold_type,
-        )
-
         return ReservationWindow(
             reservation_id=str(reservation_id) if reservation_id is not None else None,
             summary=summary,

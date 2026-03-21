@@ -28,6 +28,7 @@ from .const import (
     DEFAULT_MAX_CONNECTIONS,
     DEFAULT_READ_TIMEOUT,
     DEFAULT_TIMEOUT,
+    MAX_AUTH_REDIRECTS,
     MAX_RETRIES,
     PROPERTY_CACHE_FILE,
     RETRY_BACKOFF_MULTIPLIER,
@@ -150,13 +151,16 @@ class VacasaApiClient:
         self._request_semaphore = asyncio.Semaphore(DEFAULT_MAX_CONCURRENT_REQUESTS)
         # Lock to prevent concurrent owner_id fetches from making duplicate API calls
         self._owner_id_lock = asyncio.Lock()
+        # Lock to prevent concurrent token refresh attempts
+        self._ensure_token_lock = asyncio.Lock()
 
-        # Set up retry handler
+        # Set up retry handler — AuthenticationError is a permanent failure; never retry it
         self._retry_handler = RetryWithBackoff(
             max_retries=max_retries,
             base_delay=retry_delay,
             backoff_multiplier=RETRY_BACKOFF_MULTIPLIER,
             max_jitter=jitter_max,
+            no_retry_exceptions=(AuthenticationError,),
         )
 
         _LOGGER.debug(
@@ -519,7 +523,14 @@ class VacasaApiClient:
 
     async def ensure_token(self) -> str:
         """Ensure we have a valid token, refreshing if necessary."""
-        if not self.is_token_valid:
+        if self.is_token_valid:
+            return self._token
+
+        async with self._ensure_token_lock:
+            # Re-check after acquiring the lock — another waiter may have refreshed already
+            if self.is_token_valid:
+                return self._token
+
             _LOGGER.debug("Token is invalid or missing, attempting to refresh")
 
             # Try to load token from cache first
@@ -780,7 +791,7 @@ class VacasaApiClient:
         """
         session = await self.ensure_session()
         current_url = initial_url
-        max_redirects = 10
+        max_redirects = MAX_AUTH_REDIRECTS
         redirect_count = 0
 
         _LOGGER.debug("Following auth redirects starting with: %s", current_url)
@@ -890,6 +901,18 @@ class VacasaApiClient:
                 _LOGGER.error("Error getting owner ID: %s", e)
                 raise ApiError(f"Error getting owner ID: {e}")
 
+    @staticmethod
+    def _extract_list_response(data: Any, context: str) -> list[dict[str, Any]]:
+        """Extract a list from a standard ``{"data": [...]}`` or bare-list API response."""
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            items = data.get("data", [])
+            if isinstance(items, list):
+                return items
+        _LOGGER.warning("Unexpected response format for %s: %s", context, type(data).__name__)
+        return []
+
     async def _cached_api_get(self, cache_key: str, fetch_func, log_name: str) -> Any:
         """Fetch a value from the property cache, or call fetch_func and cache the result.
 
@@ -909,15 +932,19 @@ class VacasaApiClient:
             _LOGGER.debug("Using cached %s", log_name)
             return cached
 
+        result = await self._retry(fetch_func, log_name)
+        if result:
+            await self._property_cache.set(cache_key, result)
+            _LOGGER.debug("Cached %s", log_name)
+        return result
+
+    async def _retry(self, fetch_func: Callable, label: str) -> Any:
+        """Run fetch_func through the retry handler, wrapping failures as ApiError."""
         try:
-            result = await self._retry_handler.retry(fetch_func)
-            if result:
-                await self._property_cache.set(cache_key, result)
-                _LOGGER.debug("Cached %s", log_name)
-            return result
+            return await self._retry_handler.retry(fetch_func)
         except Exception as e:
-            _LOGGER.error("Error getting %s: %s", log_name, e)
-            raise ApiError(f"Error getting {log_name}: {e}")
+            _LOGGER.error("Error getting %s: %s", label, e)
+            raise ApiError(f"Error getting {label}: {e}") from e
 
     async def get_units(self) -> list[dict[str, Any]]:
         """Get all units for the owner.
@@ -935,21 +962,13 @@ class VacasaApiClient:
             data = await self._request("GET", f"/owners/{owner_id}/units")
             _LOGGER.debug("Received units response: %s", data)
 
-            if "data" not in data:
-                _LOGGER.warning("No data field in units response: %s", data)
-                return []
-
-            units = data["data"]
+            units = self._extract_list_response(data, "units")
             _LOGGER.debug("Retrieved %s units", len(units))
             if units:
                 _LOGGER.debug("Unit IDs: %s", [unit.get("id") for unit in units])
             return units
 
-        try:
-            return await self._retry_handler.retry(_fetch)
-        except Exception as e:
-            _LOGGER.error("Error getting units: %s", e)
-            raise ApiError(f"Error getting units: {e}")
+        return await self._retry(_fetch, "units")
 
     async def get_reservations(
         self,
@@ -976,8 +995,6 @@ class VacasaApiClient:
         Raises:
             ApiError: If the API request fails
         """
-        owner_id = await self.get_owner_id()
-
         params = {
             "startDate": start_date,
             "page[limit]": limit,
@@ -992,6 +1009,7 @@ class VacasaApiClient:
             params["endDate"] = end_date
 
         async def _fetch():
+            owner_id = await self.get_owner_id()
             _LOGGER.debug(
                 "Getting reservations for unit %s from %s to %s",
                 unit_id,
@@ -1005,30 +1023,19 @@ class VacasaApiClient:
                 params=params,
             )
 
-            if "data" not in data:
-                _LOGGER.warning("No data field in reservations response: %s", data)
-                return []
-
-            reservations = data["data"]
+            reservations = self._extract_list_response(data, f"reservations for unit {unit_id}")
             _LOGGER.debug("Retrieved %s reservations", len(reservations))
 
             if reservations and _LOGGER.isEnabledFor(logging.DEBUG):
                 dates = [
-                    (
-                        res.get("attributes", {}).get("startDate"),
-                        res.get("attributes", {}).get("endDate"),
-                    )
+                    ((a := res.get("attributes", {})).get("startDate"), a.get("endDate"))
                     for res in reservations
                 ]
                 _LOGGER.debug("Reservation dates: %s", dates)
 
             return reservations
 
-        try:
-            return await self._retry_handler.retry(_fetch)
-        except Exception as e:
-            _LOGGER.error("Error getting reservations: %s", e)
-            raise ApiError(f"Error getting reservations: {e}")
+        return await self._retry(_fetch, "reservations")
 
     async def get_unit_details(self, unit_id: str) -> dict[str, Any]:
         """Get details for a specific unit with caching support.
@@ -1060,39 +1067,33 @@ class VacasaApiClient:
         self, year: int | None = None, month: int | None = None
     ) -> list[dict[str, Any]]:
         """Fetch owner statements, optionally scoped to a specific month."""
-        owner_id = await self.get_owner_id()
 
-        path = f"/owners/{owner_id}/statements"
-        if year is not None and month is not None:
-            path = f"{path}/{year}/{month:02d}"
+        async def _fetch():
+            owner_id = await self.get_owner_id()
+            path = f"/owners/{owner_id}/statements"
+            if year is not None and month is not None:
+                path = f"{path}/{year}/{month:02d}"
+            data = await self._request("GET", path)
+            return self._extract_list_response(data, "statements")
 
-        data = await self._request("GET", path)
-
-        if isinstance(data, dict):
-            if "data" in data and isinstance(data["data"], list):
-                return data["data"]
-        elif isinstance(data, list):
-            return data
-
-        return []
+        return await self._retry(_fetch, "statements")
 
     async def get_maintenance(
         self, unit_id: str, status: str | None = "open"
     ) -> list[dict[str, Any]]:
         """Fetch maintenance tickets for a unit."""
-        owner_id = await self.get_owner_id()
 
-        params = {"status": status} if status else None
-        data = await self._request(
-            "GET",
-            f"/owners/{owner_id}/units/{unit_id}/maintenance",
-            params=params,
-        )
+        async def _fetch():
+            owner_id = await self.get_owner_id()
+            params = {"status": status} if status else None
+            data = await self._request(
+                "GET",
+                f"/owners/{owner_id}/units/{unit_id}/maintenance",
+                params=params,
+            )
+            return self._extract_list_response(data, f"maintenance for unit {unit_id}")
 
-        if isinstance(data, dict):
-            return data.get("data", [])
-
-        return []
+        return await self._retry(_fetch, "maintenance")
 
     async def clear_property_cache(self) -> None:
         """Clear all cached property data."""

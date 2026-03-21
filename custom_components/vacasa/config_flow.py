@@ -95,23 +95,10 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         # Test authentication
         await client.authenticate()
 
-        # Get owner ID from API
-        try:
-            owner_id = await client.get_owner_id()
-            _LOGGER.debug("Retrieved owner ID from API: %s", owner_id)
-        except ApiError as err:
-            _LOGGER.error("Failed to get owner ID from API: %s", err)
-            raise OwnerIdError from err
+        # Test API access by getting units (also implicitly validates owner ID)
+        units = await client.get_units()
+        _LOGGER.debug("Retrieved %s units", len(units))
 
-        # Test API access by getting units
-        try:
-            units = await client.get_units()
-            _LOGGER.debug("Retrieved %s units", len(units))
-        except ApiError as err:
-            _LOGGER.error("Failed to get units: %s", err)
-            raise CannotConnect from err
-
-        # Return info that you want to store in the config entry.
         return {
             "title": f"Vacasa ({data[CONF_USERNAME]})",
             "units": len(units),
@@ -160,8 +147,6 @@ class VacasaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
             except InvalidAuth:
                 errors["base"] = "invalid_auth"
-            except OwnerIdError:
-                errors["base"] = "owner_id_error"
             except UnknownError:
                 errors["base"] = "unknown"
         else:
@@ -250,8 +235,6 @@ class VacasaOptionsFlowHandler(config_entries.OptionsFlow):
                     errors["base"] = "cannot_connect"
                 except InvalidAuth:
                     errors["base"] = "invalid_auth"
-                except OwnerIdError:
-                    errors["base"] = "owner_id_error"
                 except UnknownError:
                     errors["base"] = "unknown"
 
@@ -298,10 +281,6 @@ class CannotConnect(HomeAssistantError):
 
 class InvalidAuth(HomeAssistantError):
     """Error to indicate there is invalid auth."""
-
-
-class OwnerIdError(HomeAssistantError):
-    """Error to indicate there is an issue with the owner ID."""
 
 
 class UnknownError(HomeAssistantError):
