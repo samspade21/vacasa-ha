@@ -42,7 +42,7 @@ Configure through the Home Assistant UI:
 1. Go to **Configuration** > **Integrations** > **Add Integration**
 2. Search for "Vacasa"
 3. Enter your Vacasa username (email) and password
-4. Set the refresh interval (default: 8 hours)
+4. Set the refresh interval (default: 8 hours, range: 1–24 hours)
 5. Click "Submit"
 
 The integration will automatically discover all your properties and create entities.
@@ -59,39 +59,70 @@ The integration will automatically discover all your properties and create entit
 - **State**: `on` when occupied, `off` when vacant
 - **Attributes**:
   - `current_guest`: Current guest name
-  - `current_checkout`: Current checkout date/time (ISO format)
-  - `current_reservation_type`: Current reservation type
-  - `next_checkin`: Next check-in date/time (ISO format)
-  - `next_checkout`: Next checkout date/time (ISO format)
+  - `current_checkout`: Current checkout date/time (formatted local time)
+  - `current_reservation_type`: Current reservation type display name (e.g., "Guest Booking")
+  - `next_checkin`: Next check-in date/time (formatted local time)
+  - `next_checkout`: Next checkout date/time (formatted local time)
   - `next_guest`: Next guest name
-  - `next_reservation_type`: Next reservation type
+  - `next_reservation_type`: Next reservation type display name (e.g., "Owner Stay")
 
 ### Next Stay Sensor
 - **Entity ID**: `sensor.vacasa_[property_name]_next_stay`
-- **State**: Days until next check-in
+- **State**: Human-readable description such as `"Guest Booking (today)"`, `"Owner Stay in 5 days"`, `"Guest Booking (currently occupied)"`, or `"No upcoming reservations"`
 - **Attributes**:
-  - `stay_type`: Display name (e.g., "Guest Booking")
-  - `stay_category`: Lowercase with underscores (e.g., "guest_booking")
-  - `guest_name`: Next guest name
+  - `summary`: Full summary string (e.g., "Guest Booking: John Doe")
+  - `reservation_id`: Reservation identifier
   - `checkin_date`: Check-in date/time (ISO format)
   - `checkout_date`: Checkout date/time (ISO format)
+  - `checkin_time`: Check-in time only (ISO format)
+  - `checkout_time`: Checkout time only (ISO format)
+  - `stay_type`: Raw stay type identifier (e.g., `"guest"`, `"owner"`, `"block"`, `"maintenance"`)
+  - `stay_category`: Category string with underscores (e.g., `"guest_booking"`, `"owner_stay"`)
+  - `guest_name`: Guest or owner name
+  - `guest_count`: Number of guests
+  - `days_until_checkin`: Days until check-in (upcoming reservations only; `null` if currently occupied)
+  - `days_until_checkout`: Days until checkout
+  - `stay_duration_nights`: Length of stay in nights
+  - `is_current`: `true` if a reservation is currently active
+  - `is_upcoming`: `true` if the reservation is in the future
 
 ### Property Information Sensors
 - **Details**: Rating, location (lat/lon), timezone, address
 - **Capacity**: Max occupancy, adults, children, pets
-- **Amenities**: Bedrooms, bathrooms, hot tub, pet friendly, parking
+- **Amenities**: Bedrooms (with bed-type breakdown), bathrooms (full/half), hot tub, pet friendly, parking spaces
+
+### Maintenance Sensor
+- **Entity ID**: `sensor.vacasa_[property_name]_maintenance_open`
+- **State**: Number of open maintenance tickets
+- **Attributes**:
+  - `status_filter`: Filter applied (e.g., `"open"`)
+  - `open_ticket_ids`: List of ticket IDs
+  - `tickets`: List of ticket summaries with id, status, title, and updated_at
+
+### Owner Statements Sensor
+- **Entity ID**: `sensor.vacasa_statements`
+- **State**: Latest statement total amount (in USD)
+- **Attributes**:
+  - `statement_count`: Total number of statements
+  - `latest_statement_id`: ID of the most recent statement
+  - `period_start`: Statement period start date
+  - `period_end`: Statement period end date
+  - `status`: Statement status
+  - `total_amount`: Total amount
+  - `net_amount`: Net amount
+  - `amount_due`: Amount due
 
 ## Stay Types
 
-| Display Name | Category Value | Description |
-|-------------|----------------|-------------|
-| Guest Booking | `guest_booking` | Regular guest reservations |
-| Owner Stay | `owner_stay` | Property owner staying |
-| Maintenance | `maintenance` | Scheduled maintenance |
-| Block | `block` | Property blocks/holds |
-| Other | `other` | Other reservation types |
+| Display Name | Raw Type | Category Value | Description |
+|-------------|----------|----------------|-------------|
+| Guest Booking | `guest` | `guest_booking` | Regular guest reservations |
+| Owner Stay | `owner` | `owner_stay` | Property owner staying |
+| Maintenance | `maintenance` | `maintenance` | Scheduled maintenance |
+| Block | `block` | `block` | Property blocks/holds |
+| Other | `other` | `other` | Other reservation types |
 
-**Using in Automations**: Use binary sensor attributes `current_reservation_type` or `next_reservation_type` for most reliable automation triggers.
+**Using in Automations**: Use binary sensor attributes `current_reservation_type` or `next_reservation_type` for display names (e.g., `"Guest Booking"`). Use `stay_category` on the next stay sensor for underscore-formatted values (e.g., `"owner_stay"`).
 
 ## Services
 
@@ -171,13 +202,11 @@ automation:
 automation:
   - alias: "Prepare for Owner Stay"
     trigger:
-      - platform: numeric_state
-        entity_id: sensor.vacasa_vacation_cabin_next_stay
-        below: 3
-    condition:
-      - condition: template
+      - platform: template
         value_template: >
-          {{ state_attr('sensor.vacasa_vacation_cabin_next_stay', 'stay_category') == 'owner_stay' }}
+          {% set days = state_attr('sensor.vacasa_vacation_cabin_next_stay', 'days_until_checkin') %}
+          {% set category = state_attr('sensor.vacasa_vacation_cabin_next_stay', 'stay_category') %}
+          {{ days is not none and days | int <= 3 and category == 'owner_stay' }}
     action:
       - service: script.prepare_for_owner
 ```
@@ -199,7 +228,7 @@ logger:
 
 **Authentication fails**: Verify credentials in Vacasa owner portal. Two-factor authentication is not currently supported.
 
-**Calendar shows no events**: Check date range (30 days past to 365 days future). Use `vacasa.refresh_data` service to force refresh.
+**Calendar shows no events**: Check date range (60 days past to 365 days future). Use `vacasa.refresh_data` service to force refresh.
 
 **Occupancy sensor incorrect**: Verify check-in/check-out times in calendar. Ensure Home Assistant timezone matches property timezone.
 
@@ -248,55 +277,52 @@ uv run pytest
 
 ### Release Process for Maintainers
 
-This project uses an automated release process with clear separation between manual preparation and automated deployment.
+This project uses an automated release process. A single script handles version bumping, PR creation, CI gating, and merging.
 
 #### Quick Release Steps
 
 ```bash
-# 1. Prepare release on main branch
-#    - Update VERSION file with new version (e.g., "1.7.1")
-#    - Update custom_components/vacasa/manifest.json version field
-#    - Update CHANGELOG.md with release notes
-#    - Commit all changes: git commit -m "chore: prepare release v1.7.1"
+# 1. Add a changelog entry for the new version
+#    - Update CHANGELOG.md with a ## [X.Y.Z] - YYYY-MM-DD section
 
-# 2. Run the release script
-./new-prod-release.sh
+# 2. Run the release script from the main branch
+./new-prod-release.sh 1.9.0
 
-# 3. Review and merge the PR
-#    - Script creates PR from development to main
-#    - Review PR and ensure CI checks pass
-#    - Merge when ready
-
-# 4. Automatic release creation
-#    - GitHub Actions automatically creates git tag
-#    - Release workflow creates GitHub release with assets
-#    - HACS is notified for distribution
+# The script handles everything else automatically:
+# - Bumps VERSION and manifest.json
+# - Creates a temporary branch bump/version-X.Y.Z
+# - Opens a PR to main with changelog notes
+# - Waits for CI checks to pass
+# - Squash-merges the PR and deletes the temp branch
+# - Pulls latest main locally
 ```
+
+After the PR merges, GitHub Actions automatically:
+1. 🤖 Detects the VERSION change and reads the new version
+2. 🏷️ Creates an annotated git tag (e.g., v1.9.0)
+3. 📦 Triggers the release workflow
+4. 🚀 Creates a GitHub release with changelog and assets
+5. 📢 Notifies HACS for distribution
 
 #### Prerequisites
 
 - **GitHub CLI**: `brew install gh` (macOS) or `sudo apt install gh` (Linux)
 - **Authentication**: Run `gh auth login` before first use
-- **Clean Working Directory**: All changes must be committed
-- **Version Consistency**: VERSION file and manifest.json must match
-- **Changelog Entry**: CHANGELOG.md must contain new version section
+- **Main branch**: Must be on `main` with a clean working directory (uncommitted CHANGELOG.md edits are allowed)
+- **Changelog Entry**: CHANGELOG.md must contain a `## [X.Y.Z]` section for the new version
 
 #### What the Script Does
 
-The `new-prod-release.sh` script:
-1. ✅ Validates prerequisites (git, gh CLI authentication)
-2. ✅ Verifies you're on development branch with clean working directory
-3. ✅ Checks version consistency across VERSION, manifest.json, and CHANGELOG.md
-4. ✅ Pushes development branch to GitHub
-5. ✅ Creates pull request from development to main
-6. ✅ Displays PR information and next steps
-
-After PR merge, GitHub Actions automatically:
-1. 🤖 Detects release merge and reads version from VERSION file
-2. 🏷️ Creates annotated git tag (e.g., v1.7.1)
-3. 📦 Triggers release workflow
-4. 🚀 Creates GitHub release with changelog and assets
-5. 📢 Notifies HACS for distribution
+The `new-prod-release.sh <version>` script:
+1. ✅ Validates prerequisites (git, gh CLI authentication, must be on `main` branch)
+2. ✅ Pulls latest `main` and verifies the tag doesn't already exist
+3. ✅ Checks CHANGELOG.md for a `## [X.Y.Z]` entry
+4. ✅ Writes the new version to `VERSION` and `custom_components/vacasa/manifest.json`
+5. ✅ Creates branch `bump/version-X.Y.Z`, commits, and pushes
+6. ✅ Opens a PR to `main` with the changelog section as the PR body
+7. ✅ Waits for all CI checks to pass (`--fail-fast`)
+8. ✅ Squash-merges the PR and deletes the remote branch
+9. ✅ Returns `main` to the latest commit locally
 
 #### Troubleshooting
 
@@ -306,50 +332,47 @@ gh auth login
 gh auth status
 ```
 
-**Issue: "Working directory is not clean"**
+**Issue: "Must be on main branch"**
+```bash
+git checkout main
+git pull origin main
+```
+
+**Issue: "Unexpected uncommitted changes"**
 ```bash
 git status
 git add .
 git commit -m "chore: cleanup before release"
 ```
 
-**Issue: "Version mismatch"**
+**Issue: "CHANGELOG.md has no entry for [X.Y.Z]"**
 ```bash
-# Check versions
-cat VERSION
-grep version custom_components/vacasa/manifest.json
-grep "## \[" CHANGELOG.md | head -1
+# Add a section to CHANGELOG.md:
+# ## [X.Y.Z] - $(date +%Y-%m-%d)
+# ### Changed
+# - ...
+```
 
-# Update all files to match
-echo "1.7.1" > VERSION
-# Edit manifest.json manually
-# Ensure CHANGELOG.md has [1.7.1] entry
+**Issue: "Tag vX.Y.Z already exists"**
+```bash
+gh release list   # verify the release exists
+# If you need to re-release, delete the tag first:
+git push origin :refs/tags/vX.Y.Z
+git tag -d vX.Y.Z
 ```
 
 **Issue: "PR already exists"**
 ```bash
 gh pr list
 gh pr close <pr-number>  # Close old PR if needed
-./new-prod-release.sh    # Try again
+./new-prod-release.sh X.Y.Z  # Try again
 ```
-
-**Issue: "Auto-tag workflow didn't trigger"**
-- Check commit message contains "Release v" or "prepare release v"
-- Manually create tag if needed:
-  ```bash
-  git checkout main
-  git pull origin main
-  git tag -a v1.7.1 -m "Release v1.7.1"
-  git push origin v1.7.1
-  ```
 
 #### Version Management Best Practices
 
 - **Semantic Versioning**: Use MAJOR.MINOR.PATCH format
-- **Consistency**: Always update VERSION, manifest.json, and CHANGELOG.md together
 - **Changelog Format**: Follow Keep a Changelog format with date
-- **Branch Hygiene**: Keep development branch in sync with main after releases
-- **Testing**: Test changes thoroughly before creating release PR
+- **Testing**: Test changes thoroughly before running the release script
 
 ## Contributing
 
