@@ -14,7 +14,12 @@ from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from . import VacasaConfigEntry, VacasaDataUpdateCoordinator, _make_unit_device_info
+from . import (
+    VacasaConfigEntry,
+    VacasaDataUpdateCoordinator,
+    _extract_unit_info,
+    _make_unit_device_info,
+)
 from .api_client import VacasaApiClient
 from .const import (
     CALENDAR_LOOKAHEAD_DAYS,
@@ -56,9 +61,7 @@ async def async_setup_entry(
     # Create a calendar entity for each unit
     entities = []
     for unit in units:
-        unit_id = unit.get("id")
-        attributes = unit.get("attributes", {})
-        name = attributes.get("name", f"Vacasa Unit {unit_id}")
+        unit_id, attributes, name = _extract_unit_info(unit)
         code = attributes.get("code", "")
 
         entity = VacasaCalendar(
@@ -93,10 +96,10 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         self._name = name
         self._code = code
         self._unit_attributes = unit_attributes
-        self._checkin_time = unit_attributes.get("checkInTime")
-        self._checkout_time = unit_attributes.get("checkOutTime")
-        self._property_checkin_time = self._normalize_time_value(self._checkin_time)
-        self._property_checkout_time = self._normalize_time_value(self._checkout_time)
+        self._property_checkin_time = self._normalize_time_value(unit_attributes.get("checkInTime"))
+        self._property_checkout_time = self._normalize_time_value(
+            unit_attributes.get("checkOutTime")
+        )
 
         tz_str = unit_attributes.get("timezone")
         if tz_str:

@@ -20,6 +20,7 @@ from . import (
     VacasaConfigEntry,
     VacasaDataUpdateCoordinator,
     VacasaReservationStateMixin,
+    _extract_unit_info,
     _make_unit_device_info,
 )
 from .const import (
@@ -53,9 +54,7 @@ async def async_setup_entry(
 
         entities: list[VacasaOccupancySensor] = []
         for unit in units:
-            unit_id = unit.get("id")
-            attributes = unit.get("attributes", {})
-            name = attributes.get("name", f"Vacasa Unit {unit_id}")
+            unit_id, attributes, name = _extract_unit_info(unit)
             code = attributes.get("code", "")
 
             entities.append(

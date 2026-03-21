@@ -1099,31 +1099,6 @@ class VacasaApiClient:
         await self._property_cache.clear()
         _LOGGER.debug("Cleared all property cache data")
 
-    async def get_cache_stats(self) -> dict[str, Any]:
-        """Get cache statistics.
-
-        Returns:
-            Dictionary with cache statistics
-        """
-        return self._property_cache.get_stats()
-
-    async def cleanup_expired_cache(self) -> int:
-        """Clean up expired cache entries.
-
-        Returns:
-            Number of entries removed
-        """
-        return await self._property_cache.cleanup_expired()
-
-    async def invalidate_cache_for_unit(self, unit_id: str) -> None:
-        """Invalidate cache entries for a specific unit.
-
-        Args:
-            unit_id: The unit ID to invalidate cache for
-        """
-        await self._property_cache.delete(f"unit_details_{unit_id}")
-        _LOGGER.debug("Invalidated cache for unit %s", unit_id)
-
     async def get_categorized_reservations(
         self, unit_id: str, start_date: str, end_date: str | None = None
     ) -> dict[str, list[dict[str, Any]]]:
