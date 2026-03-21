@@ -50,6 +50,14 @@ def _make_owner_device_info(entry_id: str, username: str) -> dict[str, Any]:
     }
 
 
+def _extract_unit_info(unit: dict[str, Any]) -> tuple[str, dict[str, Any], str]:
+    """Extract unit_id, attributes, and name from a unit API response dict."""
+    unit_id = unit.get("id")
+    attributes = unit.get("attributes", {})
+    name = attributes.get("name", f"Vacasa Unit {unit_id}")
+    return unit_id, attributes, name
+
+
 @dataclass
 class VacasaData:
     """Runtime data for Vacasa integration."""

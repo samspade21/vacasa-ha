@@ -16,6 +16,7 @@ from . import (
     VacasaConfigEntry,
     VacasaDataUpdateCoordinator,
     VacasaReservationStateMixin,
+    _extract_unit_info,
     _make_owner_device_info,
     _make_unit_device_info,
 )
@@ -389,58 +390,54 @@ class VacasaAddressSensor(VacasaBaseSensor):
     _sensor_type = SENSOR_ADDRESS
     _attr_icon = "mdi:map-marker"
 
-    @property
-    def native_value(self) -> str | None:
-        """Return the address value."""
-        address = self._unit_attributes.get("address", {})
+    def __init__(self, **kwargs: Any) -> None:
+        """Pre-compute address string and attributes once from immutable unit_attributes."""
+        super().__init__(**kwargs)
+        self._address_value, self._address_attrs = self._parse_address(
+            self._unit_attributes.get("address", {})
+        )
+
+    @staticmethod
+    def _parse_address(address: dict[str, Any]) -> tuple[str | None, dict[str, Any]]:
+        """Parse address dict into a display string and attribute dict."""
         if not address:
-            return None
+            return None, {}
 
         parts = []
-        if address.get("address_1"):
-            parts.append(address["address_1"])
+        attrs: dict[str, Any] = {}
 
-        if address.get("address_2"):
-            parts.append(address["address_2"])
+        for key in ["address_1", "address_2"]:
+            if address.get(key):
+                parts.append(address[key])
+                attrs[key] = address[key]
 
         city_state_zip = []
-        if address.get("city"):
-            city_state_zip.append(address["city"])
-
-        if address.get("state"):
-            city_state_zip.append(address["state"])
-
-        if address.get("zip"):
-            city_state_zip.append(address["zip"])
-
+        for key in ["city", "state", "zip"]:
+            if address.get(key):
+                city_state_zip.append(address[key])
+                attrs[key] = address[key]
         if city_state_zip:
             parts.append(", ".join(city_state_zip))
 
         country = address.get("country", {})
-        if country and country.get("name"):
-            parts.append(country["name"])
+        if country:
+            if country.get("name"):
+                parts.append(country["name"])
+                attrs["country"] = country["name"]
+            if country.get("code"):
+                attrs["country_code"] = country["code"]
 
-        return ", ".join(parts) if parts else None
+        return ", ".join(parts) if parts else None, attrs
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the address value."""
+        return self._address_value
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
-        address = self._unit_attributes.get("address", {})
-
-        attributes = {}
-        if address:
-            for key in ["address_1", "address_2", "city", "state", "zip"]:
-                if key in address and address[key]:
-                    attributes[key] = address[key]
-
-            country = address.get("country", {})
-            if country:
-                if country.get("name"):
-                    attributes["country"] = country["name"]
-                if country.get("code"):
-                    attributes["country_code"] = country["code"]
-
-        return attributes
+        return self._address_attrs
 
 
 class VacasaMaintenanceSensor(VacasaApiUpdateMixin, VacasaBaseSensor):
@@ -812,13 +809,10 @@ async def async_setup_entry(
 
     entities: list[SensorEntity] = []
     for unit in units:
-        unit_id = unit.get("id")
+        unit_id, attributes, name = _extract_unit_info(unit)
         if not unit_id:
             _LOGGER.debug("Skipping Vacasa unit without an id: %s", unit)
             continue
-
-        attributes = unit.get("attributes", {})
-        name = attributes.get("name", f"Vacasa Unit {unit_id}")
         entities.extend(_create_unit_sensors(coordinator, unit_id, name, attributes))
 
     # Add owner-level statements sensor once per config entry
