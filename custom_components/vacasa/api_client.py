@@ -150,13 +150,16 @@ class VacasaApiClient:
         self._request_semaphore = asyncio.Semaphore(DEFAULT_MAX_CONCURRENT_REQUESTS)
         # Lock to prevent concurrent owner_id fetches from making duplicate API calls
         self._owner_id_lock = asyncio.Lock()
+        # Lock to prevent concurrent token refresh attempts
+        self._ensure_token_lock = asyncio.Lock()
 
-        # Set up retry handler
+        # Set up retry handler — AuthenticationError is a permanent failure; never retry it
         self._retry_handler = RetryWithBackoff(
             max_retries=max_retries,
             base_delay=retry_delay,
             backoff_multiplier=RETRY_BACKOFF_MULTIPLIER,
             max_jitter=jitter_max,
+            no_retry_exceptions=(AuthenticationError,),
         )
 
         _LOGGER.debug(
@@ -519,7 +522,14 @@ class VacasaApiClient:
 
     async def ensure_token(self) -> str:
         """Ensure we have a valid token, refreshing if necessary."""
-        if not self.is_token_valid:
+        if self.is_token_valid:
+            return self._token
+
+        async with self._ensure_token_lock:
+            # Re-check after acquiring the lock — another waiter may have refreshed already
+            if self.is_token_valid:
+                return self._token
+
             _LOGGER.debug("Token is invalid or missing, attempting to refresh")
 
             # Try to load token from cache first
@@ -890,6 +900,18 @@ class VacasaApiClient:
                 _LOGGER.error("Error getting owner ID: %s", e)
                 raise ApiError(f"Error getting owner ID: {e}")
 
+    @staticmethod
+    def _extract_list_response(data: Any, context: str) -> list[dict[str, Any]]:
+        """Extract a list from a standard ``{"data": [...]}`` or bare-list API response."""
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            items = data.get("data", [])
+            if isinstance(items, list):
+                return items
+        _LOGGER.warning("Unexpected response format for %s: %s", context, type(data).__name__)
+        return []
+
     async def _cached_api_get(self, cache_key: str, fetch_func, log_name: str) -> Any:
         """Fetch a value from the property cache, or call fetch_func and cache the result.
 
@@ -935,11 +957,7 @@ class VacasaApiClient:
             data = await self._request("GET", f"/owners/{owner_id}/units")
             _LOGGER.debug("Received units response: %s", data)
 
-            if "data" not in data:
-                _LOGGER.warning("No data field in units response: %s", data)
-                return []
-
-            units = data["data"]
+            units = self._extract_list_response(data, "units")
             _LOGGER.debug("Retrieved %s units", len(units))
             if units:
                 _LOGGER.debug("Unit IDs: %s", [unit.get("id") for unit in units])
@@ -1005,11 +1023,7 @@ class VacasaApiClient:
                 params=params,
             )
 
-            if "data" not in data:
-                _LOGGER.warning("No data field in reservations response: %s", data)
-                return []
-
-            reservations = data["data"]
+            reservations = self._extract_list_response(data, f"reservations for unit {unit_id}")
             _LOGGER.debug("Retrieved %s reservations", len(reservations))
 
             if reservations and _LOGGER.isEnabledFor(logging.DEBUG):
@@ -1068,13 +1082,7 @@ class VacasaApiClient:
 
         data = await self._request("GET", path)
 
-        if isinstance(data, dict):
-            if "data" in data and isinstance(data["data"], list):
-                return data["data"]
-        elif isinstance(data, list):
-            return data
-
-        return []
+        return self._extract_list_response(data, "statements")
 
     async def get_maintenance(
         self, unit_id: str, status: str | None = "open"
@@ -1089,10 +1097,7 @@ class VacasaApiClient:
             params=params,
         )
 
-        if isinstance(data, dict):
-            return data.get("data", [])
-
-        return []
+        return self._extract_list_response(data, f"maintenance for unit {unit_id}")
 
     async def clear_property_cache(self) -> None:
         """Clear all cached property data."""

@@ -616,10 +616,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                 stay_type=stay_type,
                 reservation_id=reservation.get("id"),
                 guest_count=attributes.get("guestCount"),
-                first_name=first_name,
-                last_name=last_name,
-                hold_who_booked=hold_who_booked,
-                hold_type=hold_type,
+                guest_name=guest_name,
             )
 
             self._reservation_windows[event.uid] = window
@@ -638,20 +635,9 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         stay_type: str,
         reservation_id: str | None,
         guest_count: int | None,
-        first_name: str | None,
-        last_name: str | None,
-        hold_who_booked: str | None,
-        hold_type: str | None,
+        guest_name: str | None,
     ) -> ReservationWindow:
         """Create a structured reservation window for dispatcher consumers."""
-        guest_name = self._resolve_guest_name(
-            stay_type,
-            first_name=first_name,
-            last_name=last_name,
-            hold_who_booked=hold_who_booked,
-            hold_type=hold_type,
-        )
-
         return ReservationWindow(
             reservation_id=str(reservation_id) if reservation_id is not None else None,
             summary=summary,
