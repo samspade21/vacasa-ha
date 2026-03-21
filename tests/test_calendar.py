@@ -342,7 +342,6 @@ async def test_event_cache_eviction_at_max_size():
         calendar._event_cache[f"key_{i}"] = []
 
     assert len(calendar._event_cache) == CALENDAR_EVENT_CACHE_MAX_SIZE
-    first_key = next(iter(calendar._event_cache))
 
     # Adding one more entry should evict the oldest
     calendar._event_cache["overflow_key"] = []
