@@ -1,7 +1,7 @@
 """Tests for the Vacasa binary sensor."""
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -141,3 +141,77 @@ def test_refresh_from_coordinator_uses_cached_state():
 
     assert sensor.is_on is True
     assert sensor.extra_state_attributes["current_guest"] == "Alice"
+
+
+def _make_sensor(coordinator=None, unit_id="unit123"):
+    if coordinator is None:
+        coordinator = _mock_coordinator()
+    return VacasaOccupancySensor(
+        coordinator=coordinator,
+        unit_id=unit_id,
+        name="Test Unit",
+        code="TU",
+        unit_attributes={},
+    )
+
+
+def test_handle_coordinator_update_no_write_when_unchanged():
+    """Change-detection guard suppresses write when reservations are the same."""
+    coordinator = _mock_coordinator()
+    state = ReservationState(current=_reservation_window("Guest Booking", guest_name="Alice"))
+    coordinator.reservation_states["unit123"] = state
+
+    sensor = _make_sensor(coordinator)
+    sensor._update_from_state(state)
+
+    with patch.object(sensor, "async_write_ha_state") as mock_write:
+        sensor._handle_coordinator_update()
+        mock_write.assert_not_called()
+
+
+def test_handle_coordinator_update_writes_when_reservation_changes():
+    """Change-detection guard fires when the reservation changes."""
+    coordinator = _mock_coordinator()
+    old_state = ReservationState(current=_reservation_window("Booking A", guest_name="Alice"))
+    new_state = ReservationState(current=_reservation_window("Booking B", guest_name="Bob"))
+
+    coordinator.reservation_states["unit123"] = old_state
+    sensor = _make_sensor(coordinator)
+    sensor._update_from_state(old_state)
+
+    coordinator.reservation_states["unit123"] = new_state
+    with patch.object(sensor, "async_write_ha_state") as mock_write:
+        sensor._handle_coordinator_update()
+        mock_write.assert_called_once()
+
+
+def test_reservation_type_unknown_stay_type():
+    """Unknown stay types are title-cased from the raw value."""
+    coordinator = _mock_coordinator()
+    sensor = _make_sensor(coordinator)
+    window = _reservation_window("Custom", stay_type="custom_hold")
+    result = sensor._reservation_type(window)
+    assert result == "Custom Hold"
+
+
+def test_reservation_type_none_window():
+    """None window returns None."""
+    sensor = _make_sensor()
+    assert sensor._reservation_type(None) is None
+
+
+def test_format_datetime_none():
+    """Formatting None returns None."""
+    sensor = _make_sensor()
+    assert sensor._format_datetime(None) is None
+
+
+def test_format_datetime_value():
+    """Datetime is formatted with local representation."""
+    from datetime import datetime, timezone
+
+    sensor = _make_sensor()
+    dt = datetime(2024, 6, 15, 14, 30, 0, tzinfo=timezone.utc)
+    result = sensor._format_datetime(dt)
+    assert result is not None
+    assert "2024-06-15" in result

@@ -90,6 +90,11 @@ class VacasaBaseSensor(SensorEntity):
             return None
         return "Yes" if value else "No"
 
+    def _get_amenity_bool(self, key: str) -> str | None:
+        """Return Yes/No for a boolean amenity flag, or None if the key is absent."""
+        amenities = self._unit_attributes.get("amenities", {})
+        return self._bool_to_yes_no(amenities.get(key) if amenities else None)
+
 
 class VacasaApiUpdateMixin:
     """Mixin to throttle API-backed sensors to the coordinator refresh."""
@@ -337,8 +342,7 @@ class VacasaHotTubSensor(VacasaBaseSensor):
     def __init__(self, **kwargs: Any) -> None:
         """Pre-compute hot tub value from immutable unit_attributes."""
         super().__init__(**kwargs)
-        amenities = self._unit_attributes.get("amenities", {})
-        self._hot_tub_value = self._bool_to_yes_no(amenities.get("hotTub") if amenities else None)
+        self._hot_tub_value = self._get_amenity_bool("hotTub")
 
     @property
     def native_value(self) -> str | None:
@@ -355,10 +359,7 @@ class VacasaPetFriendlySensor(VacasaBaseSensor):
     def __init__(self, **kwargs: Any) -> None:
         """Pre-compute pet friendly value from immutable unit_attributes."""
         super().__init__(**kwargs)
-        amenities = self._unit_attributes.get("amenities", {})
-        self._pet_friendly_value = self._bool_to_yes_no(
-            amenities.get("petsFriendly") if amenities else None
-        )
+        self._pet_friendly_value = self._get_amenity_bool("petsFriendly")
 
     @property
     def native_value(self) -> str | None:
