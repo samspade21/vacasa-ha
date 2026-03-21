@@ -16,7 +16,7 @@ from . import (
     VacasaConfigEntry,
     VacasaDataUpdateCoordinator,
     VacasaReservationStateMixin,
-    _extract_unit_info,
+    _iter_coordinator_units,
     _make_owner_device_info,
     _make_unit_device_info,
 )
@@ -799,22 +799,10 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Vacasa sensor platform."""
-    data = config_entry.runtime_data
-    coordinator = data.coordinator
-
-    units = coordinator.data.get("units") if coordinator.data else None
-    if units is None:
-        _LOGGER.warning("Vacasa unit data unavailable while setting up sensors")
-        return
-
-    _LOGGER.debug("Found %s Vacasa units for sensors", len(units))
+    coordinator = config_entry.runtime_data.coordinator
 
     entities: list[SensorEntity] = []
-    for unit in units:
-        unit_id, attributes, name = _extract_unit_info(unit)
-        if not unit_id:
-            _LOGGER.debug("Skipping Vacasa unit without an id: %s", unit)
-            continue
+    for unit_id, attributes, name in _iter_coordinator_units(coordinator, "sensors"):
         entities.extend(_create_unit_sensors(coordinator, unit_id, name, attributes))
 
     # Add owner-level statements sensor once per config entry

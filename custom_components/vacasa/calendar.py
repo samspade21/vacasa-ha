@@ -17,7 +17,7 @@ from homeassistant.util import dt as dt_util
 from . import (
     VacasaConfigEntry,
     VacasaDataUpdateCoordinator,
-    _extract_unit_info,
+    _iter_coordinator_units,
     _make_unit_device_info,
 )
 from .api_client import VacasaApiClient
@@ -49,31 +49,17 @@ async def async_setup_entry(
     data = config_entry.runtime_data
     client = data.client
     coordinator = data.coordinator
-
-    # Get all units from the coordinator cache
-    units = coordinator.data.get("units") if coordinator.data else None
-    if units is None:
-        _LOGGER.warning("Vacasa unit data unavailable while setting up calendars")
-        return
-
-    _LOGGER.info("Found %d Vacasa units for calendars", len(units))
-
-    # Create a calendar entity for each unit
-    entities = []
-    for unit in units:
-        unit_id, attributes, name = _extract_unit_info(unit)
-        code = attributes.get("code", "")
-
-        entity = VacasaCalendar(
+    entities = [
+        VacasaCalendar(
             coordinator=coordinator,
             client=client,
             unit_id=unit_id,
             name=name,
-            code=code,
+            code=attributes.get("code", ""),
             unit_attributes=attributes,
         )
-        entities.append(entity)
-
+        for unit_id, attributes, name in _iter_coordinator_units(coordinator, "calendars")
+    ]
     async_add_entities(entities, True)
 
 
