@@ -1,218 +1,190 @@
 #!/bin/bash
 
-# Vacasa Home Assistant Integration - Simple Release Deployment
+# Vacasa Home Assistant Integration - Release Deployment
 #
-# This script creates a pull request from development to main.
-# GitHub Actions handle the rest of the automation automatically.
+# Creates a versioned release branch, bumps VERSION + manifest.json,
+# validates CHANGELOG.md has an entry, then opens a PR to main.
+# GitHub Actions auto-tag and auto-release on merge.
 #
-# Usage: ./new-prod-release.sh
+# Usage:   ./new-prod-release.sh <version>
+# Example: ./new-prod-release.sh 1.8.0
+#
 # Prerequisites:
-#   - Must be on development branch
-#   - VERSION file and manifest.json must be updated
-#   - CHANGELOG.md must be updated
+#   - Must be on main branch (clean working directory)
+#   - CHANGELOG.md must have a ## [<version>] entry
 #   - GitHub CLI (gh) must be authenticated
 
-set -e  # Exit on any error
+set -e
 
-# Colors for output
+# ── Colors ────────────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Configuration
-REQUIRED_BRANCH="development"
-TARGET_BRANCH="main"
+log_info()    { echo -e "${BLUE}ℹ️  $1${NC}"; }
+log_success() { echo -e "${GREEN}✅ $1${NC}"; }
+log_error()   { echo -e "${RED}❌ $1${NC}"; }
+log_step()    { echo -e "\n${BOLD}${CYAN}🚀 $1${NC}"; }
 
-# Helper functions
-log_info() {
-    echo -e "${BLUE}ℹ️  $1${NC}"
-}
+# ── Argument validation ────────────────────────────────────────────────────────
+if [ -z "$1" ]; then
+    log_error "Version argument required."
+    echo "  Usage:   $0 <version>"
+    echo "  Example: $0 1.8.0"
+    exit 1
+fi
 
-log_success() {
-    echo -e "${GREEN}✅ $1${NC}"
-}
+VERSION="$1"
+TAG="v$VERSION"
+RELEASE_BRANCH="release/$TAG"
 
-log_error() {
-    echo -e "${RED}❌ $1${NC}"
-}
-
-log_step() {
-    echo -e "\n${BOLD}${CYAN}🚀 $1${NC}"
-}
-
+# ── Prerequisites ──────────────────────────────────────────────────────────────
 check_prerequisites() {
     log_step "Checking Prerequisites"
 
-    # Check if gh CLI is installed and authenticated
     if ! command -v gh &> /dev/null; then
-        log_error "GitHub CLI (gh) is not installed. Please install it first."
+        log_error "GitHub CLI (gh) is not installed."
         exit 1
     fi
 
     if ! gh auth status &> /dev/null; then
-        log_error "GitHub CLI is not authenticated. Please run 'gh auth login' first."
+        log_error "GitHub CLI is not authenticated. Run 'gh auth login' first."
         exit 1
     fi
 
-    # Check if we're on the correct branch
+    local current_branch
     current_branch=$(git branch --show-current)
-    if [ "$current_branch" != "$REQUIRED_BRANCH" ]; then
-        log_error "Must be on $REQUIRED_BRANCH branch. Currently on: $current_branch"
+    if [ "$current_branch" != "main" ]; then
+        log_error "Must be on main branch. Currently on: $current_branch"
         exit 1
     fi
 
-    # Check if working directory is clean
-    if [ -n "$(git status --porcelain)" ]; then
-        log_error "Working directory is not clean. Please commit or stash changes first."
-        git status --short
+    # Allow only release-related files to be modified
+    local unexpected
+    unexpected=$(git status --porcelain | grep -v '^ M CHANGELOG.md' | grep -v '^ M new-prod-release.sh' | grep -v '^??' || true)
+    if [ -n "$unexpected" ]; then
+        log_error "Unexpected uncommitted changes. Commit or stash non-release changes first."
+        echo "$unexpected"
         exit 1
     fi
 
-    log_success "Prerequisites validated"
+    # Pull latest main
+    git pull origin main --quiet
+    log_success "Prerequisites validated (on main, up to date)"
 }
 
-validate_version_info() {
-    log_step "Validating Version Information"
+# ── Validate CHANGELOG ─────────────────────────────────────────────────────────
+validate_changelog() {
+    log_step "Validating CHANGELOG.md"
 
-    # Read version from VERSION file
-    if [ ! -f "VERSION" ]; then
-        log_error "VERSION file not found"
-        exit 1
-    fi
-
-    VERSION=$(cat VERSION | tr -d '[:space:]')
-    if [ -z "$VERSION" ]; then
-        log_error "VERSION file is empty"
-        exit 1
-    fi
-
-    # Read version from manifest.json
-    if [ ! -f "custom_components/vacasa/manifest.json" ]; then
-        log_error "manifest.json not found"
-        exit 1
-    fi
-
-    MANIFEST_VERSION=$(python3 -c "import json; print(json.load(open('custom_components/vacasa/manifest.json'))['version'])")
-
-    # Validate version consistency
-    if [ "$VERSION" != "$MANIFEST_VERSION" ]; then
-        log_error "Version mismatch: VERSION file ($VERSION) != manifest.json ($MANIFEST_VERSION)"
-        exit 1
-    fi
-
-    # Check if CHANGELOG.md contains the version
     if ! grep -q "## \[$VERSION\]" CHANGELOG.md; then
-        log_error "CHANGELOG.md does not contain entry for version $VERSION"
-        log_info "Please add a changelog entry starting with: ## [$VERSION] - $(date +%Y-%m-%d)"
+        log_error "CHANGELOG.md has no entry for [$VERSION]."
+        log_info  "Add an entry starting with: ## [$VERSION] - $(date +%Y-%m-%d)"
         exit 1
     fi
 
-    log_success "Version information validated: v$VERSION"
-    echo "  📁 VERSION file: $VERSION"
-    echo "  📋 manifest.json: $MANIFEST_VERSION"
-    echo "  📝 CHANGELOG.md: Entry found"
-}
-
-push_and_create_pr() {
-    log_step "Creating Release Pull Request"
-
-    # Push development branch
-    git push origin $REQUIRED_BRANCH
-    log_success "Pushed $REQUIRED_BRANCH branch to GitHub"
-
-    # Create PR title and body
-    local pr_title="Release v$VERSION"
-    local pr_body="## 🚀 Release v$VERSION
-
-This PR contains the release preparations for version $VERSION.
-
-### 📋 Release Checklist
-- ✅ Version updated in VERSION file: \`$VERSION\`
-- ✅ Version updated in manifest.json: \`$VERSION\`
-- ✅ CHANGELOG.md updated with release notes
-
-### 📝 Release Notes
-$(grep -A 20 "## \[$VERSION\]" CHANGELOG.md | head -20)
-
-### 🤖 Automated Process
-- ✅ Upon merge, GitHub Actions will automatically create tag \`v$VERSION\`
-- ✅ Tag creation will trigger the release workflow
-- ✅ GitHub release will be created with changelog and assets
-- ✅ HACS will be notified for distribution
-
-**No manual steps required after merge - everything is automated!** 🎉"
-
-    # Check if PR already exists
-    local existing_pr=$(gh pr list --base $TARGET_BRANCH --head $REQUIRED_BRANCH 2>/dev/null | head -1 | awk '{print $1}' | sed 's/#//' || echo "")
-
-    if [ -n "$existing_pr" ] && [ "$existing_pr" != "" ]; then
-        log_success "Existing PR #$existing_pr found"
-        local pr_number=$existing_pr
-
-        # Update PR body
-        gh pr edit $pr_number --body "$pr_body"
-        log_success "Updated PR #$pr_number with latest information"
-    else
-        # Create new PR
-        gh pr create \
-            --base $TARGET_BRANCH \
-            --head $REQUIRED_BRANCH \
-            --title "$pr_title" \
-            --body "$pr_body"
-
-        # Get the PR number from the newly created PR
-        local pr_number=$(gh pr list --base $TARGET_BRANCH --head $REQUIRED_BRANCH 2>/dev/null | head -1 | awk '{print $1}' | sed 's/#//')
-
-        log_success "Created PR #$pr_number"
+    # Warn if tag already exists
+    if git tag -l | grep -q "^$TAG$"; then
+        log_error "Tag $TAG already exists. Has this version already been released?"
+        exit 1
     fi
 
-    # Display PR information
-    echo -e "\n${BOLD}📋 Pull Request Created:${NC}"
-    echo "  🔗 URL: https://github.com/samspade21/vacasa-ha/pull/$pr_number"
-    echo "  📝 Title: $pr_title"
-    echo "  🎯 Version: v$VERSION"
+    log_success "CHANGELOG.md entry found for $VERSION"
 }
 
-# Main execution flow
+# ── Bump version files ─────────────────────────────────────────────────────────
+bump_versions() {
+    log_step "Bumping Version Files to $VERSION"
+
+    echo "$VERSION" > VERSION
+    log_success "VERSION → $VERSION"
+
+    python3 - <<PYEOF
+import json
+path = "custom_components/vacasa/manifest.json"
+with open(path) as f:
+    data = json.load(f)
+data["version"] = "$VERSION"
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PYEOF
+    log_success "manifest.json → $VERSION"
+}
+
+# ── Create release branch, commit, push, open PR ──────────────────────────────
+create_release_pr() {
+    log_step "Creating Release PR"
+
+    git checkout -b "$RELEASE_BRANCH"
+    git add VERSION custom_components/vacasa/manifest.json CHANGELOG.md new-prod-release.sh
+    git commit -m "chore: bump version to $VERSION"
+
+    git push -u origin "$RELEASE_BRANCH"
+    log_success "Pushed $RELEASE_BRANCH"
+
+    # Extract changelog section for PR body
+    local notes
+    notes=$(python3 - <<PYEOF
+import re, sys
+with open("CHANGELOG.md") as f:
+    content = f.read()
+m = re.search(r'## \[$VERSION\][^\n]*\n(.*?)(?=\n## \[|\Z)', content, re.DOTALL)
+print(m.group(1).strip() if m else "See CHANGELOG.md")
+PYEOF
+)
+
+    gh pr create \
+        --base main \
+        --head "$RELEASE_BRANCH" \
+        --title "Release $TAG" \
+        --body "$(cat <<EOF
+## Release $TAG
+
+### Changes
+$notes
+
+### Automated steps on merge
+- GitHub Actions creates tag \`$TAG\`
+- Release workflow builds archive and publishes GitHub Release
+- HACS notified for distribution
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+
+    local pr_url
+    pr_url=$(gh pr list --base main --head "$RELEASE_BRANCH" --json url -q '.[0].url')
+    log_success "PR created: $pr_url"
+}
+
+# ── Main ───────────────────────────────────────────────────────────────────────
 main() {
     echo -e "${BOLD}${CYAN}"
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║               Vacasa Integration Release Deployment          ║"
-    echo "║                  Create Release Pull Request                 ║"
+    echo "║           Vacasa Integration — Create Release PR             ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
-    echo -e "${NC}\n"
+    echo -e "${NC}"
 
-    # Execute deployment steps
     check_prerequisites
-    validate_version_info
-    push_and_create_pr
+    validate_changelog
+    bump_versions
+    create_release_pr
 
-    # Success message with next steps
     echo -e "\n${BOLD}${GREEN}"
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║                 🎉 PR CREATED SUCCESSFULLY! 🎉               ║"
+    echo "║              🎉 Release PR Ready! 🎉                        ║"
     echo "║                                                              ║"
-    echo "║  ✅ Release PR ready for review and merge                    ║"
-    echo "║  🤖 GitHub Actions will handle everything after merge       ║"
-    echo "║  🏷️ Auto-tagging → Release workflow → HACS distribution    ║"
+    echo "║  Review the PR, confirm all checks pass, then merge.        ║"
+    echo "║  GitHub Actions will tag, build, and publish automatically. ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
-    echo -e "${NC}\n"
-
-    log_info "Next steps:"
-    echo "  1. Review the PR and ensure all checks pass"
-    echo "  2. Merge the PR when ready"
-    echo "  3. GitHub Actions will automatically:"
-    echo "     • Create git tag v$VERSION"
-    echo "     • Trigger release workflow"
-    echo "     • Create GitHub release with assets"
-    echo "     • Notify HACS for distribution"
+    echo -e "${NC}"
+    echo "  Monitor: https://github.com/samspade21/vacasa-ha/actions"
     echo ""
-    echo "  🔗 Monitor progress: https://github.com/samspade21/vacasa-ha/actions"
 }
 
-# Run main function
 main "$@"

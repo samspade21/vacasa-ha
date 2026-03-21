@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-03-20
+
+### Changed
+- **Python 3.14 required**: Dropped support for Python < 3.14; integration now targets Python 3.14 only (#102)
+- **Package manager**: Migrated from pip to [uv](https://github.com/astral-sh/uv) for faster, reproducible dependency management (#102)
+- **API client**: Extracted `_retry` helper — all retry/error-wrap logic now lives in one place instead of being duplicated across every fetch method (#108)
+- **API client**: `_extract_list_response` static helper replaces four identical inline dict/list extraction blocks in `get_units`, `get_reservations`, `get_statements`, and `get_maintenance` (#108)
+- **Sensors**: Immutable values (bedrooms, bathrooms, address, amenity booleans) are now pre-computed once at init instead of on every property access (#107, #102)
+- **Sensors**: `_get_amenity_bool(key)` helper on `VacasaBaseSensor` consolidates hot-tub and pet-friendly amenity lookups (#102)
+- **Calendar/sensors**: Added change-detection guards to occupancy sensor, next-stay sensor, and calendar — `async_write_ha_state()` is now skipped when reservation data has not changed, reducing unnecessary HA state machine churn (#102)
+- **Refactoring**: Extracted `VacasaReservationStateMixin`, `_resolve_time`, and `_apply_timezone` helpers to reduce duplication across calendar and sensor modules (#99)
+- **Dead code removal**: Removed unused `OwnerIdError` class and redundant `get_owner_id()` call in config flow; removed unused API client methods (#107, #108)
+
+### Fixed
+- **Token refresh race condition**: Added double-checked locking (`_ensure_token_lock`) in `ensure_token()` so concurrent callers no longer each trigger a separate token refresh (#108)
+- **Auth error performance**: `AuthenticationError` is now excluded from retry backoff — failed auth fails immediately instead of burning ~14 seconds on 3 pointless retries (#108)
+- **Change-detection correctness**: Fixed `is not` vs `!=` comparison in `VacasaNextStaySensor` — Python's dataclass-generated `__eq__` was being bypassed, defeating the no-op guard (#102)
+- **CodeQL alert**: Removed dead `first_key` assignment in test that was overwritten before use (CWE-563, alert #9) (#109)
+
+### Added
+- **CI**: Automatic Claude PR review workflow — every PR now receives an automated code review (#98)
+- **Tests**: Expanded test coverage from 65 % to 74 %; added tests for `_iter_coordinator_units`, change-detection guards, cache eviction, amenity helpers, and more (#102, #106)
+
+### Dependencies
+- `voluptuous` 0.15.2 → 0.16.0 (#105)
+- `actions/checkout` v4 → v6 (#103)
+- `astral-sh/setup-uv` v5 → v7 (#104)
+- `actions/upload-artifact` v6 → v7 (#97)
+
 ## [1.7.5] - 2026-03-01
 
 ### Fixed
