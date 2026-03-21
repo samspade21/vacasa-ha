@@ -138,8 +138,11 @@ class VacasaOccupancySensor(
     @callback
     def _handle_coordinator_update(self) -> None:
         """Update reservation data from the coordinator."""
+        prev_current = self._current_reservation
+        prev_next = self._next_reservation
         self._refresh_from_coordinator()
-        super()._handle_coordinator_update()
+        if self._current_reservation != prev_current or self._next_reservation != prev_next:
+            super()._handle_coordinator_update()
 
     def _update_from_state(self, state: ReservationState) -> None:
         """Store reservation state and mark availability."""

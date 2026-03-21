@@ -224,6 +224,9 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
     async def _async_coordinator_update(self) -> None:
         """Handle coordinator update asynchronously."""
         try:
+            prev_current = self._current_event
+            prev_next = self._next_event
+
             # Clear event cache to ensure fresh data
             self._event_cache.clear()
             self._reservation_windows.clear()
@@ -232,8 +235,9 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             # Update current and next events based on fresh data
             await self._update_current_event()
 
-            # Write the state to Home Assistant
-            self.async_write_ha_state()
+            # Only write state if the current or upcoming event changed
+            if self._current_event != prev_current or self._next_event != prev_next:
+                self.async_write_ha_state()
 
             _LOGGER.debug(
                 "Successfully updated calendar state for %s - current event: %s, state: %s",
@@ -356,7 +360,7 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                     self._current_event.summary,
                 )
 
-        if self._next_event and getattr(self._next_event, "start", None):
+        if self._next_event and self._next_event.start:
             start_utc = dt_util.as_utc(self._next_event.start)
             if start_utc and start_utc > now_utc:
                 self._unsubscribe_start_timer = async_track_point_in_time(

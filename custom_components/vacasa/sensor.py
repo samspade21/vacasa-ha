@@ -597,12 +597,11 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Expose detailed statement attributes."""
-        latest = self._latest
         attributes = self._latest_attributes()
 
         return {
             "statement_count": len(self._statements),
-            "latest_statement_id": latest.get("id") if isinstance(latest, dict) else None,
+            "latest_statement_id": self._latest.get("id") if self._latest is not None else None,
             "period_start": attributes.get("periodStartDate"),
             "period_end": attributes.get("periodEndDate"),
             "status": attributes.get("status"),
