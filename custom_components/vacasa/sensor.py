@@ -576,11 +576,9 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
 
     def _latest_attributes(self) -> dict[str, Any]:
         """Return the attributes dict from the latest statement, or {} if unavailable."""
-        latest = self._latest
-        if not isinstance(latest, dict):
+        if self._latest is None:
             return {}
-        attrs = latest.get("attributes", {})
-        return attrs if isinstance(attrs, dict) else {}
+        return self._latest.get("attributes", {}) or {}
 
     @property
     def native_value(self) -> float | int:
@@ -658,7 +656,7 @@ class VacasaNextStaySensor(VacasaReservationStateMixin, VacasaBaseSensor):
         prev_current = self._current_reservation
         prev_next = self._next_reservation
         self._refresh_from_coordinator()
-        if self._current_reservation is not prev_current or self._next_reservation is not prev_next:
+        if self._current_reservation != prev_current or self._next_reservation != prev_next:
             self.async_write_ha_state()
 
     @staticmethod

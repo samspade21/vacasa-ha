@@ -932,15 +932,11 @@ class VacasaApiClient:
             _LOGGER.debug("Using cached %s", log_name)
             return cached
 
-        try:
-            result = await self._retry_handler.retry(fetch_func)
-            if result:
-                await self._property_cache.set(cache_key, result)
-                _LOGGER.debug("Cached %s", log_name)
-            return result
-        except Exception as e:
-            _LOGGER.error("Error getting %s: %s", log_name, e)
-            raise ApiError(f"Error getting {log_name}: {e}")
+        result = await self._retry(fetch_func, log_name)
+        if result:
+            await self._property_cache.set(cache_key, result)
+            _LOGGER.debug("Cached %s", log_name)
+        return result
 
     async def _retry(self, fetch_func: Callable, label: str) -> Any:
         """Run fetch_func through the retry handler, wrapping failures as ApiError."""
