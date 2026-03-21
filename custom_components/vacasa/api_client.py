@@ -1027,10 +1027,7 @@ class VacasaApiClient:
 
             if reservations and _LOGGER.isEnabledFor(logging.DEBUG):
                 dates = [
-                    (
-                        res.get("attributes", {}).get("startDate"),
-                        res.get("attributes", {}).get("endDate"),
-                    )
+                    ((a := res.get("attributes", {})).get("startDate"), a.get("endDate"))
                     for res in reservations
                 ]
                 _LOGGER.debug("Reservation dates: %s", dates)
