@@ -994,8 +994,6 @@ class VacasaApiClient:
         Raises:
             ApiError: If the API request fails
         """
-        owner_id = await self.get_owner_id()
-
         params = {
             "startDate": start_date,
             "page[limit]": limit,
@@ -1010,6 +1008,7 @@ class VacasaApiClient:
             params["endDate"] = end_date
 
         async def _fetch():
+            owner_id = await self.get_owner_id()
             _LOGGER.debug(
                 "Getting reservations for unit %s from %s to %s",
                 unit_id,
@@ -1074,30 +1073,41 @@ class VacasaApiClient:
         self, year: int | None = None, month: int | None = None
     ) -> list[dict[str, Any]]:
         """Fetch owner statements, optionally scoped to a specific month."""
-        owner_id = await self.get_owner_id()
 
-        path = f"/owners/{owner_id}/statements"
-        if year is not None and month is not None:
-            path = f"{path}/{year}/{month:02d}"
+        async def _fetch():
+            owner_id = await self.get_owner_id()
+            path = f"/owners/{owner_id}/statements"
+            if year is not None and month is not None:
+                path = f"{path}/{year}/{month:02d}"
+            data = await self._request("GET", path)
+            return self._extract_list_response(data, "statements")
 
-        data = await self._request("GET", path)
-
-        return self._extract_list_response(data, "statements")
+        try:
+            return await self._retry_handler.retry(_fetch)
+        except Exception as e:
+            _LOGGER.error("Error getting statements: %s", e)
+            raise ApiError(f"Error getting statements: {e}")
 
     async def get_maintenance(
         self, unit_id: str, status: str | None = "open"
     ) -> list[dict[str, Any]]:
         """Fetch maintenance tickets for a unit."""
-        owner_id = await self.get_owner_id()
 
-        params = {"status": status} if status else None
-        data = await self._request(
-            "GET",
-            f"/owners/{owner_id}/units/{unit_id}/maintenance",
-            params=params,
-        )
+        async def _fetch():
+            owner_id = await self.get_owner_id()
+            params = {"status": status} if status else None
+            data = await self._request(
+                "GET",
+                f"/owners/{owner_id}/units/{unit_id}/maintenance",
+                params=params,
+            )
+            return self._extract_list_response(data, f"maintenance for unit {unit_id}")
 
-        return self._extract_list_response(data, f"maintenance for unit {unit_id}")
+        try:
+            return await self._retry_handler.retry(_fetch)
+        except Exception as e:
+            _LOGGER.error("Error getting maintenance: %s", e)
+            raise ApiError(f"Error getting maintenance: {e}")
 
     async def clear_property_cache(self) -> None:
         """Clear all cached property data."""
