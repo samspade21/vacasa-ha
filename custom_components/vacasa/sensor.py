@@ -278,12 +278,16 @@ class VacasaBedroomsSensor(VacasaBaseSensor):
     def __init__(self, **kwargs: Any) -> None:
         """Pre-compute bedroom count and bed-type attributes from immutable unit_attributes."""
         super().__init__(**kwargs)
-        amenities = self._unit_attributes.get("amenities", {})
-        rooms = amenities.get("rooms", {})
-        self._bedrooms: int | None = rooms.get("bedrooms") if rooms else None
+        # `dict.get(key, default)` returns the default only when the key is missing,
+        # not when the value is explicitly None. Coerce None to {} so the chained
+        # lookups below cannot raise on `None.get(...)`.
+        amenities = self._unit_attributes.get("amenities") or {}
+        rooms = amenities.get("rooms") or {}
+        beds = amenities.get("beds") or {}
+        self._bedrooms: int | None = rooms.get("bedrooms")
         self._bed_attrs: dict[str, Any] = {
             f"{bed_type}_beds": count
-            for bed_type, count in amenities.get("beds", {}).items()
+            for bed_type, count in beds.items()
             if count and bed_type != "child"  # Skip child beds as they're not real beds
         }
 
@@ -309,7 +313,11 @@ class VacasaBathroomsSensor(VacasaBaseSensor):
     def __init__(self, **kwargs: Any) -> None:
         """Pre-compute bathroom value and attributes from immutable unit_attributes."""
         super().__init__(**kwargs)
-        bathrooms = self._unit_attributes.get("amenities", {}).get("rooms", {}).get("bathrooms", {})
+        # Guard each step with `or {}` so the chain stays safe when the API
+        # returns explicit None for amenities/rooms/bathrooms instead of omitting them.
+        amenities = self._unit_attributes.get("amenities") or {}
+        rooms = amenities.get("rooms") or {}
+        bathrooms = rooms.get("bathrooms") or {}
         if bathrooms:
             self._bathrooms_value: float | None = (
                 bathrooms.get("full", 0) + bathrooms.get("half", 0) * 0.5
@@ -582,10 +590,10 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
         return self._latest.get("attributes", {}) or {}
 
     @property
-    def native_value(self) -> float | int:
-        """Return the latest statement total."""
+    def native_value(self) -> float:
+        """Return the latest statement total in dollars."""
         if not self._latest:
-            return 0
+            return 0.0
 
         attributes = self._latest_attributes()
         for field in ("totalAmount", "netAmount", "balance", "amountDue"):
@@ -593,7 +601,9 @@ class VacasaStatementSensor(VacasaApiUpdateMixin, SensorEntity):
             if amount is not None:
                 return amount
 
-        return len(self._statements)
+        # No usable amount field on the latest statement; report 0.0 rather
+        # than the statement count, which would be meaningless given the "$" unit.
+        return 0.0
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

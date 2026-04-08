@@ -208,6 +208,27 @@ def test_bedrooms_sensor_no_amenities():
     assert sensor.extra_state_attributes == {}
 
 
+def test_bedrooms_sensor_null_amenities():
+    """Bedrooms sensor handles amenities/rooms/beds being explicitly None."""
+    sensor = VacasaBedroomsSensor(
+        coordinator=Mock(),
+        unit_id="3",
+        name="Unit",
+        unit_attributes={"amenities": None},
+    )
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
+
+    sensor = VacasaBedroomsSensor(
+        coordinator=Mock(),
+        unit_id="3",
+        name="Unit",
+        unit_attributes={"amenities": {"rooms": None, "beds": None}},
+    )
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
+
+
 # ---------------------------------------------------------------------------
 # Bathrooms sensor
 # ---------------------------------------------------------------------------
@@ -228,6 +249,27 @@ def test_bathrooms_sensor_values():
 def test_bathrooms_sensor_empty():
     """Bathrooms sensor returns None when bathroom data is absent."""
     sensor = VacasaBathroomsSensor(coordinator=Mock(), unit_id="3", name="Unit", unit_attributes={})
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
+
+
+def test_bathrooms_sensor_null_amenities():
+    """Bathrooms sensor handles amenities/rooms/bathrooms being explicitly None."""
+    sensor = VacasaBathroomsSensor(
+        coordinator=Mock(),
+        unit_id="3",
+        name="Unit",
+        unit_attributes={"amenities": None},
+    )
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
+
+    sensor = VacasaBathroomsSensor(
+        coordinator=Mock(),
+        unit_id="3",
+        name="Unit",
+        unit_attributes={"amenities": {"rooms": {"bathrooms": None}}},
+    )
     assert sensor.native_value is None
     assert sensor.extra_state_attributes == {}
 
@@ -440,6 +482,18 @@ def test_statement_sensor_no_statements():
     sensor = _make_statement_sensor()
     assert sensor.native_value == 0
     assert sensor._latest_attributes() == {}
+
+
+def test_statement_sensor_returns_zero_when_no_amount_field():
+    """Statement sensor reports 0.0 (not the statement count) when no parseable amount."""
+    sensor = _make_statement_sensor()
+    sensor._statements = [
+        {"id": "s1", "attributes": {"updatedAt": "2024-01-01"}},
+        {"id": "s2", "attributes": {"updatedAt": "2024-02-01", "totalAmount": "not-a-number"}},
+    ]
+    sensor._latest = sensor._latest_statement()
+    # No usable amount field; should return 0.0 rather than len(_statements) == 2.
+    assert sensor.native_value == 0.0
 
 
 def test_statement_sensor_latest_attributes_none():
