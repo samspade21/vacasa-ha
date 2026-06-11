@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-06-11
+
+### Fixed
+- **Sensors**: `VacasaBathroomsSensor` no longer raises `TypeError` when the API returns explicit `null` for the `full`/`half` bathroom counts (key present, value null); null leaves now coerce to `0`, completing the null-handling hardening
+- **Sensors**: Hardened bedroom/bathroom sensors against explicit-`None` `amenities`/`rooms`/`beds`/`bathrooms` payloads so chained `.get()` lookups no longer raise `AttributeError` (#124)
+- **Sensors**: `VacasaStatementSensor.native_value` now returns `0.0` (not the statement count) when no parseable amount field is present, keeping the `$` unit meaningful and the return type consistent (#124)
+- **Tests**: Restored `async_write_ha_state` / `_handle_coordinator_update` stubs on the CoordinatorEntity test stub so binary-sensor and calendar tests patch cleanly (#124)
+
+### Dependencies
+- `mypy` 1.19.1 → 2.1.0 (#134)
+- `pre-commit` 4.5.1 → 4.6.0 (#130)
+- `types-requests` 2.33.0.20260327 → 2.33.0.20260518 (#137)
+- `types-setuptools` 82.0.0.20260210 → 82.0.0.20260518 (#136)
+- `actions/github-script` 8 → 9 (#125)
+
 ## [1.8.0] - 2026-03-20
 
 ### Changed

@@ -246,6 +246,15 @@ class CoordinatorEntity:
     async def async_will_remove_from_hass(self):  # pragma: no cover - stub
         return None
 
+    def async_write_ha_state(self):  # pragma: no cover - stub
+        return None
+
+    def _handle_coordinator_update(self):  # pragma: no cover - stub
+        # Mirror Home Assistant's CoordinatorEntity which writes HA state on each
+        # coordinator refresh. Subclasses that override this and call super() rely
+        # on it to push the new state.
+        self.async_write_ha_state()
+
     def __class_getitem__(cls, item):  # pragma: no cover - typing only
         return cls
 
