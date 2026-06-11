@@ -319,12 +319,15 @@ class VacasaBathroomsSensor(VacasaBaseSensor):
         rooms = amenities.get("rooms") or {}
         bathrooms = rooms.get("bathrooms") or {}
         if bathrooms:
-            self._bathrooms_value: float | None = (
-                bathrooms.get("full", 0) + bathrooms.get("half", 0) * 0.5
-            )
+            # `or 0` guards the leaf values too: an explicit None for full/half
+            # (key present, value null) would make `.get(key, 0)` return None and
+            # raise TypeError on the arithmetic below.
+            full = bathrooms.get("full") or 0
+            half = bathrooms.get("half") or 0
+            self._bathrooms_value: float | None = full + half * 0.5
             self._bathrooms_attrs: dict[str, Any] = {
-                "full_bathrooms": bathrooms.get("full", 0),
-                "half_bathrooms": bathrooms.get("half", 0),
+                "full_bathrooms": full,
+                "half_bathrooms": half,
             }
         else:
             self._bathrooms_value = None

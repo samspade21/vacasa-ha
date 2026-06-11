@@ -274,6 +274,19 @@ def test_bathrooms_sensor_null_amenities():
     assert sensor.extra_state_attributes == {}
 
 
+def test_bathrooms_sensor_null_leaf_values():
+    """Bathrooms sensor handles full/half being explicitly None (key present, value null)."""
+    sensor = VacasaBathroomsSensor(
+        coordinator=Mock(),
+        unit_id="3",
+        name="Unit",
+        unit_attributes={"amenities": {"rooms": {"bathrooms": {"full": None, "half": 2}}}},
+    )
+    # Must not raise TypeError; None leaf coerces to 0.
+    assert sensor.native_value == 1.0
+    assert sensor.extra_state_attributes == {"full_bathrooms": 0, "half_bathrooms": 2}
+
+
 # ---------------------------------------------------------------------------
 # HotTub / PetFriendly sensors
 # ---------------------------------------------------------------------------
