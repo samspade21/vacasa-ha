@@ -156,11 +156,11 @@ class CachedData:
         """Execute a blocking IO task safely when hass is available."""
         return await run_blocking_io(self._hass, func, *args, **kwargs)
 
-    def _save_to_disk_sync(self) -> None:
-        """Save cache to disk (synchronous helper)."""
+    def _write_payload_sync(self, payload: str) -> None:
+        """Write a pre-serialized cache payload to disk (synchronous helper)."""
         try:
             with open(self._cache_file, "w") as f:
-                json.dump(self._cache, f, indent=2)
+                f.write(payload)
 
             # Set file permissions to be readable only by the owner
             os.chmod(self._cache_file, 0o600)
@@ -170,14 +170,28 @@ class CachedData:
             _LOGGER.warning("Failed to save cache to disk: %s", e)
 
     async def _save_to_disk(self) -> None:
-        """Save cache to disk."""
-        await self._run_io_task(self._save_to_disk_sync)
+        """Save cache to disk.
 
-    def _load_from_disk_sync(self) -> bool:
-        """Load cache from disk (synchronous helper).
+        The cache is serialized to a string while holding the lock so the
+        executor thread writes a consistent snapshot. Serializing the live dict
+        directly in the executor could race with concurrent mutations on the
+        event loop and raise ``RuntimeError: dictionary changed size during
+        iteration`` or persist a torn snapshot.
+        """
+        async with self._lock:
+            try:
+                payload = json.dumps(self._cache, indent=2)
+            except (TypeError, ValueError) as e:
+                _LOGGER.warning("Failed to serialize cache for disk save: %s", e)
+                return
+
+        await self._run_io_task(self._write_payload_sync, payload)
+
+    def _read_from_disk_sync(self) -> dict[str, Any] | None:
+        """Read and parse the cache file (synchronous helper).
 
         Returns:
-            True if loaded successfully, False otherwise
+            The parsed cache dict, or None if the file is missing/invalid.
         """
         try:
             with open(self._cache_file, "r") as f:
@@ -185,21 +199,19 @@ class CachedData:
 
             if not isinstance(cache_data, dict):
                 _LOGGER.warning("Invalid cache file format")
-                return False
+                return None
 
-            self._cache = cache_data
-            _LOGGER.debug("Cache loaded from disk: %s entries", len(self._cache))
-            return True
+            return cache_data
 
         except FileNotFoundError:
             _LOGGER.debug("Cache file does not exist: %s", self._cache_file)
-            return False
+            return None
         except json.JSONDecodeError:
             _LOGGER.warning("Failed to parse cache file (invalid JSON)")
-            return False
+            return None
         except Exception as e:
             _LOGGER.warning("Failed to load cache from disk: %s", e)
-            return False
+            return None
 
     async def load_from_disk(self) -> bool:
         """Load cache from disk.
@@ -208,10 +220,21 @@ class CachedData:
             True if loaded successfully, False otherwise
         """
         try:
-            return await self._run_io_task(self._load_from_disk_sync)
+            cache_data = await self._run_io_task(self._read_from_disk_sync)
         except Exception as e:
             _LOGGER.warning("Failed to load cache from disk: %s", e)
             return False
+
+        if cache_data is None:
+            return False
+
+        # Assign under the lock on the event loop rather than from the executor
+        # thread, so concurrent get/set callers never observe a half-swapped dict.
+        async with self._lock:
+            self._cache = cache_data
+
+        _LOGGER.debug("Cache loaded from disk: %s entries", len(cache_data))
+        return True
 
     async def _clear_disk_cache(self) -> None:
         """Clear the disk cache file."""

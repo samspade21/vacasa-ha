@@ -385,8 +385,11 @@ class VacasaApiClient:
                                 "API request unauthorized for %s, refreshing token", url
                             )
                             if retry_on_unauthorized:
-                                await self.authenticate()
-                                await self._save_token_to_cache()
+                                # Capture the token that just failed so concurrent
+                                # 401s coalesce into a single re-auth (see
+                                # _force_token_refresh) instead of stampeding.
+                                stale_token = self._token
+                                await self._force_token_refresh(stale_token)
                                 return await self._request(
                                     method,
                                     path,
@@ -546,6 +549,26 @@ class VacasaApiClient:
             await self._save_token_to_cache()
 
         return self._token
+
+    async def _force_token_refresh(self, stale_token: str | None) -> None:
+        """Re-authenticate after a 401, coalescing concurrent callers.
+
+        Several in-flight requests can each receive a 401 for the same expired
+        token. The lock serializes them; the stale-token check then lets later
+        waiters reuse the token an earlier waiter already fetched instead of
+        logging in again, avoiding a re-auth stampede.
+
+        Args:
+            stale_token: The token value that produced the 401, captured by the
+                caller before acquiring the lock.
+        """
+        async with self._ensure_token_lock:
+            if self._token is not None and self._token != stale_token:
+                # Another caller already refreshed the token while we waited.
+                _LOGGER.debug("Token already refreshed by a concurrent caller")
+                return
+            await self.authenticate()
+            await self._save_token_to_cache()
 
     def _get_headers(self) -> dict[str, str]:
         """Get headers for API requests.
@@ -734,7 +757,10 @@ class VacasaApiClient:
                 _LOGGER.error("No redirect URL after login")
                 raise AuthenticationError("No redirect URL after login")
 
-            _LOGGER.debug("Login successful, redirecting to: %s", redirect_url)
+            _LOGGER.debug(
+                "Login successful, redirecting to: %s",
+                self._sanitize_url_for_log(redirect_url),
+            )
 
         # Step 3: Follow redirects until we get the token
         _LOGGER.debug("Following auth redirects")
@@ -747,22 +773,32 @@ class VacasaApiClient:
         self._token = token
         _LOGGER.debug("Successfully obtained authentication token")
 
-        # Extract token expiry from JWT
+        self._update_token_expiry_from_jwt(token)
+
+        return self._token
+
+    def _update_token_expiry_from_jwt(self, token: str) -> None:
+        """Set ``_token_expiry`` from a JWT's ``exp`` claim.
+
+        Resets ``_token_expiry`` to None first so that a parse failure cannot
+        leave a stale expiry from a previous token in place — that would make
+        ``is_token_valid`` judge a fresh token by the old token's lifetime.
+        ``_base64_url_decode`` handles its own padding.
+        """
+        self._token_expiry = None
         try:
             token_parts = token.split(".")
             if len(token_parts) >= 2:
-                padded_payload = token_parts[1] + "=" * (4 - len(token_parts[1]) % 4)
-                payload = json.loads(self._base64_url_decode(padded_payload))
+                payload = json.loads(self._base64_url_decode(token_parts[1]))
 
-                if "exp" in payload:
-                    self._token_expiry = self._timestamp_to_datetime(payload["exp"])
+                exp = payload.get("exp")
+                if exp is not None:
+                    self._token_expiry = self._timestamp_to_datetime(exp)
                     _LOGGER.debug("Token expires at %s", self._token_expiry)
                 else:
                     _LOGGER.warning("No expiry found in token payload")
         except Exception as e:
             _LOGGER.warning("Failed to parse JWT token: %s", e)
-
-        return self._token
 
     async def authenticate(self) -> str:
         """Authenticate with Vacasa and get a token.
@@ -794,7 +830,10 @@ class VacasaApiClient:
         max_redirects = MAX_AUTH_REDIRECTS
         redirect_count = 0
 
-        _LOGGER.debug("Following auth redirects starting with: %s", current_url)
+        _LOGGER.debug(
+            "Following auth redirects starting with: %s",
+            self._sanitize_url_for_log(current_url),
+        )
 
         while redirect_count < max_redirects:
             redirect_count += 1

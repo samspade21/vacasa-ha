@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] - 2026-06-11
+
+### Fixed
+- **Auth**: Concurrent `401` responses now coalesce into a single re-authentication via `_force_token_refresh` (holding the token lock) instead of each in-flight request triggering its own login — eliminates the re-auth stampede when a token is revoked server-side
+- **Auth**: `_token_expiry` is now reset before parsing a new JWT, so a parse failure can no longer leave a stale expiry that makes `is_token_valid` judge a fresh token by the previous token's lifetime; also removed redundant base64 double-padding
+- **Auth**: Initial auth-redirect URLs are now routed through `_sanitize_url_for_log` before debug logging, so an `access_token` fragment can't leak into logs
+- **Calendar**: Reservation events are always anchored to the unit's timezone (never naive datetimes), fixing incorrect UTC/boundary scheduling for units not in the Home Assistant host's timezone
+- **Calendar**: Unknown stay types fall back to the raw type instead of raising `KeyError` and silently dropping the reservation from the calendar
+- **Cache**: `CachedData` now serializes a snapshot under the lock before writing to disk and assigns loaded data under the lock, avoiding `RuntimeError: dictionary changed size during iteration` / torn writes from concurrent mutations
+- **Config flow**: `validate_email` guards against `None`/non-string input, surfacing a form validation error instead of an unhandled exception in the options flow
+
 ## [1.8.1] - 2026-06-11
 
 ### Fixed

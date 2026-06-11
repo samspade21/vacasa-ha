@@ -29,7 +29,9 @@ EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
 def validate_email(value: str) -> str:
     """Validate email format."""
-    if not value:
+    if not value or not isinstance(value, str):
+        # Guard against None / non-str so a missing username surfaces as a
+        # form validation error rather than an unhandled AttributeError.
         raise vol.Invalid("Email cannot be empty")
 
     value = value.strip()

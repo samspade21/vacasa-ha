@@ -472,12 +472,16 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
         """Return the first non-falsy time value from the priority chain."""
         return reservation_time or property_time or default_time
 
-    def _apply_timezone(self, dt: datetime, is_all_day: bool) -> datetime:
-        """Apply the property timezone (or local fallback) to a naive datetime."""
-        if is_all_day:
-            return dt
+    def _apply_timezone(self, dt: datetime) -> datetime:
+        """Localize a naive wall-clock datetime to the property timezone.
+
+        Always returns a timezone-aware datetime. Even "all-day" reservations are
+        anchored to the unit's timezone so the downstream UTC/boundary math never
+        sees a naive datetime, which dt_util.as_utc would otherwise misinterpret
+        as the Home Assistant host's local time.
+        """
         if self._timezone:
-            return dt.replace(tzinfo=None).replace(tzinfo=ZoneInfo(self._timezone))
+            return dt.replace(tzinfo=ZoneInfo(self._timezone))
         return dt_util.as_local(dt)
 
     def _reservation_to_event(
@@ -517,11 +521,11 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
             if not start_dt or not end_dt:
                 return None
 
-            # Apply timezone; skip for all-day events (both sides at midnight)
-            is_all_day_start = "T00:00:00" in start_dt_str
-            is_all_day_end = "T00:00:00" in end_dt_str
-
-            if is_all_day_start and is_all_day_end:
+            # Anchor both boundaries to the unit timezone. All-day reservations
+            # (both sides at midnight) are kept as timezone-aware midnight rather
+            # than naive datetimes so the UTC/boundary math stays correct for
+            # units that are not in the Home Assistant host's timezone.
+            if "T00:00:00" in start_dt_str and "T00:00:00" in end_dt_str:
                 _LOGGER.debug(
                     "Creating all-day event for %s from %s to %s",
                     self._name,
@@ -534,8 +538,8 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                     self._timezone or "local",
                     self._name,
                 )
-                start_dt = self._apply_timezone(start_dt, is_all_day_start)
-                end_dt = self._apply_timezone(end_dt, is_all_day_end)
+            start_dt = self._apply_timezone(start_dt)
+            end_dt = self._apply_timezone(end_dt)
 
             # Get guest/owner information
             first_name = attributes.get("firstName", "")
@@ -552,8 +556,10 @@ class VacasaCalendar(CoordinatorEntity[VacasaDataUpdateCoordinator], CalendarEnt
                 hold_who_booked = owner_hold.get("holdWhoBooked", "")
                 hold_note = owner_hold.get("holdExternalNote", "")
 
-            # Create summary using the same name resolution as ReservationWindow
-            summary_prefix = STAY_TYPE_TO_NAME[stay_type]
+            # Create summary using the same name resolution as ReservationWindow.
+            # Fall back to the raw stay_type so an unmapped category doesn't raise
+            # a KeyError and silently drop the reservation from the calendar.
+            summary_prefix = STAY_TYPE_TO_NAME.get(stay_type, stay_type)
             guest_name = self._resolve_guest_name(
                 stay_type,
                 first_name=first_name,
