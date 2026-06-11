@@ -720,3 +720,54 @@ class TestApiResponseParsing:
         assert result.month == 1
         assert result.day == 1
         assert result.tzinfo == timezone.utc
+
+
+class TestTokenExpiryAndRefresh:
+    """Tests for JWT expiry parsing and coalesced 401 re-auth."""
+
+    @staticmethod
+    def _jwt(payload: dict) -> str:
+        """Build a minimal unsigned JWT string carrying the given payload."""
+        import base64
+
+        encoded = base64.urlsafe_b64encode(json.dumps(payload).encode()).rstrip(b"=").decode()
+        return f"header.{encoded}.signature"
+
+    def test_update_token_expiry_sets_from_exp(self, api_client):
+        """A valid exp claim populates _token_expiry."""
+        api_client._update_token_expiry_from_jwt(self._jwt({"exp": 1640995200}))
+        assert api_client._token_expiry == datetime(2022, 1, 1, tzinfo=timezone.utc)
+
+    def test_update_token_expiry_resets_when_no_exp(self, api_client):
+        """A token without exp must clear any stale expiry rather than keep it."""
+        api_client._token_expiry = datetime.now(timezone.utc) + timedelta(hours=1)
+        api_client._update_token_expiry_from_jwt(self._jwt({"sub": "abc"}))
+        assert api_client._token_expiry is None
+
+    def test_update_token_expiry_resets_on_malformed_token(self, api_client):
+        """A malformed token must clear any stale expiry rather than keep it."""
+        api_client._token_expiry = datetime.now(timezone.utc) + timedelta(hours=1)
+        api_client._update_token_expiry_from_jwt("not-a-jwt")
+        assert api_client._token_expiry is None
+
+    @pytest.mark.asyncio
+    async def test_force_token_refresh_authenticates_when_stale(self, api_client):
+        """When the token still matches the stale value, re-authenticate."""
+        api_client._token = "old"
+        with (
+            patch.object(api_client, "authenticate", new=AsyncMock()) as mock_auth,
+            patch.object(api_client, "_save_token_to_cache", new=AsyncMock()),
+        ):
+            await api_client._force_token_refresh("old")
+            mock_auth.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_force_token_refresh_skips_when_already_refreshed(self, api_client):
+        """A concurrent caller that already refreshed the token short-circuits re-auth."""
+        api_client._token = "new"
+        with (
+            patch.object(api_client, "authenticate", new=AsyncMock()) as mock_auth,
+            patch.object(api_client, "_save_token_to_cache", new=AsyncMock()),
+        ):
+            await api_client._force_token_refresh("old")
+            mock_auth.assert_not_awaited()

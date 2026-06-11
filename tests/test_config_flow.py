@@ -60,3 +60,10 @@ def test_validate_password_rejects_invalid_passwords(password: str) -> None:
     """Passwords that are empty, too short, or whitespace should raise vol.Invalid."""
     with pytest.raises(vol.Invalid):
         validate_password(password)
+
+
+@pytest.mark.parametrize("value", [None, 123, []])
+def test_validate_email_rejects_non_string(value) -> None:
+    """None/non-string usernames raise vol.Invalid, not an unhandled error."""
+    with pytest.raises(vol.Invalid):
+        validate_email(value)

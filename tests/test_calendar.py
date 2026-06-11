@@ -361,3 +361,58 @@ async def test_event_cache_eviction_at_max_size():
     assert first_key not in calendar._event_cache
     assert "new_key" in calendar._event_cache
     assert len(calendar._event_cache) == CALENDAR_EVENT_CACHE_MAX_SIZE
+
+
+def test_reservation_event_is_timezone_aware_in_unit_timezone():
+    """Events are anchored to the unit's timezone, never left naive."""
+    coordinator = Mock()
+    coordinator.reservation_states = {}
+
+    calendar = VacasaCalendar(
+        coordinator=coordinator,
+        client=Mock(),
+        unit_id="unit123",
+        name="Test Unit",
+        code="TU",
+        unit_attributes={"timezone": "America/New_York"},
+    )
+
+    event = calendar._reservation_to_event(
+        {
+            "id": "res123",
+            "attributes": {"startDate": "2024-05-01", "endDate": "2024-05-02"},
+        },
+        STAY_TYPE_GUEST,
+    )
+
+    assert event is not None
+    # Must be timezone-aware (not naive) and use the unit's zone.
+    assert event.start.tzinfo is not None
+    assert event.end.tzinfo is not None
+    assert getattr(event.start.tzinfo, "key", None) == "America/New_York"
+
+
+def test_reservation_event_unmapped_stay_type_does_not_crash():
+    """An unknown stay type falls back to the raw type instead of raising KeyError."""
+    coordinator = Mock()
+    coordinator.reservation_states = {}
+
+    calendar = VacasaCalendar(
+        coordinator=coordinator,
+        client=Mock(),
+        unit_id="unit123",
+        name="Test Unit",
+        code="TU",
+        unit_attributes={},
+    )
+
+    event = calendar._reservation_to_event(
+        {
+            "id": "res999",
+            "attributes": {"startDate": "2024-05-01", "endDate": "2024-05-02"},
+        },
+        "surprise_type",
+    )
+
+    assert event is not None
+    assert event.summary.startswith("surprise_type")
