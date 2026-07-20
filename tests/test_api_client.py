@@ -1,6 +1,7 @@
 """Unit tests for the Vacasa API client."""
 
 import json
+import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, Mock, mock_open, patch
 
@@ -771,3 +772,163 @@ class TestTokenExpiryAndRefresh:
         ):
             await api_client._force_token_refresh("old")
             mock_auth.assert_not_awaited()
+
+
+def _async_cm(response):
+    """Wrap a mock response in an async context manager (session.get/post)."""
+    cm = AsyncMock()
+    cm.__aenter__.return_value = response
+    cm.__aexit__.return_value = None
+    return cm
+
+
+def _mock_http_response(status, text_body="", headers=None):
+    """Build a mock aiohttp response exposing status/text/headers."""
+    response = Mock()
+    response.status = status
+    response.text = AsyncMock(return_value=text_body)
+    response.headers = headers or {}
+    return response
+
+
+def _make_jwt(exp):
+    """Build an unsigned JWT string with the given exp claim."""
+    import base64
+
+    def _b64(data):
+        return base64.urlsafe_b64encode(json.dumps(data).encode()).decode().rstrip("=")
+
+    return f"{_b64({'alg': 'none', 'typ': 'JWT'})}.{_b64({'sub': '1', 'exp': exp})}.sig"
+
+
+_LOGIN_PAGE = '<form><input name="csrfmiddlewaretoken" value="TESTCSRF"></form>'
+
+
+class TestAuthenticateLoginResponse:
+    """Behaviour of _authenticate_once when Vacasa returns the login page (HTTP 200)."""
+
+    @pytest.mark.asyncio
+    async def test_200_raises_actionable_migration_error(self, api_client):
+        """A 200 login response yields a clear migration/reset error, not 'status 200'."""
+        post_body = (
+            '<div class="alert error">Your account must be migrated. '
+            "Please reset your password.</div>"
+        )
+        session = Mock()
+        session.get.return_value = _async_cm(_mock_http_response(200, _LOGIN_PAGE))
+        session.post.return_value = _async_cm(_mock_http_response(200, post_body))
+
+        with (
+            patch.object(api_client, "ensure_session", new=AsyncMock(return_value=session)),
+            patch.object(api_client, "_ensure_client_id", new=AsyncMock(return_value="cid")),
+        ):
+            with pytest.raises(AuthenticationError) as exc_info:
+                await api_client._authenticate_once()
+
+        message = str(exc_info.value)
+        assert "accounts.vacasa.io" in message
+        assert "migrat" in message.lower()
+        # The rendered Vacasa page message is surfaced to the user.
+        assert "reset your password" in message.lower()
+
+    @pytest.mark.asyncio
+    async def test_200_recovers_embedded_access_token(self, api_client):
+        """If the 200 response embeds a valid JWT access token, it is recovered."""
+        exp = int((datetime.now(timezone.utc) + timedelta(hours=1)).timestamp())
+        jwt = _make_jwt(exp)
+        post_body = f'<script>location.hash="#access_token={jwt}&token_type=bearer";</script>'
+        session = Mock()
+        session.get.return_value = _async_cm(_mock_http_response(200, _LOGIN_PAGE))
+        session.post.return_value = _async_cm(_mock_http_response(200, post_body))
+
+        with (
+            patch.object(api_client, "ensure_session", new=AsyncMock(return_value=session)),
+            patch.object(api_client, "_ensure_client_id", new=AsyncMock(return_value="cid")),
+        ):
+            token = await api_client._authenticate_once()
+
+        assert token == jwt
+        assert api_client._token == jwt
+        assert api_client._token_expiry is not None
+
+    @pytest.mark.asyncio
+    async def test_200_without_jwt_falls_through_to_error(self, api_client):
+        """A non-JWT access_token value must not be accepted as a session token."""
+        post_body = '<p>access_token=not-a-jwt</p><div class="error">Invalid credentials</div>'
+        session = Mock()
+        session.get.return_value = _async_cm(_mock_http_response(200, _LOGIN_PAGE))
+        session.post.return_value = _async_cm(_mock_http_response(200, post_body))
+
+        with (
+            patch.object(api_client, "ensure_session", new=AsyncMock(return_value=session)),
+            patch.object(api_client, "_ensure_client_id", new=AsyncMock(return_value="cid")),
+        ):
+            with pytest.raises(AuthenticationError):
+                await api_client._authenticate_once()
+        assert api_client._token is None
+
+    @pytest.mark.asyncio
+    async def test_non_200_non_redirect_keeps_generic_error(self, api_client):
+        """A 500 (not 200/302/303) still raises the generic login-failed error."""
+        session = Mock()
+        session.get.return_value = _async_cm(_mock_http_response(200, _LOGIN_PAGE))
+        session.post.return_value = _async_cm(_mock_http_response(500, "boom"))
+
+        with (
+            patch.object(api_client, "ensure_session", new=AsyncMock(return_value=session)),
+            patch.object(api_client, "_ensure_client_id", new=AsyncMock(return_value="cid")),
+        ):
+            with pytest.raises(AuthenticationError) as exc_info:
+                await api_client._authenticate_once()
+        assert "500" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_authorize_params_use_oidc_response_type(self, api_client):
+        """The login flow requests response_type='token id_token' with UUID state/nonce."""
+        session = Mock()
+        session.get.return_value = _async_cm(_mock_http_response(200, _LOGIN_PAGE))
+        session.post.return_value = _async_cm(_mock_http_response(200, "no token here"))
+
+        with (
+            patch.object(api_client, "ensure_session", new=AsyncMock(return_value=session)),
+            patch.object(api_client, "_ensure_client_id", new=AsyncMock(return_value="cid")),
+        ):
+            with pytest.raises(AuthenticationError):
+                await api_client._authenticate_once()
+
+        params = session.get.call_args.kwargs["params"]
+        assert params["response_type"] == "token id_token"
+        # state/nonce are opaque UUIDs, not timestamps.
+        uuid.UUID(params["state"])
+        uuid.UUID(params["nonce"])
+
+
+class TestLoginPageParsingHelpers:
+    """Unit tests for the login-page text extraction helpers."""
+
+    def test_extract_access_token_found(self):
+        """A token embedded in text is returned verbatim up to the delimiter."""
+        assert (
+            VacasaApiClient._extract_access_token("prefix#access_token=abc.def.ghi&x=1")
+            == "abc.def.ghi"
+        )
+
+    def test_extract_access_token_absent(self):
+        """No token present returns None."""
+        assert VacasaApiClient._extract_access_token("nothing here") is None
+
+    def test_extract_login_error_from_alert_div(self):
+        """An error rendered in an alert container is extracted and cleaned."""
+        html = '<div class="alert alert-error"><span>Invalid password.</span></div>'
+        assert VacasaApiClient._extract_login_error(html) == "Invalid password."
+
+    def test_extract_login_error_from_migration_paragraph(self):
+        """A migration/reset notice paragraph is extracted when no alert container exists."""
+        html = "<p>Your account needs to be migrated before you can sign in.</p>"
+        result = VacasaApiClient._extract_login_error(html)
+        assert result is not None
+        assert "migrated" in result
+
+    def test_extract_login_error_none(self):
+        """Unrelated markup yields None."""
+        assert VacasaApiClient._extract_login_error("<p>Welcome home</p>") is None

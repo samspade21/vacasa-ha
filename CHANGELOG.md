@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.3] - 2026-07-20
+
+### Fixed
+- **Auth**: When Vacasa returns the login page with `HTTP 200` instead of the OAuth redirect (the signature of their owner-account migration to a new sign-in system), the client no longer fails with a cryptic `Login failed with status 200`. It now extracts and logs the actual message rendered on Vacasa's page and raises a clear, actionable error telling the user to reset their password at `accounts.vacasa.io` and update the integration credentials (#138)
+- **Auth**: If a migrated login flow embeds the access token in the returned page body instead of a redirect, the client recovers it — but only when it is a valid JWT, so a stray `access_token=` string can never be accepted as a session token (#138)
+
+### Changed
+- **Auth**: OAuth authorize parameters now mirror what Vacasa's owner portal currently generates — `response_type=token id_token` (OIDC implicit flow) and opaque UUID `state`/`nonce` instead of timestamps (#138)
+
+> Note: for owner accounts that Vacasa has already migrated, the old password may no longer authenticate. This release makes that condition explicit in the logs and UI and surfaces Vacasa's own message; if your calendar has disappeared, reset your password at accounts.vacasa.io and re-enter your credentials in the integration.
+
 ## [1.8.2] - 2026-06-11
 
 ### Fixed
