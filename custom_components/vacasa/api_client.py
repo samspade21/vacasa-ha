@@ -629,21 +629,45 @@ class VacasaApiClient:
         Vacasa's login page (and its underlying Authentik/Django forms) renders
         validation and migration notices inside alert/error containers. Pull the
         first such message out so it can be logged and surfaced to the user; the
-        exact markup is unknown, so several candidate patterns are tried and the
+        exact markup is unknown, so a few container shapes are tried and the
         result is tag-stripped and truncated.
+
+        Only a bounded prefix of the (remote, untrusted) response body is
+        scanned, and every regex avoids ambiguous adjacent quantifiers — the
+        keyword match is done in Python rather than inside the pattern — so this
+        stays linear and cannot be driven into pathological backtracking.
         """
-        patterns = (
-            r'<[^>]*class="[^"]*(?:error|alert|invalid-feedback|message)[^"]*"[^>]*>(.*?)</',
-            r'name="non_field_errors"[^>]*>(.*?)<',
-            r"<p[^>]*>([^<]*(?:password|migrat|reset|incorrect|invalid)[^<]*)</p>",
-        )
-        for pattern in patterns:
-            match = re.search(pattern, html, re.IGNORECASE | re.DOTALL)
-            if match:
-                text = re.sub(r"<[^>]+>", " ", match.group(1))
-                text = re.sub(r"\s+", " ", text).strip()
-                if text:
-                    return text[:200]
+        snippet = html[:20000]
+        class_keywords = ("error", "alert", "invalid-feedback", "message")
+        text_keywords = ("password", "migrat", "reset", "incorrect", "invalid")
+
+        def _clean(fragment: str) -> str | None:
+            text = re.sub(r"<[^>]+>", " ", fragment)
+            text = re.sub(r"\s+", " ", text).strip()
+            return text[:200] if text else None
+
+        # Element whose class attribute names an error/alert container.
+        container_re = re.compile(r'class="([^"]*)"[^>]*>(.*?)</', re.IGNORECASE | re.DOTALL)
+        for match in container_re.finditer(snippet):
+            if any(keyword in match.group(1).lower() for keyword in class_keywords):
+                cleaned = _clean(match.group(2))
+                if cleaned:
+                    return cleaned
+
+        # Django-style non-field error block.
+        match = re.search(r'name="non_field_errors"[^>]*>([^<]*)<', snippet, re.IGNORECASE)
+        if match:
+            cleaned = _clean(match.group(1))
+            if cleaned:
+                return cleaned
+
+        # Paragraph mentioning a migration / credential problem.
+        for match in re.finditer(r"<p[^>]*>([^<]*)</p>", snippet, re.IGNORECASE):
+            fragment = match.group(1)
+            if any(keyword in fragment.lower() for keyword in text_keywords):
+                cleaned = _clean(fragment)
+                if cleaned:
+                    return cleaned
         return None
 
     def _timestamp_to_datetime(self, timestamp: int) -> datetime:
