@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, TypeVar
 from urllib.parse import urlencode
@@ -615,6 +616,60 @@ class VacasaApiClient:
             return re.sub(r"access_token=[^&\s]+", "access_token=<redacted>", url)
         return url
 
+    @staticmethod
+    def _extract_access_token(text: str) -> str | None:
+        """Return an ``access_token`` value embedded in text, if present."""
+        match = re.search(r'access_token=([^&"\'\s]+)', text)
+        return match.group(1) if match else None
+
+    @staticmethod
+    def _extract_login_error(html: str) -> str | None:
+        """Best-effort extraction of a human-readable error from a login page.
+
+        Vacasa's login page (and its underlying Authentik/Django forms) renders
+        validation and migration notices inside alert/error containers. Pull the
+        first such message out so it can be logged and surfaced to the user; the
+        exact markup is unknown, so a few container shapes are tried and the
+        result is tag-stripped and truncated.
+
+        Only a bounded prefix of the (remote, untrusted) response body is
+        scanned, and every regex avoids ambiguous adjacent quantifiers — the
+        keyword match is done in Python rather than inside the pattern — so this
+        stays linear and cannot be driven into pathological backtracking.
+        """
+        snippet = html[:20000]
+        class_keywords = ("error", "alert", "invalid-feedback", "message")
+        text_keywords = ("password", "migrat", "reset", "incorrect", "invalid")
+
+        def _clean(fragment: str) -> str | None:
+            text = re.sub(r"<[^>]+>", " ", fragment)
+            text = re.sub(r"\s+", " ", text).strip()
+            return text[:200] if text else None
+
+        # Element whose class attribute names an error/alert container.
+        container_re = re.compile(r'class="([^"]*)"[^>]*>(.*?)</', re.IGNORECASE | re.DOTALL)
+        for match in container_re.finditer(snippet):
+            if any(keyword in match.group(1).lower() for keyword in class_keywords):
+                cleaned = _clean(match.group(2))
+                if cleaned:
+                    return cleaned
+
+        # Django-style non-field error block.
+        match = re.search(r'name="non_field_errors"[^>]*>([^<]*)<', snippet, re.IGNORECASE)
+        if match:
+            cleaned = _clean(match.group(1))
+            if cleaned:
+                return cleaned
+
+        # Paragraph mentioning a migration / credential problem.
+        for match in re.finditer(r"<p[^>]*>([^<]*)</p>", snippet, re.IGNORECASE):
+            fragment = match.group(1)
+            if any(keyword in fragment.lower() for keyword in text_keywords):
+                cleaned = _clean(fragment)
+                if cleaned:
+                    return cleaned
+        return None
+
     def _timestamp_to_datetime(self, timestamp: int) -> datetime:
         """Convert timestamp to datetime.
 
@@ -677,17 +732,20 @@ class VacasaApiClient:
 
         client_id = await self._ensure_client_id()
 
+        # Values mirror the parameters Vacasa's owner portal currently generates:
+        # the OAuth response_type is now "token id_token" (OIDC implicit flow) and
+        # state/nonce are opaque UUIDs rather than timestamps.
         auth_params = {
             "next": "/authorize",
             "directory_hint": "email",
             "owner_migration_needed": "true",
             "client_id": client_id,
-            "response_type": "token",
+            "response_type": "token id_token",
             "redirect_uri": "https://owners.vacasa.com",
             "scope": "owners:read employees:read",
             "audience": "owner.vacasa.io",
-            "state": f"{int(time.time())}",
-            "nonce": f"{int(time.time())}-nonce",
+            "state": str(uuid.uuid4()),
+            "nonce": str(uuid.uuid4()),
             "mode": "owner",
         }
 
@@ -726,7 +784,7 @@ class VacasaApiClient:
             "password": self._password,
             "next": (
                 f"/authorize?directory_hint=email&owner_migration_needed=true"
-                f"&client_id={client_id}&response_type=token"
+                f"&client_id={client_id}&response_type=token%20id_token"
                 f"&redirect_uri=https://owners.vacasa.com"
                 f"&scope=owners:read%20employees:read&audience=owner.vacasa.io"
                 f"&state={auth_params['state']}&nonce={auth_params['nonce']}&mode=owner"
@@ -746,6 +804,48 @@ class VacasaApiClient:
             timeout=_DEFAULT_CLIENT_TIMEOUT,
         ) as response:
             if response.status not in (302, 303):
+                # A 200 here means Vacasa re-rendered the login page instead of
+                # issuing the OAuth redirect, so the credential POST did not
+                # authenticate. This is the signature of Vacasa's owner-account
+                # migration to their new sign-in system: the old password no
+                # longer authenticates and the portal keeps returning the login
+                # page (often emailing a password-reset link). Surface the actual
+                # page message and clear, actionable guidance instead of a bare
+                # "status 200".
+                if response.status == 200:
+                    body = await response.text()
+
+                    # Some migrated flows embed the token in the returned page
+                    # rather than redirecting; recover it if it is a real JWT.
+                    recovered = self._extract_access_token(body)
+                    if recovered:
+                        self._token = recovered
+                        self._update_token_expiry_from_jwt(recovered)
+                        if self._token_expiry is not None:
+                            _LOGGER.debug("Recovered access token from login response body")
+                            return self._token
+                        # Not a usable JWT — fall through to migration guidance.
+                        self._token = None
+
+                    error_detail = self._extract_login_error(body)
+                    _LOGGER.error(
+                        "Vacasa returned the login page (HTTP 200) instead of an "
+                        "OAuth redirect, so authentication did not complete. Vacasa "
+                        "has migrated owner accounts to a new sign-in system; the "
+                        "account likely needs a password reset / re-migration at "
+                        "https://accounts.vacasa.io before the integration can sign "
+                        "in. Vacasa page message: %s",
+                        error_detail or "<none found on page>",
+                    )
+                    message = (
+                        "Vacasa login did not redirect (HTTP 200). Owner sign-in "
+                        "was migrated to a new system — reset your password at "
+                        "accounts.vacasa.io, then update the integration credentials."
+                    )
+                    if error_detail:
+                        message = f"{message} Vacasa said: {error_detail}"
+                    raise AuthenticationError(message)
+
                 _LOGGER.error(
                     "Login failed with status %s. Expected redirect (302/303).",
                     response.status,
