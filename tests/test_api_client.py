@@ -825,11 +825,13 @@ class TestAuthenticateLoginResponse:
             with pytest.raises(AuthenticationError) as exc_info:
                 await api_client._authenticate_once()
 
-        message = str(exc_info.value)
-        assert "accounts.vacasa.io" in message
-        assert "migrat" in message.lower()
+        message = str(exc_info.value).lower()
+        # Actionable guidance to re-migrate / reset credentials.
+        assert "migrat" in message
+        assert "reset your password" in message
         # The rendered Vacasa page message is surfaced to the user.
-        assert "reset your password" in message.lower()
+        assert "vacasa said:" in message
+        assert "must be migrated" in message
 
     @pytest.mark.asyncio
     async def test_200_recovers_embedded_access_token(self, api_client):
