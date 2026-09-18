@@ -13,7 +13,7 @@ dev = [
     "mypy==2.1.0",
     "pre-commit==4.6.0",
     "types-requests>=2.0.0",
-    "types-setuptools>=65.0.0",
+    "types-setuptools>=84.0.0.20260812",
 ]
 test = [
     "pytest>=8.0.0",
